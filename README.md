@@ -1,13 +1,16 @@
-# Proyecto
+# Repositorio personal — Blockchain y Contratos Inteligentes, IUA 2026
 
-🚧 **En construcción** 🚧
+## Presentación
 
-Este repositorio se encuentra actualmente en desarrollo.  
-El contenido, la documentación y las funcionalidades pueden cambiar.
+Este repositorio contiene las resoluciones de trabajos prácticos de la materia, organizados por carpetas según la guía de cursado.
 
-Próximamente se agregará información sobre:
+## Datos del alumno
 
-- Descripción del proyecto
-- Instalación
-- Uso
-- Arquitectura del sistema
+- **Nombre:** Vargas Benjamin
+- **Email institucional:** bvargas161@alumnos.iua.edu.ar
+
+## Estructura del repositorio
+
+- `TP/`
+	- `1/` → **TP 1:** Buscador de colisiones y prueba de trabajo (PoW)
+
