@@ -7,7 +7,7 @@ server = "https://cripto.iua.edu.ar/blockchain"
 print("Collision finder SHA-256-48:")
 EMAIL = input("Enter your email: ")
 
-
+print("Finding collision...")
 start_time = time()
 
 
@@ -27,7 +27,7 @@ while True:
         
 end_time = time()
 
-print(f"Found collision: \"{seen[h]}\"")
+print(f"Found collision: {h}")
 print("msg1:", msg1)
 print("msg2:", msg2)
 print(f"Search time: {end_time - start_time:.2f} seconds")
