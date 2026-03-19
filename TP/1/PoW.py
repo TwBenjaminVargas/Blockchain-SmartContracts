@@ -2,7 +2,6 @@ import requests
 from datetime import datetime
 import base64
 from hashlib import sha256
-from itertools import count
 
 server = "https://cripto.iua.edu.ar/blockchain"
 
