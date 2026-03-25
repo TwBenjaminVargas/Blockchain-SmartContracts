@@ -26,17 +26,17 @@ Enviar **1 wei** a la direccion indicada por la consigna (`0x5A5a966FeAA14e30185
 
 El proceso se inicia con una auditoria del estado actual de la cuenta principal del nodo. Se utiliza el comando `eth.getBalance` para extraer el saldo bruto en la unidad minima del protocolo (Wei). Posteriormente, se aplica el metodo `web3.fromWei` para normalizar la lectura a una escala humana. Se confirma un saldo inicial de **0.0001 ETH**, validando que la consola de JavaScript esta correctamente sincronizada y operativa para transaccionar.
 
-![Auditoria de saldo inicial](https://drive.google.com/drive/folders/12YvXn2_2DJ1SvTjsv5siBEDNLpq9WJQb)
+![Auditoria de saldo inicial](https://lh3.googleusercontent.com/u/0/d/1YztE0yZktFe-vXl506jiaYE1O4ttxHHk)
 
 Luego se procede a la ejecucion del requerimiento tecnico. Para garantizar la precision y evitar errores de direccionamiento, se definen variables de entorno para la cuenta de origen (`miCuenta`) y la direccion de destino especificada en la consigna (`destino_p3`).
 
 Se emite la transaccion mediante el metodo `eth.sendTransaction`, configurando un valor de **1 wei**. La consola devuelve un Hash de Transaccion unico (`0x99d3...`), lo cual constituye el comprobante digital de que la orden ha sido inyectada en la red y esta pendiente de ser incluida en un bloque por los validadores.
 
-![Envio de 1 wei y hash de transaccion](https://drive.google.com/drive/folders/12YvXn2_2DJ1SvTjsv5siBEDNLpq9WJQb)
+![Envio de 1 wei y hash de transaccion](https://lh3.googleusercontent.com/u/0/d/1H8QOtE8J68xq3uFA0N5SpmMXqgus5k5i)
 
 Por ultimo, tras el procesamiento de la transferencia por parte de la red, se realiza una consulta de saldo final para verificar el cumplimiento de la consigna. El sistema arroja un balance de **99.999974668 ETH**.
 
-![Verificacion de saldo final](https://drive.google.com/drive/folders/12YvXn2_2DJ1SvTjsv5siBEDNLpq9WJQb)
+![Verificacion de saldo final](https://lh3.googleusercontent.com/u/0/d/1zZruBUh4MnQmw0tIoz2fhYh7adqp7NT6)
 
 ### Observaciones tecnicas
 
@@ -111,7 +111,7 @@ python3 show_transactions.py 0xDIRECCION1 --first-block 0 --last-block latest --
 
 La siguiente evidencia muestra un ejemplo de salida en formato graphviz para visualizacion de transferencias:
 
-![Ejemplo de salida graphviz](https://drive.google.com/drive/folders/12YvXn2_2DJ1SvTjsv5siBEDNLpq9WJQb)
+![Ejemplo de salida graphviz](https://lh3.googleusercontent.com/u/0/d/1sMkNCRymTZxPtsjK96Hz2obNTuKt8eyk)
 
 ---
 
