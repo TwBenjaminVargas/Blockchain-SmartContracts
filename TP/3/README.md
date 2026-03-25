@@ -1,89 +1,120 @@
-# Trabajo práctico 3
+# TP 3 - Red BFA y Scripts de Analisis
 
-## 1. Desplegar un nodo de la red de prueba de la BFA
+## Consigna
 
-Instale `geth`, tal como se describe en el [README](../../blockchain-iua/README.md) de la carpeta `blockchain-iua`, y despliegue un nodo de la red de prueba de la BFA, como se explica en el [README](../../blockchain-iua/bfatest/README.md) de la carpeta `bfatest`.
+En este trabajo practico se realizaron dos partes principales:
 
-### Conexión con el nodo
+1. **Ejecucion de una transaccion en la red de prueba BFA** (punto 3).
+2. **Implementacion de scripts en Python para gestion y analisis de transacciones** (punto 4).
 
-Es posible conectarse con el nodo vía IPC o vía HTTP.
+Como requisito previo, la cuenta utilizada para operar fue creada y resguardada correctamente en el **punto 2** de la consigna, conservando su archivo de keystore y contraseña.
 
-#### Vía IPC
+## Estructura de la solucion
 
-```console
-~$ geth attach blockchain-iua/bfatest/node/geth.ipc 
-Welcome to the Geth JavaScript console!
+- `bfa_funds.py`: consultas de balance, listado de cuentas y transferencia firmada desde keystore.
+- `show_transactions.py`: recorrido de bloques, filtrado de transferencias de ether y salida en formato plain o graphviz.
 
-instance: Geth/v1.10.16-stable-20356e57/linux-amd64/go1.17.5
-at block: 0 (Wed May 22 2019 09:40:01 GMT-0300 (-03))
- datadir: /home/miguel/blockchain-iua/bfatest/node
- modules: admin:1.0 clique:1.0 debug:1.0 eth:1.0 miner:1.0 net:1.0 personal:1.0 rpc:1.0 txpool:1.0 web3:1.0
+---
 
-To exit, press ctrl-d or type exit
-> 
+## 3) Realizar una transaccion
+
+### Objetivo
+
+Enviar **1 wei** a la direccion indicada por la consigna (`0x5A5a966FeAA14e3018561314AA922f8e3A1E890d`) y verificar el impacto en el balance final.
+
+### Procedimiento realizado
+
+El proceso se inicia con una auditoria del estado actual de la cuenta principal del nodo. Se utiliza el comando `eth.getBalance` para extraer el saldo bruto en la unidad minima del protocolo (Wei). Posteriormente, se aplica el metodo `web3.fromWei` para normalizar la lectura a una escala humana. Se confirma un saldo inicial de **0.0001 ETH**, validando que la consola de JavaScript esta correctamente sincronizada y operativa para transaccionar.
+
+![Auditoria de saldo inicial](https://drive.google.com/drive/folders/12YvXn2_2DJ1SvTjsv5siBEDNLpq9WJQb)
+
+Luego se procede a la ejecucion del requerimiento tecnico. Para garantizar la precision y evitar errores de direccionamiento, se definen variables de entorno para la cuenta de origen (`miCuenta`) y la direccion de destino especificada en la consigna (`destino_p3`).
+
+Se emite la transaccion mediante el metodo `eth.sendTransaction`, configurando un valor de **1 wei**. La consola devuelve un Hash de Transaccion unico (`0x99d3...`), lo cual constituye el comprobante digital de que la orden ha sido inyectada en la red y esta pendiente de ser incluida en un bloque por los validadores.
+
+![Envio de 1 wei y hash de transaccion](https://drive.google.com/drive/folders/12YvXn2_2DJ1SvTjsv5siBEDNLpq9WJQb)
+
+Por ultimo, tras el procesamiento de la transferencia por parte de la red, se realiza una consulta de saldo final para verificar el cumplimiento de la consigna. El sistema arroja un balance de **99.999974668 ETH**.
+
+![Verificacion de saldo final](https://drive.google.com/drive/folders/12YvXn2_2DJ1SvTjsv5siBEDNLpq9WJQb)
+
+### Observaciones tecnicas
+
+- La existencia de hash de transaccion confirma la emision correcta de la orden.
+- La variacion de saldo es consistente con el envio de 1 wei mas costo de gas.
+- La prueba valida extremo a extremo: cuenta creada previamente, cuenta fondeada, envio y verificacion posterior.
+
+---
+
+## 4) Desarrollo de scripts que interactuan con la red
+
+### Objetivo
+
+Completar y utilizar los scripts solicitados para:
+
+- administrar fondos y cuentas del nodo,
+- inspeccionar transferencias de ether en rangos de bloques,
+- filtrar por direcciones y visualizar relaciones entre cuentas.
+
+### Funcionalidades implementadas
+
+#### `bfa_funds.py`
+
+- Conexion al nodo mediante IPC.
+- Validacion y normalizacion de direcciones (`checksum`).
+- Consulta de balance por unidad (`wei`, `Gwei`, `ether`, etc.).
+- Transferencia firmada localmente con clave privada obtenida desde keystore.
+- Listado de cuentas detectadas en el keystore con su saldo.
+
+#### `show_transactions.py`
+
+- Recorrido de bloques entre `first-block` y `last-block`.
+- Consideracion de transacciones con transferencia de ether relevante.
+- Filtrado opcional por una o mas direcciones de origen/destino.
+- Modo `--add` para expandir dinamicamente el conjunto de direcciones relacionadas.
+- Salida en formato `plain` y en formato `graphviz`.
+- Opcion `--short` para truncar direcciones en la salida.
+
+### Archivo de entorno requerido (`.env`)
+
+Para ejecutar `bfa_funds.py` es necesario definir un archivo `.env` en la carpeta `TP/3` con la ruta al keystore del nodo. El script carga esta configuracion con `python-dotenv` y utiliza la variable `KEYSTORE_PATH` para encontrar las claves.
+
+Ejemplo de `.env`:
+
+```env
+KEYSTORE_PATH=/home/usuario/blockchain-iua/bfatest/node/keystore
 ```
 
-#### Vía HTTP
+Notas:
 
-```console
-~$ geth attach http://localhost:8545
-Welcome to the Geth JavaScript console!
+- `KEYSTORE_PATH` debe apuntar a una carpeta existente.
+- Si la variable no existe o la ruta es invalida, `bfa_funds.py` finaliza con error al iniciar.
+- `show_transactions.py` no depende de `KEYSTORE_PATH`.
 
-instance: Geth/v1.10.16-stable-20356e57/linux-amd64/go1.17.5
-at block: 0 (Wed May 22 2019 09:40:01 GMT-0300 (-03))
- modules: eth:1.0 net:1.0 rpc:1.0 web3:1.0
+### Uso de los programas
 
-To exit, press ctrl-d or type exit
->  
+Desde la carpeta `TP/3`:
+
+```bash
+python3 bfa_funds.py accounts
+python3 bfa_funds.py balance -a 0xTU_CUENTA --unit ether
+python3 bfa_funds.py transfer --from 0xORIGEN --to 0xDESTINO --amount 1 --unit wei
 ```
 
-Para que el nodo reciba conexiones via HTTP es necesario lanzarlo con el argumento `-http`.
-
-## 2. Generar una cuenta
-
-Genere una cuenta y publíquela en el *chat* grupal de la asignatura.
-Recuerde que debe preservar el archivo con la clave privada para poder realizar transacciones con esa cuenta.
-
-La cuenta puede crearse tanto desde la línea de comandos como desde la consola de `geth`.
-
-### Creación de una cuenta desde la línea de comandos
-
-```console
-~$ geth --datadir blockchain-iua/bfatest/node/ account new
-INFO [03-10|13:14:18.601] Maximum peer count                       ETH=50 LES=0 total=50
-Your new account is locked with a password. Please give a password. Do not forget this password.
-Password: 
-Repeat password: 
-
-Your new key was generated
-
-Public address of the key:   0x1B523A926FbF8627973Aa26156151b313546b299
-Path of the secret key file: blockchain-iua/bfatest/node/keystore/UTC--2022-03-10T16-14-25.035391903Z--1b523a926fbf8627973aa26156151b313546b299
-
-- You can share your public address with anyone. Others need it to interact with you.
-- You must NEVER share the secret key with anyone! The key controls access to your funds!
-- You must BACKUP your key file! Without the key, it's impossible to access account funds!
-- You must REMEMBER your password! Without the password, it's impossible to decrypt the key!
-
-~$ 
+```bash
+python3 show_transactions.py --first-block 0 --last-block latest --format plain
+python3 show_transactions.py 0xDIRECCION1 0xDIRECCION2 --first-block 0 --last-block latest --format plain --short
+python3 show_transactions.py 0xDIRECCION1 --first-block 0 --last-block latest --format graphviz --short
 ```
 
-## 3. Realizar una transacción
+### Ejemplo de salida graphviz
 
-Después de haber enviado su dirección por correo electrónico, recibirá una transferencia de *ether* qué le permitirá realizar transacciones.
+La siguiente evidencia muestra un ejemplo de salida en formato graphviz para visualizacion de transferencias:
 
-Envíe 1 `wei` a la dirección "0x5A5a966FeAA14e3018561314AA922f8e3A1E890d". Si la transacción es exitosa, debería recibir un nuevo monto de *ether*. Su saldo debería ser 100 *ether* menos el costo de la transacción realizada.
+![Ejemplo de salida graphviz](https://drive.google.com/drive/folders/12YvXn2_2DJ1SvTjsv5siBEDNLpq9WJQb)
 
-## 4. Desarrollo de *scripts* que interactúan con la red
+---
 
-Implemente las funcionalidades faltantes en los *scripts* `bfa_funds.py` y `show_transactions.py`, tal como se describe en los mismos.
+## Conclusiones
 
-La forma más sencilla de implementar estas funcionalidades es utilizando la biblioteca `web3.py`, que permite interactuar con un nodo de Ethereum desde Python. Para instalarla, es conveniente usar un entorno virtual de Python.
-
-```console
-~$ python3 -m venv web3py
-~$ source web3py/bin/activate
-(web3py) ~$ pip install web3
-```
-
-Puede encontrarse documentación sobre esta biblioteca en [https://web3py.readthedocs.io/](https://web3py.readthedocs.io/)
+En este TP se completo el ciclo operativo sobre una red tipo Ethereum de prueba: primero con ejecucion y validacion de una transferencia real (punto 3), y luego con el desarrollo de herramientas de automatizacion y analisis (punto 4). Esto permitio integrar conceptos de cuentas, saldos, firma de transacciones, confirmacion en bloque y trazabilidad de movimientos en cadena.
