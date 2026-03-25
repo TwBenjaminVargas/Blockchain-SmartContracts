@@ -27,7 +27,142 @@ digraph Transfers {
 }
 """
 import argparse
+from web3 import Web3
+import sys
+from web3.middleware import ExtraDataToPOAMiddleware
+import graphviz
 
+DEFAULT_WEB3_URI = "~/blockchain-iua/bfatest/node/geth.ipc"
+ONE_ETHER_WEI = None
+
+w3 = None
+
+
+def web3_connect(uri):
+    """Conecta con un nodo Ethereum usando la URI dada.
+    :param uri: La URI para la conexión
+    Si la conexión falla se lanza una excepción.
+    """
+    global w3
+    w3 = Web3(Web3.IPCProvider(uri))
+    w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
+    if not w3.is_connected():
+        raise ConnectionError("Geth está apagado o la ruta es incorrecta.")
+
+def checksum_address(addr):
+    """Convierte una dirección a su formato checksum y la devuelve.
+    Si la dirección no es válida, lanza una excepción.
+    """
+    try:
+        return w3.to_checksum_address(addr)
+    except ValueError:
+        raise ValueError(f"La dirección '{addr}' no es válida.")
+
+def checksum_addresses(addrs):
+    """Convierte una lista de direcciones a su formato checksum y las devuelve.
+    Si alguna dirección no es válida, lanza una excepción.
+    """
+    return [checksum_address(addr) for addr in addrs]
+
+
+def history(start_block, end_block):
+    transactions = []
+    for i in range(start_block, end_block + 1):
+        try:
+            block = w3.eth.get_block(i, full_transactions=True) 
+            for tx in block.transactions:
+                if tx['value'] >= ONE_ETHER_WEI:
+                    transactions.append(tx)                    
+        except Exception:
+            continue
+    return transactions
+
+def history_by_address(targets, start_block, end_block):
+    transactions = []
+    for i in range(start_block, end_block + 1):
+        try:
+            block = w3.eth.get_block(i, full_transactions=True) 
+            for tx in block.transactions:
+                if tx['value'] >= ONE_ETHER_WEI and (tx['from'] in targets or tx['to'] in targets):
+                    transactions.append(tx)                    
+        except Exception:
+            continue
+    return transactions
+
+def history_by_address_add(targets, start_block, end_block):
+    transactions = []
+    for i in range(start_block, end_block + 1):
+        try:
+            block = w3.eth.get_block(i, full_transactions=True) 
+            for tx in block.transactions:
+                if tx['value'] >= ONE_ETHER_WEI and (tx['from'] in targets or tx['to'] in targets):
+                    transactions.append(tx)
+                    if tx['from'] not in targets:
+                        targets.append(tx['from'])
+                    if tx['to'] not in targets:
+                        targets.append(tx['to'])
+        except Exception:
+            continue
+    return transactions
+
+def format_graphviz(transactions, short=False):
+    
+    if not transactions:
+        return None
+
+    dot = graphviz.Digraph('Transfers', comment='Blockchain Transactions')
+    dot.attr(rankdir='LR', size='10,10')
+    
+
+    dot.attr('node', shape='box', style='rounded,filled', 
+             fillcolor='#E8F0FE', fontname='Arial', color='#1A73E8')
+    
+    dot.attr('edge', fontname='Verdana', fontsize='10', color='#5F6368')
+    for tx in transactions:
+        
+        orig = tx['from']
+        dest = tx['to']
+        
+        if short:
+            orig_label = orig[2:10]
+            dest_label = dest[2:10]
+        else:
+            orig_label = orig
+            dest_label = dest
+
+        label_amount = f"{Web3.from_wei(tx['value'], 'ether')} ether"
+
+        edge_label = f"{label_amount}\n(Block: {tx['blockNumber']})"
+        
+        dot.edge(orig_label, dest_label, label=edge_label)
+
+    return dot
+
+def format_plain(transactions, short=False):
+    if not transactions:
+        return "No se encontraron transacciones relevantes."
+
+    lines = []
+    for tx in transactions:
+        orig = tx['from']
+        dest = tx['to']
+        
+        if short:
+            orig_str = orig[2:10]
+            dest_str = dest[2:10]
+    
+        else:
+            orig_str = orig
+            dest_str = dest
+
+
+        amount = f"{Web3.from_wei(tx['value'], 'ether')} ether"
+    
+        
+        line = f"{orig_str} -> {dest_str}: {amount} ({tx['blockNumber']})"
+        lines.append(line)
+
+    return "\n".join(lines)
 
 def address(x):
     """Verifica si su argumento tiene forma de dirección ethereum válida"""
@@ -43,7 +178,7 @@ def address(x):
 
 
 if __name__ == "__main__":
-    DEFAULT_WEB3_URI = "~/blockchain-iua/devnet/node/geth.ipc"
+    
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "addresses",
@@ -69,7 +204,7 @@ if __name__ == "__main__":
         "--last-block",
         "-l",
         help="Último bloque del rango en el cual buscar",
-        type=int,
+        #type=int,
         default="latest",
     )
     parser.add_argument(
@@ -82,9 +217,36 @@ if __name__ == "__main__":
         "--short",
         help="Trunca las direcciones a los 8 primeros caracteres",
         action="store_true",
+        default=False,
     )
     parser.add_argument(
         "--uri", help="URI para la conexión con geth", default=DEFAULT_WEB3_URI
     )
     args = parser.parse_args()
-    print("No implementado")
+    
+    try:
+        web3_connect(args.uri)
+        ONE_ETHER_WEI = w3.to_wei(1, 'ether') # limite para considerar una transacción como relevante
+        transactions = []
+        
+        last_block = int(args.last_block) if args.last_block != "latest" else w3.eth.block_number
+        
+        if args.addresses:
+            args.addresses = checksum_addresses(args.addresses)
+            if args.add:
+                transactions = history_by_address_add(args.addresses, args.first_block, last_block)
+            else:
+                transactions = history_by_address(args.addresses, args.first_block, last_block)
+        else:
+             transactions = history(args.first_block, last_block)
+             
+        if args.format == "plain":
+            output = format_plain(transactions, args.short)
+        if args.format == "graphviz":
+            output = format_graphviz(transactions, args.short).source
+        
+        print(output)
+        
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
