@@ -10,6 +10,8 @@ from web3 import Account, Web3
 from web3.middleware import SignAndSendRawMiddlewareBuilder,ExtraDataToPOAMiddleware
 from flask import Flask, current_app, json, jsonify, request, render_template_string
 from eth_utils import is_hex, remove_0x_prefix
+from eth_account.messages import encode_defunct
+
 import yaml
 
 app = Flask(__name__)
@@ -21,9 +23,6 @@ def is_valid_hash(string):
     """Valida que el string sea un hash SHA-256 en formato hexadecimal con prefijo '0x'."""
     return isinstance(string, str) and re.match(HASH_PATTERN, string)
 
-
-class StamperException(Exception):
-    """Excepción personalizada para errores relacionados con el proceso de sellado."""
 
 def web3_connect(uri):
     if uri.startswith('http'):
@@ -87,38 +86,20 @@ def get_contract(w3, json_path):
     return w3.eth.contract(address=address, abi=abi)
 
 
-# delete
-class Stamper:
-    """Clase que simula el proceso de sellado de archivos en una blockchain."""
-
-    def __init__(self, address):
-        self.block_number = 0
-        self.database = {}
-        self.address = address
-
-    def stamp(self, hash_value):
-        """Registra un hash en la "blockchain" simulada, incrementando el número de bloque."""
-        self.block_number += 1
-        if not is_valid_hash(hash_value):
-            raise StamperException("Invalid hash format")
-        if hash_value in self.database:
-            raise StamperException("Hash is already stamped")
-        self.database[hash_value] = {
-            "signer": self.address,
-            "blockNumber": self.block_number,
-        }
-        return sha256(
-            f"{self.address}{self.block_number}{hash_value}".encode()
-        ).hexdigest()
-
-    def stamped(self, hash_value):
-        """Devuelve la información de sellado para un hash dado, o None si no está sellado."""
-        return self.database.get(hash_value)
-
 def is_valid_signature(sig):
     """Valida que la firma tenga 65 bytes (130 caracteres hex + 0x)."""
+    if not sig or not isinstance(sig, str):
+        return False
+    
+    if not sig.startswith("0x"):
+        return False
+        
     clean_sig = remove_0x_prefix(sig)
-    return is_hex(clean_sig) and len(clean_sig) == 130
+    
+    if len(clean_sig) != 130:
+        return False
+        
+    return is_hex(clean_sig)
 
 def setup_poa_middleware(w3):
     """Inyecta el middleware necesario para manejar cadenas de bloques con consenso PoA."""
@@ -203,16 +184,19 @@ def stamp():
             blockNumber=existing_data[1]
         ), 403
 
-    signature = req.get("signature")
     
     try:
-        if signature:
+        if "signature" in req:
+            signature = req.get("signature")
+            
             if not is_valid_signature(signature):
                 return jsonify(message="Formato de firma invalido"), 400
             
+            message = encode_defunct(hexstr=hash_value)
+            w3.eth.account.recover_message(message, signature=signature)
+            
             hash_bytes = Web3.to_bytes(hexstr=hash_value)
             sig_bytes = Web3.to_bytes(hexstr=signature)
-            
             tx_func = contract.functions.stampSigned(hash_bytes, sig_bytes)
         else:
 
