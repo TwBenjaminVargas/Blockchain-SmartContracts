@@ -1,0 +1,157 @@
+:root {
+    --bg-color: #ffffff;
+    --text-color: #000000;
+    --border-color: #2b2b2b;
+    --blue-btn: #a3d2ff;
+    --green-success: #a8f0b6;
+    --red-error: #f0a8a8;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f4f4f9;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    margin: 0;
+}
+
+.card {
+    background-color: var(--bg-color);
+    border: 3px solid var(--border-color);
+    border-radius: 20px;
+    padding: 40px;
+    width: 100%;
+    max-width: 450px;
+    box-shadow: 4px 4px 0px rgba(0,0,0,0.1);
+}
+
+.title {
+    font-size: 28px;
+    font-family: monospace;
+    margin: 0 0 5px 0;
+    text-transform: uppercase;
+}
+
+.divider {
+    border: 0;
+    border-top: 4px solid #1d6fc2;
+    margin-bottom: 30px;
+    width: 60%;
+    margin-left: 0;
+}
+
+.form-group {
+    margin-bottom: 25px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.row-group {
+    flex-direction: row;
+    align-items: center;
+    gap: 15px;
+}
+
+label {
+    font-size: 16px;
+    font-weight: 500;
+    font-family: monospace;
+}
+
+.hidden {
+    display: none !important;
+}
+
+.btn {
+    font-family: monospace;
+    font-size: 16px;
+    padding: 10px 20px;
+    border: 2px solid var(--border-color);
+    border-radius: 10px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: transform 0.1s;
+}
+
+.btn:active {
+    transform: translateY(2px);
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-blue {
+    background-color: var(--blue-btn);
+}
+
+.btn-large {
+    font-size: 24px;
+    padding: 10px 30px;
+    margin: 0 auto;
+    display: block;
+}
+
+.file-name {
+    font-size: 12px;
+    color: #666;
+    font-family: monospace;
+}
+
+.hash-preview {
+    font-size: 11px;
+    background: #eee;
+    padding: 5px;
+    border-radius: 5px;
+    word-break: break-all;
+    font-family: monospace;
+}
+
+.custom-checkbox {
+    width: 24px;
+    height: 24px;
+    cursor: pointer;
+    accent-color: #3b9b4a; /* Color del tick verde */
+}
+
+.input-text {
+    flex: 1;
+    padding: 10px;
+    border: 2px solid var(--border-color);
+    border-radius: 10px;
+    font-family: monospace;
+    font-size: 16px;
+}
+
+.input-text:disabled {
+    background-color: #e0e0e0;
+    cursor: not-allowed;
+}
+
+.action-group {
+    text-align: center;
+    margin-top: 40px;
+    margin-bottom: 30px;
+}
+
+.result-box {
+    border: 2px solid var(--border-color);
+    border-radius: 15px;
+    padding: 15px;
+    font-family: monospace;
+    font-size: 14px;
+    line-height: 1.5;
+    word-break: break-all;
+}
+
+.result-success {
+    background-color: var(--green-success);
+}
+
+.result-error {
+    background-color: var(--red-error);
+}
