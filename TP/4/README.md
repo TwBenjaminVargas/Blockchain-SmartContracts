@@ -1,5 +1,4 @@
 # Trabajo práctico 4
-
 ## Descripción general
 
 Este trabajo práctico implementa un servicio de sellado de archivos apoyado en un contrato inteligente ya desplegado en la red de testeo de la BFA. El contrato expone una interfaz de consulta y registro de hashes, y su dirección junto con su ABI se encuentran definidos en [Stamper.json](Stamper.json).

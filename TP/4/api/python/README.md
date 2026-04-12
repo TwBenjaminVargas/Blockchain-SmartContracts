@@ -15,11 +15,6 @@ api/python/
 ```
 
 ## Función de cada archivo
-
-### README.md
-
-Documento de uso y referencia de los componentes ubicados en esta carpeta.
-
 ### apiserver.py
 
 Implementación principal del servidor Flask.

@@ -23,11 +23,6 @@ app web/
 ```
 
 ## Función de cada archivo
-
-### `README.md`
-
-Documentación de uso de la aplicación web y de su integración con la API.
-
 ### `index.html`
 
 Define la interfaz principal:
