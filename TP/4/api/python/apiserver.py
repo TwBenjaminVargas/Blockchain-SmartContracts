@@ -11,6 +11,7 @@ from web3.middleware import SignAndSendRawMiddlewareBuilder,ExtraDataToPOAMiddle
 from flask import Flask, current_app, json, jsonify, request, render_template_string
 from eth_utils import is_hex, remove_0x_prefix
 from eth_account.messages import encode_defunct
+from flask_cors import CORS
 
 import yaml
 
@@ -280,6 +281,7 @@ def create_app(keystore_dir,password,web3_uri, contract_json_path, openapi_path=
         except Exception as e:
             print(f"Error al cargar OpenAPI desde {openapi_path}: {e}")
     
+    CORS(app)
     return app
 
 def read_password_from_file(file_path):
