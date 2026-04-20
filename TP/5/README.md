@@ -96,7 +96,7 @@ Desde la carpeta `TP/5/Ballot`:
 npx hardhat compile
 
 # Ejecutar los tests
-npm test
+npx hardhat test
 ```
 
 ### Tests incluidos
