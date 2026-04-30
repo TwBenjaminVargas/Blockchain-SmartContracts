@@ -7,34 +7,42 @@ import "./Task.sol";
 /// @notice Crea tareas, registra sus estados y mantiene listados por etapa.
 contract TaskBoard is ITaskRegistry {
 
-    event TaskCreated(address taskAddress, address reporter, string description)
-    event TaskMovedToInProgress(address taskAddress, uint256 index)
-    event TaskMovedToDone(address taskAddress, uint256 index)
+    struct TaskInfo {
+        state status;
+        uint256 index;
+    }
+
+    mapping(address => TaskInfo) public tasks;
+
+    event TaskCreated(address taskAddress, address reporter, string description);
+    event TaskMovedToInProgress(address taskAddress, uint256 index);
+    event TaskMovedToDone(address taskAddress, uint256 index);
     
     
     address[] public todo;
-    mapping (address => Task) private ToDoMap;
 
     address[] public inProgress;
-    mapping (address => Task) private InProgressMap;
 
     address[] public done;
-    mapping (address => Task) private DoneMap;
+
 
     
-    modifier taskRegisteredRequired() {
-        require(ToDoMap[msg.sender] != Task(address(0)) || InProgressMap[msg.sender] != Task(address(0)) || DoneMap[msg.sender] != Task(address(0)), "La tarea no está registrada en el tablero");
+    modifier onlyRegisteredTask() {
+        require(tasks[msg.sender].status != state.None, "La tarea no esta registrada en el tablero");
         _;
     }
 
-    modifier ToDoStateRequired {
-        require(ToDoMap[msg.sender] != Task(address(0)), "La tarea no está en estado ToDo");
+    modifier ToDoStateRequired 
+    {
+        require(tasks[msg.sender].status != state.InProgress, "La tarea ya esta en progreso");
+        require(tasks[msg.sender].status != state.Completed, "La tarea ya fue completada");
         _;
     }
 
     modifier InProgressStateRequired {
-        require(InProgressMap[msg.sender] != Task(address(0)), "La tarea no está en estado InProgress");
-        _;
+        require(tasks[msg.sender].status != state.Completed, "La tarea ya fue completada");
+        require(tasks[msg.sender].status != state.ToDo, "La tarea no esta en progreso");
+        _;        
     }
 
     
@@ -48,23 +56,25 @@ contract TaskBoard is ITaskRegistry {
     //  * La agrega al arreglo `inProgress`.
     //  * Emite `TaskMovedToInProgress`.
     function taskStarted() public
-    taskRegisteredRequired
+    onlyRegisteredTask
     ToDoStateRequired
     {
-            Task task = ToDoMap[msg.sender];
-            delete ToDoMap[msg.sender];
-            for (uint256 i = 0; i < todo.length; i++) {
-                if (todo[i] == msg.sender) {
-                    todo[i] = todo[todo.length - 1];
-                    todo.pop();
-                    break;
-                }
-            }
-    
-            InProgressMap[msg.sender] = task;
-            inProgress.push(msg.sender);
-            task.started();
-            emit TaskMovedToInProgress(msg.sender, inProgress.length - 1);
+        TaskInfo storage info = tasks[msg.sender];
+        uint256 indexToRemove = info.index;
+        uint256 lastIdx = todo.length - 1;
+        address lastTask = todo[lastIdx];
+
+        todo[indexToRemove] = lastTask;
+        tasks[lastTask].index = indexToRemove;
+        todo.pop();
+
+        info.status = state.InProgress;
+        info.index = inProgress.length;
+        inProgress.push(msg.sender);
+
+        Task(msg.sender).started();
+            
+        emit TaskMovedToInProgress(msg.sender, info.index);
 
     }
 
@@ -79,31 +89,33 @@ contract TaskBoard is ITaskRegistry {
     //  * La agrega al arreglo `done`.
     //  * Emite `TaskMovedToDone`.
     function taskCompleted() public
-    taskRegisteredRequired
+    onlyRegisteredTask
     InProgressStateRequired
     {
-            Task task = InProgressMap[msg.sender];
-            delete InProgressMap[msg.sender];
-            for (uint256 i = 0; i < inProgress.length; i++) {
-                if (inProgress[i] == msg.sender) {
-                    inProgress[i] = inProgress[inProgress.length - 1];
-                    inProgress.pop();
-                    break;
-                }
-            }
-    
-            DoneMap[msg.sender] = task;
-            done.push(msg.sender);
-            task.completed();
-            emit TaskMovedToDone(msg.sender, done.length - 1);
+        TaskInfo storage info = tasks[msg.sender];
+
+        uint256 indexToRemove = info.index;
+        uint256 lastIdx = inProgress.length - 1;
+        address lastTask = inProgress[lastIdx];
+
+        inProgress[indexToRemove] = lastTask;
+        tasks[lastTask].index = indexToRemove; 
+        inProgress.pop();
+
+        info.status = state.Completed;
+        info.index = done.length;
+        done.push(msg.sender);
+
+        Task(msg.sender).completed();
+        emit TaskMovedToDone(msg.sender, info.index);
     }
 
     function createTask(string memory description) public returns (address taskAddress)
     {
         Task newTask = new Task(description, msg.sender);
         taskAddress = address(newTask);
-        ToDoArr.push(taskAddress);
-        ToDoMap[taskAddress] = newTask;
+        todo.push(taskAddress);
+        tasks[taskAddress] = TaskInfo(state.ToDo, todo.length - 1);
         emit TaskCreated(taskAddress, msg.sender, description);
     }
 
@@ -127,7 +139,7 @@ contract TaskBoard is ITaskRegistry {
         uint256 count = 0;
     
         for (uint256 i = 0; i < todo.length; i++) {
-            if (ToDoMap[todo[i]].assignee() == worker) {
+            if (Task(todo[i]).assignee() == worker) {
                 count++;
             }
         }
@@ -136,7 +148,7 @@ contract TaskBoard is ITaskRegistry {
         uint256 index = 0;
 
         for (uint256 i = 0; i < todo.length; i++) {
-            if (ToDoMap[todo[i]].assignee() == worker) {
+            if (Task(todo[i]).assignee() == worker) {
                 result[index] = todo[i];
                 index++;
             }
@@ -150,7 +162,7 @@ contract TaskBoard is ITaskRegistry {
         uint256 count = 0;
     
         for (uint256 i = 0; i < inProgress.length; i++) {
-            if (InProgressMap[inProgress[i]].assignee() == worker) {
+            if (Task(inProgress[i]).assignee() == worker) {
                 count++;
             }
         }
@@ -159,7 +171,7 @@ contract TaskBoard is ITaskRegistry {
         uint256 index = 0;
 
         for (uint256 i = 0; i < inProgress.length; i++) {
-            if (InProgressMap[inProgress[i]].assignee() == worker) {
+            if (Task(inProgress[i]).assignee() == worker) {
                 result[index] = inProgress[i];
                 index++;
             }
@@ -173,7 +185,7 @@ contract TaskBoard is ITaskRegistry {
         uint256 count = 0;
     
         for (uint256 i = 0; i < done.length; i++) {
-            if (DoneMap[done[i]].assignee() == worker) {
+            if (Task(done[i]).assignee() == worker) {
                 count++;
             }
         }
@@ -182,7 +194,7 @@ contract TaskBoard is ITaskRegistry {
         uint256 index = 0;
 
         for (uint256 i = 0; i < done.length; i++) {
-            if (DoneMap[done[i]].assignee() == worker) {
+            if (Task(done[i]).assignee() == worker) {
                 result[index] = done[i];
                 index++;
             }

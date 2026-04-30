@@ -118,6 +118,24 @@ function loadArtifactJson(relativePath) {
  *   - Lanza error si no hay contrato desplegado en la dirección de TaskBoard
  *     para el provider configurado.
  */
+/**
+ * Obtiene la lista de tareas de un responsable asignado para un estado dado.
+ *
+ * Especificación:
+ * - Entrada:
+ * - taskBoardContract: instancia ethers de TaskBoard ya construida.
+ * - taskContractFactory: función que recibe la dirección de una Task y devuelve
+ * su contrato ethers ya conectado al mismo provider.
+ * - assignee: dirección del responsable asignado a consultar.
+ * - state: "pending" | "in-progress" | "done".
+ * - timestampSource: "contract" | "events".
+ * - Salida:
+ * - Promise<Array<{ taskAddress: string, description: string, timestamps: object }>>
+ * - Errores:
+ * - Lanza error si faltan dependencias requeridas.
+ * - Lanza error si no hay contrato desplegado en la dirección de TaskBoard
+ * para el provider configurado.
+ */
 async function listTasksByAssignee({
   taskBoardContract,
   taskContractFactory,
@@ -125,16 +143,98 @@ async function listTasksByAssignee({
   state,
   timestampSource,
 }) {
-  // TODO (estudiante): implementar validaciones de entrada.
-  void taskBoardContract;
-  void taskContractFactory;
-  void assignee;
-  void state;
-  void timestampSource;
+  // 1. Input validations
+  if (!taskBoardContract || !taskContractFactory || !assignee || !state || !timestampSource) {
+    throw new Error("Faltan dependencias requeridas");
+  }
 
-  // TODO (estudiante): implementar consulta por estado, armado de contratos Task
-  // y resolucion de timestamps por contrato o por eventos.
-  throw new Error("listTasksByAssignee() no implementada");
+  const provider = taskBoardContract.runner.provider;
+  const boardAddress = await taskBoardContract.getAddress();
+  
+  const boardCode = await provider.getCode(boardAddress);
+  if (boardCode === "0x") {
+    throw new Error(`No hay contrato desplegado en la dirección: ${boardAddress}`);
+  }
+
+  let taskAddresses = [];
+  if (state === "pending") {
+    taskAddresses = await taskBoardContract.todoByAssignee(assignee);
+  } else if (state === "in-progress") {
+    taskAddresses = await taskBoardContract.inProgressByAssignee(assignee);
+  } else if (state === "done") {
+    taskAddresses = await taskBoardContract.doneByAssignee(assignee);
+  } else {
+    throw new Error(`Estado inválido proporcionado: ${state}`);
+  }
+
+  const formatTimestamp = (unixSeconds) => new Date(Number(unixSeconds) * 1000).toISOString();
+
+
+  const tasks = await Promise.all(
+    taskAddresses.map(async (taskAddress) => {
+      const taskContract = taskContractFactory(taskAddress);
+      const description = await taskContract.description();
+      const timestamps = {};
+
+      if (timestampSource === "contract") {
+        const assignedAt = await taskContract.assignedAt();
+        const startedAt = await taskContract.startedAt();
+        const completedAt = await taskContract.completedAt();
+
+        if (assignedAt > 0n) {
+          timestamps.assignedAt = formatTimestamp(assignedAt);
+        }
+
+        if (state === "in-progress" || state === "done") {
+          if (startedAt > 0n) timestamps.startedAt = formatTimestamp(startedAt);
+        }
+
+        if (state === "done") {
+          if (completedAt > 0n) timestamps.completedAt = formatTimestamp(completedAt);
+        }
+
+      } else if (timestampSource === "events") {
+        
+        const getEventTimestamp = async (eventName) => {
+          const filter = taskContract.filters[eventName]();
+          const events = await taskContract.queryFilter(filter);
+          
+          if (events.length > 0) {
+            const block = await provider.getBlock(events[0].blockNumber);
+            return formatTimestamp(block.timestamp);
+          }
+          return null;
+        };
+
+        const assignedTs = await getEventTimestamp("TaskAssigned");
+        const startedTs = await getEventTimestamp("TaskStarted");
+        const completedTs = await getEventTimestamp("TaskCompleted");
+
+        if (assignedTs) {
+          timestamps.assignedAt = assignedTs;
+        }
+
+        if (state === "in-progress" || state === "done") {
+          if (startedTs) timestamps.startedAt = startedTs;
+        }
+
+        if (state === "done") {
+          if (completedTs) timestamps.completedAt = completedTs;
+        }
+
+      } else {
+        throw new Error(`Fuente de timestamps inválida: ${timestampSource}`);
+      }
+
+      return {
+        taskAddress,
+        description,
+        timestamps,
+      };
+    })
+  );
+
+  return tasks;
 }
 
 // Punto de entrada CLI: parsea argumentos, arma contratos/factorías

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
+enum state { None, ToDo, InProgress, Completed }
 // Interfaz que debe implementar el tablero para recibir
 // notificaciones de cambios de estado de una tarea.
 interface ITaskRegistry {
@@ -19,30 +20,32 @@ contract Task {
     address public reporter;
     address public assignee;
 
-    uint256 public assignetAt;
+    uint256 public assignedAt;
     uint256 public startedAt;
     uint256 public completedAt;
 
-    enum state { ToDo, InProgress, Completed }
     state private currentState;
     
     event TaskAssigned(address reporter, address assignee, uint256 timestamp);
     event TaskStarted(address assignee, uint256 timestamp);
-    event TaskCompleted(address assignee, uint256 timestamp)
+    event TaskCompleted(address assignee, uint256 timestamp);
     
-    constructor(string _description, address _reporter)
+    constructor(string memory _description, address _reporter)
     {
         factory = ITaskRegistry(msg.sender);
         description = _description;
         reporter = _reporter;
+        currentState = state.ToDo;
     }
 
     modifier reporterRequired() {
-        require(msg.sender == reporter, "Solo el reporter puede realizar esta acción");
+        require(msg.sender == reporter, "Solo el reporter puede realizar esta accion");
+        _;
     }
 
     modifier assigneeRequired() {
-        require(msg.sender == assignee, "Solo el assignee puede realizar esta acción");
+        require(msg.sender == assignee, "Solo el assignee puede realizar esta accion");
+        _;
     }
 
 
@@ -52,7 +55,7 @@ contract Task {
     }
 
     modifier inProgressStateRequired() {
-        require(currentState == state.InProgress, "La tarea no está en progreso");
+        require(currentState == state.InProgress, "La tarea no esta en progreso");
         _;
     }
 
@@ -62,8 +65,8 @@ contract Task {
     pendingStateRequired
     {
         assignee = worker;
-        assignetAt = block.timestamp;
-        emit TaskAssigned(reporter, worker, assignetAt);
+        assignedAt = block.timestamp;
+        emit TaskAssigned(reporter, worker, assignedAt);
     }
 
     function start() public
@@ -88,7 +91,7 @@ contract Task {
 
     function started() public view returns (bool)
     {
-        return currentState == state.InProgress;
+        return currentState == state.InProgress || currentState == state.Completed;
     }
 
     function completed() public view returns (bool)
