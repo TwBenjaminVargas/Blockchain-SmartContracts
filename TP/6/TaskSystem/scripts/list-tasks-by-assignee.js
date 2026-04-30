@@ -143,7 +143,7 @@ async function listTasksByAssignee({
   state,
   timestampSource,
 }) {
-  // 1. Input validations
+
   if (!taskBoardContract || !taskContractFactory || !assignee || !state || !timestampSource) {
     throw new Error("Faltan dependencias requeridas");
   }
