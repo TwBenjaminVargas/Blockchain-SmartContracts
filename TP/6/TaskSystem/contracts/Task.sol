@@ -23,7 +23,7 @@ contract Task {
     uint256 public startedAt;
     uint256 public completedAt;
 
-    enum state { Pending, InProgress, Completed }
+    enum state { ToDo, InProgress, Completed }
     state private currentState;
     
     event TaskAssigned(address reporter, address assignee, uint256 timestamp);
@@ -47,7 +47,7 @@ contract Task {
 
 
     modifier pendingStateRequired() {
-        require(currentState == state.Pending, "La tarea ya ha comenzado");
+        require(currentState == state.ToDo, "La tarea ya ha comenzado");
         _;
     }
 
