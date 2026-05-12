@@ -30,7 +30,7 @@ contract CFP {
 
     modifier checkClosingTime(uint256 _closingTime)
     {
-        require( block.timestamp <= _closingTime, "El cierre de la convocatoria no puede estar en el pasado");
+        require( block.timestamp < _closingTime, "El cierre de la convocatoria no puede estar en el pasado");
         _;
     }
 
