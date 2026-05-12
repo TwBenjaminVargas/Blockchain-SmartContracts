@@ -16,31 +16,55 @@ contract CFP {
         uint256 timestamp;
     }
 
-    // Devuelve los datos asociados con una propuesta
-    function proposalData(
-        bytes32 proposal
-    ) public view returns (ProposalData memory) {}
 
-    // Devuelve la propuesta que está en la posición `index` de la lista de propuestas registradas
-    function proposals(uint index) public view returns (bytes32) {}
+    mapping(bytes32 => ProposalData) public proposalData;
 
-    // Timestamp del cierre de la recepción de propuestas
-    function closingTime() public view returns (uint256) {}
+    uint256 public proposalCount;
 
-    // Identificador de este llamado
-    function callId() public view returns (bytes32) {}
+    bytes32[] public proposals;
 
-    // Creador de este llamado
-    function creator() public view returns (address) {}
+    uint256 public closingTime;
+
+    bytes32 public callId;
+
+    address public creator;
+
+
+    modifier checkClosingTime(uint256 _closingTime)
+    {
+        require( block.timestamp >= _closingTime, "El cierre de la convocatoria no puede estar en el pasado");
+        _;
+    }
+
+    modifier closingTimeHasNotPassed()
+    {
+        require(block.timestamp <= closingTime, "Convocatoria cerrada");
+        _;
+    }
+
+    modifier proposalIsUnique(bytes32 proposal)
+    {
+        require(proposalData[proposal].sender == address(0), "La propuesta ya ha sido registrada");
+        _;
+    }
+
+    modifier onlyCreator()
+    {
+        require(msg.sender == creator, "Solo el creador puede hacer esta llamada");
+        _;
+    }
 
     /** Construye un llamado con un identificador y un tiempo de cierre.
      *  Si el `timestamp` del bloque actual es mayor o igual al tiempo de cierre especificado,
      *  revierte con el mensaje "El cierre de la convocatoria no puede estar en el pasado".
      */
-    constructor(bytes32 _callId, uint256 _closingTime) {}
-
-    // Devuelve la cantidad de propuestas presentadas
-    function proposalCount() public view returns (uint256) {}
+    constructor(bytes32 _callId, uint256 _closingTime)
+    checkClosingTime(_closingTime)
+    {
+        callId = _callId;
+        closingTime = _closingTime;
+        creator = msg.sender;
+    }
 
     /** Permite registrar una propuesta espec.
      *  Registra al emisor del mensaje como emisor de la propuesta.
@@ -50,7 +74,14 @@ contract CFP {
      *  "La propuesta ya ha sido registrada"
      *  Emite el evento `ProposalRegistered`
      */
-    function registerProposal(bytes32 proposal) public {}
+    function registerProposal(bytes32 proposal) public
+    closingTimeHasNotPassed()
+    proposalIsUnique(proposal)
+    {
+        proposalData[proposal] = ProposalData(msg.sender, block.number, block.timestamp);
+        proposals.push(proposal);
+        emit ProposalRegistered(proposal, msg.sender, block.number);
+    }
 
     /** Permite registrar una propuesta especificando un emisor.
      *  Sólo puede ser ejecutada por el creador del llamado. Si no es así, revierte
@@ -61,7 +92,16 @@ contract CFP {
      *  "La propuesta ya ha sido registrada"
      *  Emite el evento `ProposalRegistered`
      */
-    function registerProposalFor(bytes32 proposal, address sender) public {}
+    function registerProposalFor(bytes32 proposal, address sender) public 
+    onlyCreator()
+    closingTimeHasNotPassed()
+    proposalIsUnique(proposal)
+    {
+        proposalData[proposal] = ProposalData(sender, block.number, block.timestamp);
+        proposals.push(proposal);
+        emit ProposalRegistered(proposal, sender, block.number);
+
+    }
 
     /** Devuelve el timestamp en el que se ha registrado una propuesta.
      *  Si la propuesta no está registrada, devuelve cero.
