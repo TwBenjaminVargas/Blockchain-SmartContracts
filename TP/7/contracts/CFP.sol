@@ -19,8 +19,6 @@ contract CFP {
 
     mapping(bytes32 => ProposalData) public proposalData;
 
-    uint256 public proposalCount;
-
     bytes32[] public proposals;
 
     uint256 public closingTime;
@@ -32,7 +30,7 @@ contract CFP {
 
     modifier checkClosingTime(uint256 _closingTime)
     {
-        require( block.timestamp >= _closingTime, "El cierre de la convocatoria no puede estar en el pasado");
+        require( block.timestamp <= _closingTime, "El cierre de la convocatoria no puede estar en el pasado");
         _;
     }
 
@@ -103,10 +101,18 @@ contract CFP {
 
     }
 
+    /** Devuelve la cantidad de propuestas registradas.
+     */
+    function proposalCount() public view returns (uint256)
+    {
+        return proposals.length;
+    }
+
     /** Devuelve el timestamp en el que se ha registrado una propuesta.
      *  Si la propuesta no está registrada, devuelve cero.
      */
-    function proposalTimestamp(
-        bytes32 proposal
-    ) public view returns (uint256) {}
+    function proposalTimestamp( bytes32 proposal) public view returns (uint256) 
+    {
+        return proposalData[proposal].timestamp;
+    }
 }
