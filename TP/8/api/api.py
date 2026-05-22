@@ -216,10 +216,8 @@ async def register_and_authorize_user (
         logger.error(f"Error de lógica en el Smart Contract: {cle.message}")
         error_message = manager.map_revert_reason_to_message(cle.message)
         
-        if error_message in [Messages.ALREADY_CREATED, Messages.UNAUTHORIZED]:
+        if error_message in [Messages.ALREADY_AUTHORIZED]:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=error_message)
-        elif error_message == Messages.INVALID_CLOSING_TIME:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_message)
         else:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=Messages.INTERNAL_ERROR)
     except HTTPException as http_ex:
