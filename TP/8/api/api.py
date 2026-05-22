@@ -4,9 +4,8 @@ from fastapi import Depends, FastAPI, HTTPException, status, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 import messages as Messages
-from src.settings import get_settings, Settings
 from src.signer import get_signer, Signer
-from src.schemas import CFPSchema
+from src.schemas import CFPSchema, RegisterSchema
 from src.contractManager import get_contract_manager, ContractManager
 from web3.exceptions import ContractLogicError
 
@@ -28,6 +27,7 @@ async def custom_http_exception_handler(request: Request, exc: HTTPException):
         content={"message": exc.detail}
     )
 
+# TODO ver si se pueden separar por clases los manejadores de errores, para no tener todo en api.py
 @app.exception_handler(RequestValidationError)
 async def custom_validation_exception_handler(request: Request, exc: RequestValidationError):
     
@@ -56,6 +56,8 @@ async def custom_validation_exception_handler(request: Request, exc: RequestVali
                 api_message = Messages.INVALID_TIME_FORMAT
             elif field_name == "signature":
                 api_message = Messages.INVALID_SIGNATURE
+            elif field_name == "address":
+                api_message = Messages.INVALID_ADDRESS
             else:
                 api_message = Messages.INTERNAL_ERROR
 
@@ -65,7 +67,6 @@ async def custom_validation_exception_handler(request: Request, exc: RequestVali
     )
 
 
-# ENDPOINTs
 @app.post(
     "/create", 
     status_code=status.HTTP_201_CREATED, # Código por defecto para creación exitosa
@@ -100,7 +101,7 @@ async def createFor_CFP (
                 detail=Messages.INVALID_CLOSING_TIME
             )
 
-        plain_message_hex = manager.generate_hex_string_message(
+        plain_message_hex = manager.generate_hex_str_create_message(
             call_id_hex=payload.callId,
             unix_timestamp=unix_ts
         )
@@ -133,6 +134,81 @@ async def createFor_CFP (
         if receipt.get("status") != 1:
             revert_reason_cle = manager.raise_revert_reason(tx_hash_hex)
             
+        
+        return {"message": Messages.OK}
+    
+    except ContractLogicError as cle:
+        logger.error(f"Error de lógica en el Smart Contract: {cle.message}")
+        error_message = manager.map_revert_reason_to_message(cle.message)
+        
+        if error_message in [Messages.ALREADY_CREATED, Messages.UNAUTHORIZED]:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=error_message)
+        elif error_message == Messages.INVALID_CLOSING_TIME:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_message)
+        else:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=Messages.INTERNAL_ERROR)
+    except HTTPException as http_ex:
+        raise http_ex
+    except Exception as e:
+        logger.error(f"Fallo no controlado en el flujo del endpoint: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=Messages.INTERNAL_ERROR
+        )
+
+@app.post(
+    "/register", 
+    status_code=status.HTTP_200_OK,
+    summary="Permite a un usuario registrarse para crear llamados, y los autoriza de inmediato",
+    response_description="El usuario ha sido registrado y autorizado exitosamente para crear llamados"
+)
+
+async def register_and_authorize_user (
+    request: Request,
+    payload: RegisterSchema,
+    manager: ContractManager = Depends(get_contract_manager),
+    signer: Signer = Depends(get_signer)):
+    """
+    Permite a un usuario registrarse para crear llamados, y los autoriza de inmediato
+    """
+    
+    content_type = request.headers.get("content-type", "")
+    
+    if "application/json" not in content_type:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=Messages.INVALID_MIMETYPE
+        )
+
+    try:
+        
+        plain_message_hex = manager.generate_hex_str_register_message()
+
+        try:
+            emisor_address = signer.get_signer_address(
+                message_hexstr=plain_message_hex,
+                signature_hex=payload.signature
+            )
+            
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=Messages.INVALID_SIGNATURE
+            )
+            
+        if emisor_address.lower() != payload.address.lower():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=Messages.INVALID_SIGNATURE
+            )
+            
+        tx_not_signed = manager.authorize_user(from_address=signer.address, user_address=payload.address)
+        tx_signed_bytes = signer.sign_transaction(tx_not_signed)
+        tx_hash_hex = manager.execute_transaction(tx_signed_bytes)
+        receipt = manager.get_transaction_receipt(tx_hash_hex)
+        
+        if receipt.get("status") != 1:
+            revert_reason_cle = manager.raise_revert_reason(tx_hash_hex)        
         
         return {"message": Messages.OK}
     

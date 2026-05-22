@@ -56,7 +56,7 @@ class ContractManager:
         self.contract = self.w3.eth.contract(address=self.contract_address, abi=abi_data)
         logger.info(f"Sistema enlazado con éxito al Smart Contract: {self.contract_address}")
             
-    def generate_hex_string_message(self, call_id_hex: str, unix_timestamp: int) -> str:
+    def generate_hex_str_create_message(self, call_id_hex: str, unix_timestamp: int) -> str:
         import struct
 
         try:
@@ -82,6 +82,21 @@ class ContractManager:
 
         except Exception as e:
             logger.error(f"Error al estructurar el mensaje en formato String Hex: {str(e)}")
+            raise e
+    
+    def generate_hex_str_register_message(self) -> str:
+        try:
+            # La dirección del contrato ya representa exactamente los 20 bytes (40 caracteres hex).
+            # Aseguramos que empiece con '0x' y esté en minúsculas para mantener consistencia.
+            contract_hex = self.contract_address.lower()
+            if not contract_hex.startswith("0x"):
+                contract_hex = f"0x{contract_hex}"
+
+            logger.debug("Mensaje de registro generado en formato String Hex: %s", contract_hex)
+            return contract_hex
+
+        except Exception as e:
+            logger.error(f"Error al estructurar el mensaje de registro en formato String Hex: {str(e)}")
             raise e
 
     def create_cfp_for(self, from_address: str,creator_address: str, call_id_hex: str, unix_timestamp: int) -> dict:
@@ -118,6 +133,68 @@ class ContractManager:
         except Exception as e:
             logger.error(f"Error al construir la transacción create_cfp_for: {str(e)}")
             raise e
+        
+    #! No podes registar a un usuario con el campo from si no se posee su clave privada
+    def register_user(self, user_address: str) -> dict:
+        try:
+            logger.debug(f"Preparando transacción 'register' para la wallet: {user_address}")
+
+            # Obtenemos el nonce actual de la wallet emisora
+            nonce = self.w3.eth.get_transaction_count(user_address)
+
+            # Construimos los parámetros base de la transacción on-chain
+            tx_params = {
+                'from': user_address,
+                'nonce': nonce,
+                'chainId': self.w3.eth.chain_id,
+                'maxFeePerGas': self.w3.eth.gas_price,
+                'maxPriorityFeePerGas': self.w3.eth.max_priority_fee,
+            }
+
+            # Invocamos la función 'register' de Solidity que no requiere parámetros
+            transaction_dict = self.contract.functions.register().build_transaction(tx_params)
+
+            logger.debug("Diccionario de transacción 'register' construido exitosamente.")
+            return transaction_dict
+        
+        except ContractLogicError as cle:
+            logger.error(f"Error de lógica en el Smart Contract al construir register: {cle.message}")
+            raise cle
+        except Exception as e:
+            logger.error(f"Error al construir la transacción register_user_tx: {str(e)}")
+            raise e
+    
+    def authorize_user(self, from_address: str, user_address: str) -> dict:
+        try:
+            logger.debug(f"Preparando transacción 'authorize' para autorizar a: {user_address}")
+
+            # Obtenemos el nonce actual de la wallet del Owner (la API) directamente del nodo RPC
+            nonce = self.w3.eth.get_transaction_count(from_address)
+
+            # Construimos los parámetros base de la transacción on-chain
+            tx_params = {
+                'from': from_address,
+                'nonce': nonce,
+                'chainId': self.w3.eth.chain_id,
+                'maxFeePerGas': self.w3.eth.gas_price,
+                'maxPriorityFeePerGas': self.w3.eth.max_priority_fee,
+            }
+
+            # Invocamos la función 'authorize' de Solidity pasando el parámetro requerido
+            transaction_dict = self.contract.functions.authorize(
+                user_address
+            ).build_transaction(tx_params)
+
+            logger.debug(f"Diccionario de transacción 'authorize' para {user_address} construido exitosamente.")
+            return transaction_dict
+        
+        except ContractLogicError as cle:
+            logger.error(f"Error de lógica en el Smart Contract al construir authorize: {cle.message}")
+            raise cle
+        except Exception as e:
+            logger.error(f"Error al construir la transacción authorize_user: {str(e)}")
+            raise e
+    
         
     def execute_transaction(self, raw_tx_bytes: bytes) -> str:
         logger.debug("Transmitiendo transacción firmada al nodo RPC...")
