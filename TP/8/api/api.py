@@ -433,3 +433,24 @@ async def get_closing_time_by_id(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=Messages.INTERNAL_ERROR
         )
+
+
+@app.get(
+    "/contract-address",
+    status_code=status.HTTP_200_OK,
+    summary="Obtiene la dirección del contrato factoría",
+    response_description="Retorna la dirección de Ethereum del contrato principal"
+)
+async def get_factory_address(
+    manager: ContractManager = Depends(get_contract_manager)
+):
+    try:
+        factory_address = manager.contract_address
+        return {"address": factory_address}
+        
+    except Exception as e:
+        logger.error(f"Fallo no controlado en el endpoint GET /contract-address: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=Messages.INTERNAL_ERROR
+        )
