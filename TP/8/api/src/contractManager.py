@@ -44,13 +44,22 @@ class ContractManager:
         self.contract_address = self.w3.to_checksum_address(contract_address)
         
         #Carga e instanciación del archivo ABI (ubicado en la carpeta 'src/')
-        abi_path = os.path.join(os.path.dirname(__file__), "abi.json")
+        factory_abi_path = os.path.join(os.path.dirname(__file__), "cfp_factory_abi.json")
         try:
-            with open(abi_path, "r", encoding="utf-8") as f:
+            with open(factory_abi_path, "r", encoding="utf-8") as f:
                 abi_data = json.load(f)
         except FileNotFoundError:
-            logger.error(f"Archivo ABI crucial no encontrado en la ruta: {abi_path}")
+            logger.error(f"Archivo ABI crucial no encontrado en la ruta: {factory_abi_path}")
             raise
+        
+        cfp_abi_path = os.path.join(os.path.dirname(__file__), "cfp_abi.json")
+        try:
+            with open(cfp_abi_path, "r", encoding="utf-8") as f:
+                self.cfp_abi_data = json.load(f)
+        except FileNotFoundError:
+            logger.error(f"Archivo ABI crucial no encontrado en la ruta: {cfp_abi_path}")
+            raise
+        logger.debug("cfp_abi.json cargado")
 
         # Creación del objeto de contrato nativo de web3.py
         self.contract = self.w3.eth.contract(address=self.contract_address, abi=abi_data)
@@ -347,7 +356,37 @@ class ContractManager:
         #Si no encontramos ninguna palabra clave conocida en el texto de la EVM
         logger.warning(f"No se encontró un mapeo específico para el error de la EVM: '{cle_message}'")
         return Messages.INTERNAL_ERROR
-        
+    
+    
+    def get_cfp_contract_instance(self, cfp_address: str):
+        try:
+            logger.debug(f"Generando instancia de contrato CFP para la dirección: {cfp_address}")
+            
+            checksum_address = self.w3.to_checksum_address(cfp_address)
+            cfp_contract = self.w3.eth.contract(
+                address=checksum_address,
+                abi=self.cfp_abi_data
+            )
+            
+            return cfp_contract
+            
+        except Exception as e:
+            logger.error(f"Error al instanciar el contrato CFP en la dirección {cfp_address}: {str(e)}")
+            raise e
+    
+    def get_cfp_closing_time_by_address(self, cfp_address: str) -> int:
+        try:
+            logger.debug(f"Consultando variable closingTime en la dirección: {cfp_address}")
+            
+            cfp_contract = self.get_cfp_contract_instance(cfp_address)
+            closing_time_timestamp = cfp_contract.functions.closingTime().call()
+            
+            logger.debug(f"Timestamp de cierre recuperado: {closing_time_timestamp}")
+            return closing_time_timestamp
+            
+        except Exception as e:
+            logger.error(f"Error al obtener el closingTime del contrato CFP en {cfp_address}: {str(e)}")
+            raise e
 
 def get_contract_manager(settings: Settings = Depends(get_settings)) -> ContractManager:
     """
