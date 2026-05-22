@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 import logging
-from fastapi import Depends, FastAPI, HTTPException, status, Request
+from fastapi import Depends, FastAPI, HTTPException, status, Request,Path
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 import messages as Messages
@@ -293,6 +293,40 @@ async def register_proposal (
         raise http_ex
     except Exception as e:
         logger.error(f"Fallo no controlado en el flujo del endpoint: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=Messages.INTERNAL_ERROR
+        )
+        
+        
+@app.get(
+    "/authorized/{address}",
+    status_code=status.HTTP_200_OK,
+    summary="Verifica el estado de autorización de una dirección",
+    response_description="Retorna si la dirección provista está autorizada o no"
+)
+async def check_address_authorization(
+    address: str = Path(
+        ...,
+        description="Dirección de Ethereum a consultar",
+        pattern=r"^0x[a-fA-F0-9]{40}$",
+        examples=["0x3Bdd62278057288b1F486cBD775986AD042F5E4A"]
+    ),
+    manager: ContractManager = Depends(get_contract_manager)
+):
+    """
+    Consulta on-chain el estado de una dirección y retorna si está autorizada para crear llamados.
+    """
+    try:
+        logger.debug(f"Consultando estado de autorización para: {address}")
+        
+        is_authorized = manager.is_address_authorized(account_address=address)
+        
+        return {"authorized": is_authorized}
+
+    #// except ContractLogicError as cle:
+    except Exception as e:
+        logger.error(f"Fallo no controlado en el endpoint GET /authorized: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=Messages.INTERNAL_ERROR

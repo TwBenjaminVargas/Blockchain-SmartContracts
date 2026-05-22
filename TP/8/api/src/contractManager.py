@@ -227,7 +227,22 @@ class ContractManager:
         except Exception as e:
             logger.error(f"Error al construir la transacción register_proposal_tx: {str(e)}")
             raise e
-        
+    
+    def is_address_authorized(self, account_address: str) -> bool:
+        try:
+            logger.debug(f"Consultando estado de autorización (isAuthorized) para: {account_address}")
+
+            checksum_address = self.w3.to_checksum_address(account_address)
+
+            is_auth = self.contract.functions.isAuthorized(checksum_address).call()
+
+            logger.debug(f"Resultado de isAuthorized para {account_address}: {is_auth}")
+            return is_auth
+
+        except Exception as e:
+            logger.error(f"Error al consultar isAuthorized para la wallet {account_address}: {str(e)}")
+            raise e
+    
     def execute_transaction(self, raw_tx_bytes: bytes) -> str:
         logger.debug("Transmitiendo transacción firmada al nodo RPC...")
         try:
