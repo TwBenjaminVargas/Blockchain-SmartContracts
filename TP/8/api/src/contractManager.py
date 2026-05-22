@@ -399,6 +399,23 @@ class ContractManager:
         except Exception as e:
             logger.error(f"Error al consultar el owner del contrato factoría: {str(e)}")
             raise e
+    
+    
+    def get_cfp_proposal_data(self, cfp_address: str, proposal_hex: str) -> tuple[str, int, int]:
+        try:
+            logger.debug(f"Consultando datos de propuesta {proposal_hex} en el contrato CFP {cfp_address}")
+            
+            cfp_contract = self.get_cfp_contract_instance(cfp_address)
+            proposal_bytes = self.w3.to_bytes(hexstr=proposal_hex)
+            
+            sender, block_number, timestamp = cfp_contract.functions.proposalData(proposal_bytes).call()
+            
+            logger.debug(f"Datos recuperados - Sender: {sender}, Bloque: {block_number}, Timestamp: {timestamp}")
+            return sender, block_number, timestamp
+            
+        except Exception as e:
+            logger.error(f"Error al leer el mapeo proposalData en el contrato CFP: {str(e)}")
+            raise e
 
 def get_contract_manager(settings: Settings = Depends(get_settings)) -> ContractManager:
     """

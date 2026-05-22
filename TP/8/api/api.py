@@ -481,3 +481,72 @@ async def get_factory_owner(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=Messages.INTERNAL_ERROR
         )
+
+@app.get(
+    "/proposal-data/{call_id}/{proposal}",
+    status_code=status.HTTP_200_OK,
+    summary="Obtiene la información detallada de una propuesta",
+    response_description="Retorna el emisor, número de bloque y timestamp de la propuesta"
+)
+async def get_proposal_data_by_id(
+    call_id: str = Path(..., description="Hash que identifica al llamado"),
+    proposal: str = Path(..., description="Hash que identifica a la propuesta"),
+    manager: ContractManager = Depends(get_contract_manager)
+):
+    if not re.match(r"^0x[a-fA-F0-9]{64}$", call_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=Messages.INVALID_CALLID
+        )
+        
+    if not re.match(r"^0x[a-fA-F0-9]{64}$", proposal):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=Messages.INVALID_PROPOSAL
+        )
+
+    try:
+        creator_address, cfp_address = manager.get_call_details(call_id_hex=call_id)
+        
+        address_zero = "0x" + "0" * 40
+        if creator_address == address_zero or cfp_address == address_zero:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=Messages.CALLID_NOT_FOUND
+            )
+            
+        sender, block_number, timestamp = manager.get_cfp_proposal_data(
+            cfp_address=cfp_address, 
+            proposal_hex=proposal
+        )
+        
+        if sender == address_zero or block_number == 0 or timestamp == 0:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=Messages.PROPOSAL_NOT_FOUND
+            )
+            
+        iso_date = datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat().replace("+00:00", "Z")
+        
+        return {
+            "sender": sender,
+            "blockNumber": block_number,
+            "timestamp": iso_date
+        }
+        
+    except HTTPException as http_ex:
+        raise http_ex
+        
+    except ContractLogicError as cle:
+        logger.error(f"Error de lógica en la EVM al consultar datos de la propuesta: {cle.message}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=Messages.INTERNAL_ERROR
+        )
+        
+    except Exception as e:
+        logger.error(f"Fallo no controlado en el endpoint GET /proposal-data: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=Messages.INTERNAL_ERROR
+        )
