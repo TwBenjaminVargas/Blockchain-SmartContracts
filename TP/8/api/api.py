@@ -1,3 +1,14 @@
+import os
+import sys
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(current_dir)
+
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+
+
 from datetime import datetime, timezone
 import logging
 from fastapi import Depends, FastAPI, HTTPException, status, Request,Path
@@ -13,7 +24,7 @@ import re
 
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format="%(asctime)s - %(levelname)s - [%(name)s:%(lineno)d] - %(message)s"
 )
 logger = logging.getLogger("app")
@@ -32,42 +43,62 @@ async def custom_http_exception_handler(request: Request, exc: HTTPException):
 # TODO ver si se pueden separar por clases los manejadores de errores, para no tener todo en api.py
 @app.exception_handler(RequestValidationError)
 async def custom_validation_exception_handler(request: Request, exc: RequestValidationError):
-    
-    # Mensaje por defecto en caso de estructura rota o campos ausentes
-    api_message = Messages.MISSING_FIELD
-    logging.error(f"Validation errors: validation errors: {exc.errors()}")
+    # Validar mimetype solo si el método espera un body
+    if request.method in ["POST", "PUT", "PATCH"]:
+        content_type = request.headers.get("content-type", "")
+        if "application/json" not in content_type:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"message": Messages.INVALID_MIMETYPE}
+            )
+        
     errors = exc.errors()
+    logger.error(f"Validation errors: {errors}")
+    
     if errors:
         first_error = errors[0]
         location = first_error.get("loc", [])
         error_type = first_error.get("type", "")
+        
+        #Prioridad máxima a los campos faltantes (missing)
+        if error_type == "missing":
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"message": Messages.MISSING_FIELD}
+            )
 
-        # Si el error está en el cuerpo del JSON recibido
+        # Errores en parámetros de ruta (path)
+        if "path" in location and "address" in location:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"message": Messages.INVALID_ADDRESS}
+            )
+
+        # Errores específicos de formato en el cuerpo (body)
         if len(location) > 1 and location[0] == "body":
             field_name = location[1]
             
-            if error_type == "missing":
-                return JSONResponse(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    content={"message": Messages.MISSING_FIELD}
-                )
-                
-            elif field_name == "callId":
-                api_message = Messages.INVALID_CALLID
-            elif field_name in ["closingTime", "closing_time"]:
-                api_message = Messages.INVALID_TIME_FORMAT
+            if field_name == "callId":
+                return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"message": Messages.INVALID_CALLID})
+            elif field_name in ["closingTime", "closing_time"] or any("closing" in str(loc).lower() for loc in location):
+                return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"message": Messages.INVALID_TIME_FORMAT})
             elif field_name == "signature":
-                api_message = Messages.INVALID_SIGNATURE
+                return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"message": Messages.INVALID_SIGNATURE})
             elif field_name == "address":
-                api_message = Messages.INVALID_ADDRESS
+                return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"message": Messages.INVALID_ADDRESS})
             elif field_name == "proposal":
-                api_message = Messages.INVALID_PROPOSAL
-            else:
-                api_message = Messages.INTERNAL_ERROR
+                return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"message": Messages.INVALID_PROPOSAL})
+
+        # Fallback para el formato de closing_time
+        if any("closing" in str(loc).lower() for loc in location):
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"message": Messages.INVALID_TIME_FORMAT}
+            )
 
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
-        content={"message": api_message}
+        content={"message": Messages.MISSING_FIELD}
     )
 
 
@@ -87,17 +118,15 @@ async def createFor_CFP (
     Endpoint asíncrono para la creación de propuestas (CFP).
     """
     
-    content_type = request.headers.get("content-type", "")
-    
-    if "application/json" not in content_type:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=Messages.INVALID_MIMETYPE
-        )
-
     try:
         #  Transformar la fecha a Unix timestamp (uint256)
         unix_ts = int(payload.closing_time.timestamp())
+        # Si la fecha es de antes del año 2020 (1600000000), fallamos por formato inválido
+        if unix_ts < 1600000000:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=Messages.INVALID_TIME_FORMAT
+            )
         
         if unix_ts <= int(datetime.now(timezone.utc).timestamp()):
             raise HTTPException(
@@ -176,14 +205,6 @@ async def register_and_authorize_user (
     Permite a un usuario registrarse para crear llamados, y los autoriza de inmediato
     """
     
-    content_type = request.headers.get("content-type", "")
-    
-    if "application/json" not in content_type:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=Messages.INVALID_MIMETYPE
-        )
-
     try:
         
         plain_message_hex = manager.generate_hex_str_register_message()
@@ -205,7 +226,11 @@ async def register_and_authorize_user (
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=Messages.INVALID_SIGNATURE
             )
-            
+        
+        if manager.is_address_authorized(account_address=payload.address):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=Messages.ALREADY_AUTHORIZED)
+        
+        
         tx_not_signed = manager.authorize_user(from_address=signer.address, user_address=payload.address)
         tx_signed_bytes = signer.sign_transaction(tx_not_signed)
         tx_hash_hex = manager.execute_transaction(tx_signed_bytes)
@@ -250,14 +275,6 @@ async def register_proposal (
     Este registro es anónimo, es decir, la dirección que quedará registrada en el
     contrato es la utilizada por el servidor de la API. 
     """
-    
-    content_type = request.headers.get("content-type", "")
-    
-    if "application/json" not in content_type:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=Messages.INVALID_MIMETYPE
-        )
 
     try:
         
@@ -319,6 +336,13 @@ async def check_address_authorization(
     """
     Consulta on-chain el estado de una dirección y retorna si está autorizada para crear llamados.
     """
+    
+    if not re.match(r"^0x[a-fA-F0-9]{40}$", address):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=Messages.INVALID_ADDRESS
+        )
+        
     try:
         logger.debug(f"Consultando estado de autorización para: {address}")
         

@@ -27,7 +27,7 @@ class Signer:
         )
     
         self.address = self._account.address
-        logger.info("Sistema inicializado con la dirección de wallet: %s", self.address)
+        logger.debug("Sistema inicializado con la dirección de wallet: %s", self.address)
         self.private_key = self._account.key
         
         

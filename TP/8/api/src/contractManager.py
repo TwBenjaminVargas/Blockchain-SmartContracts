@@ -1,4 +1,11 @@
 import os
+import sys
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(current_dir)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+    
 import json
 import logging
 from functools import lru_cache
@@ -63,7 +70,7 @@ class ContractManager:
 
         # Creación del objeto de contrato nativo de web3.py
         self.contract = self.w3.eth.contract(address=self.contract_address, abi=abi_data)
-        logger.info(f"Sistema enlazado con éxito al Smart Contract: {self.contract_address}")
+        logger.debug(f"Sistema enlazado con éxito al Smart Contract: {self.contract_address}")
             
     def generate_hex_str_create_message(self, call_id_hex: str, unix_timestamp: int) -> str:
         import struct
@@ -350,7 +357,7 @@ class ContractManager:
         # recorremos el mapa buscando si la palabra clave está CONTENIDA en el error.
         for solidity_revert_keyword, business_message in self.REVERT_TO_MESSAGE_MAP.items():
             if solidity_revert_keyword.lower() in error_str:
-                logger.info(f"Coincidencia encontrada para el revert. Mapeado a: {business_message}")
+                logger.debug(f"Coincidencia encontrada para el revert. Mapeado a: {business_message}")
                 return business_message
 
         #Si no encontramos ninguna palabra clave conocida en el texto de la EVM
