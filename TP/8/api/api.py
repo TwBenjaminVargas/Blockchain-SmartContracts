@@ -29,7 +29,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("app")
 
-#TODO organizar el directorio, separar endpoints
 app = FastAPI(title="API de Convocatoria de Propuestas (CFP) - TP 8")
 
 #formato de respuesta personalizada para errores HTTP y validación de datos

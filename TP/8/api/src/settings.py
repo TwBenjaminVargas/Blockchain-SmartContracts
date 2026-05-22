@@ -11,7 +11,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 ENV_FILE_PATH = BASE_DIR / ".env"
 
 
-# TODO: Las variables de entorno no solo pueden venir de .env
 class Settings(BaseSettings):
     web3_provider_url: str = Field(alias="WEB3_PROVIDER_URL")
     contract_address: str = Field(alias="CFP_FACTORY_ADDRESS")
