@@ -37,3 +37,18 @@ class RegisterSchema(BaseModel):
         pattern=r"^0x[a-fA-F0-9]{130}$",
         examples=["0x473686f1d3fb6e10aa68d1e31d997d8848b27feb2241c0088ce93b6f3927f48b49544062286ce7e05afa2f8d8b2d0609110eb9964a3704c96689cc8454dc028f1b"]
     )
+
+class RegisterProposalSchema(BaseModel):
+    callId: str = Field(
+        ...,
+        description="Hash hexadecimal de 32 bytes que identifica unívocamente al llamado.",
+        pattern=r"^0x[a-fA-F0-9]{64}$",
+        examples=["0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"]
+    )
+    
+    proposal: str = Field(
+        ...,
+        description="Hash hexadecimal de 32 bytes que identifica unívocamente a la propuesta.",
+        pattern=r"^0x[a-fA-F0-9]{64}$",
+        examples=["0x9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba"]
+    )

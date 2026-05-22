@@ -5,7 +5,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 import messages as Messages
 from src.signer import get_signer, Signer
-from src.schemas import CFPSchema, RegisterSchema
+from src.schemas import CFPSchema, RegisterSchema, RegisterProposalSchema
 from src.contractManager import get_contract_manager, ContractManager
 from web3.exceptions import ContractLogicError
 
@@ -58,6 +58,8 @@ async def custom_validation_exception_handler(request: Request, exc: RequestVali
                 api_message = Messages.INVALID_SIGNATURE
             elif field_name == "address":
                 api_message = Messages.INVALID_ADDRESS
+            elif field_name == "proposal":
+                api_message = Messages.INVALID_PROPOSAL
             else:
                 api_message = Messages.INTERNAL_ERROR
 
@@ -218,6 +220,73 @@ async def register_and_authorize_user (
         
         if error_message in [Messages.ALREADY_AUTHORIZED]:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=error_message)
+        else:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=Messages.INTERNAL_ERROR)
+    except HTTPException as http_ex:
+        raise http_ex
+    except Exception as e:
+        logger.error(f"Fallo no controlado en el flujo del endpoint: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=Messages.INTERNAL_ERROR
+        )
+
+@app.post(
+    "/register-proposal", 
+    status_code=status.HTTP_201_CREATED,
+    summary="Permite a un usuario registrar una propuesta en un determinado llamado.Este registro es anónimo, es decir, la dirección que quedará registrada en el contrato es la utilizada por el servidor de la API.",
+    response_description="La propuesta ha sido registrada exitosamente en el sistema"
+)
+
+async def register_proposal (
+    request: Request,
+    payload: RegisterProposalSchema,
+    manager: ContractManager = Depends(get_contract_manager),
+    signer: Signer = Depends(get_signer)):
+    """
+    Endpoint asíncrono para el registro de propuestas en un llamado específico.
+    Este registro es anónimo, es decir, la dirección que quedará registrada en el
+    contrato es la utilizada por el servidor de la API. 
+    """
+    
+    content_type = request.headers.get("content-type", "")
+    
+    if "application/json" not in content_type:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=Messages.INVALID_MIMETYPE
+        )
+
+    try:
+        
+
+        tx_not_signed = manager.register_proposal(
+            from_address=signer.address,
+            call_id_hex=payload.callId,
+            proposal_hex=payload.proposal
+        )
+
+        tx_signed_bytes = signer.sign_transaction(tx_not_signed)
+
+        tx_hash_hex = manager.execute_transaction(tx_signed_bytes)
+        
+        receipt = manager.get_transaction_receipt(tx_hash_hex)
+        
+            
+        if receipt.get("status") != 1:
+            revert_reason_cle = manager.raise_revert_reason(tx_hash_hex)
+            
+        
+        return {"message": Messages.OK}
+    
+    except ContractLogicError as cle:
+        logger.error(f"Error de lógica en el Smart Contract: {cle.message}")
+        error_message = manager.map_revert_reason_to_message(cle.message)
+        
+        if error_message == Messages.ALREADY_REGISTERED:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=error_message)
+        elif error_message == Messages.CALLID_NOT_FOUND:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=error_message)
         else:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=Messages.INTERNAL_ERROR)
     except HTTPException as http_ex:

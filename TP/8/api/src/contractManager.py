@@ -195,6 +195,38 @@ class ContractManager:
             logger.error(f"Error al construir la transacción authorize_user: {str(e)}")
             raise e
     
+    def register_proposal(self, from_address: str, call_id_hex: str, proposal_hex: str) -> dict:
+        try:
+            logger.debug(
+                f"Preparando transacción 'registerProposal' para CallId: {call_id_hex} "
+                f"y Proposal: {proposal_hex}"
+            )
+
+            nonce = self.w3.eth.get_transaction_count(from_address)
+
+            tx_params = {
+                'from': from_address,
+                'nonce': nonce,
+                'chainId': self.w3.eth.chain_id,
+                'maxFeePerGas': self.w3.eth.gas_price,
+                'maxPriorityFeePerGas': self.w3.eth.max_priority_fee,
+            }
+
+            transaction_dict = self.contract.functions.registerProposal(
+                call_id_hex,
+                proposal_hex
+            ).build_transaction(tx_params)
+
+            logger.debug("Diccionario de transacción 'registerProposal' construido exitosamente.")
+            return transaction_dict
+        
+        except ContractLogicError as cle:
+            logger.error(f"Error de lógica en el Smart Contract al construir registerProposal: {cle.message}")
+            raise cle
+            
+        except Exception as e:
+            logger.error(f"Error al construir la transacción register_proposal_tx: {str(e)}")
+            raise e
         
     def execute_transaction(self, raw_tx_bytes: bytes) -> str:
         logger.debug("Transmitiendo transacción firmada al nodo RPC...")
