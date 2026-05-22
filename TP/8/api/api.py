@@ -454,3 +454,30 @@ async def get_factory_address(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=Messages.INTERNAL_ERROR
         )
+
+@app.get(
+    "/contract-owner",
+    status_code=status.HTTP_200_OK,
+    summary="Obtiene la dirección del dueño del contrato factoría",
+    response_description="Retorna la dirección de Ethereum del propietario (owner)"
+)
+async def get_factory_owner(
+    manager: ContractManager = Depends(get_contract_manager)
+):
+    try:
+        owner_address = manager.get_factory_contract_owner()
+        return {"address": owner_address}
+        
+    except ContractLogicError as cle:
+        logger.error(f"Error de lógica en la EVM al consultar el dueño: {cle.message}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=Messages.INTERNAL_ERROR
+        )
+        
+    except Exception as e:
+        logger.error(f"Fallo no controlado en el endpoint GET /contract-owner: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=Messages.INTERNAL_ERROR
+        )

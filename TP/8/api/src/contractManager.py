@@ -387,6 +387,18 @@ class ContractManager:
         except Exception as e:
             logger.error(f"Error al obtener el closingTime del contrato CFP en {cfp_address}: {str(e)}")
             raise e
+    
+    def get_factory_contract_owner(self) -> str:
+        try:
+            logger.debug("Consultando on-chain al dueño del contrato factoría")
+            owner_address = self.contract.functions.owner().call()
+            
+            logger.debug(f"Dirección del dueño recuperada: {owner_address}")
+            return owner_address
+            
+        except Exception as e:
+            logger.error(f"Error al consultar el owner del contrato factoría: {str(e)}")
+            raise e
 
 def get_contract_manager(settings: Settings = Depends(get_settings)) -> ContractManager:
     """
