@@ -8,6 +8,8 @@ from src.signer import get_signer, Signer
 from src.schemas import CFPSchema, RegisterSchema, RegisterProposalSchema
 from src.contractManager import get_contract_manager, ContractManager
 from web3.exceptions import ContractLogicError
+import re
+
 
 
 logging.basicConfig(
@@ -327,6 +329,56 @@ async def check_address_authorization(
     #// except ContractLogicError as cle:
     except Exception as e:
         logger.error(f"Fallo no controlado en el endpoint GET /authorized: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=Messages.INTERNAL_ERROR
+        )
+        
+    
+
+@app.get(
+    "/calls/{call_id}",
+    status_code=status.HTTP_200_OK,
+    summary="Obtiene los detalles de un llamado específico",
+    response_description="Retorna la dirección del creador y del contrato del llamado"
+)
+async def get_call_by_id(
+    call_id: str = Path(..., description="Hash que identifica al llamado"),
+    manager: ContractManager = Depends(get_contract_manager)
+):
+    if not re.match(r"^0x[a-fA-F0-9]{64}$", call_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=Messages.INVALID_CALLID
+        )
+
+    try:
+        creator_address, cfp_address = manager.get_call_details(call_id_hex=call_id)
+        
+        address_zero = "0x" + "0" * 40
+        if creator_address == address_zero or cfp_address == address_zero:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=Messages.CALLID_NOT_FOUND
+            )
+            
+        return {
+            "creator": creator_address,
+            "cfp": cfp_address
+        }
+
+    except HTTPException as http_ex:
+        raise http_ex
+        
+    except ContractLogicError as cle:
+        logger.error(f"Error de lógica en el contrato al buscar el llamado: {cle.message}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=Messages.INTERNAL_ERROR
+        )
+        
+    except Exception as e:
+        logger.error(f"Fallo no controlado en el endpoint GET /calls: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=Messages.INTERNAL_ERROR

@@ -16,7 +16,7 @@ class ContractManager:
     
     REVERT_TO_MESSAGE_MAP = {
         "El cierre de la convocatoria no puede estar en el pasado": Messages.INVALID_CLOSING_TIME,
-        #"Convocatoria cerrada": Messages.INVALID_CLOSING_TIME,
+        #?"Convocatoria cerrada": Messages.INVALID_CLOSING_TIME,
         "La propuesta ya ha sido registrada": Messages.ALREADY_REGISTERED,
         "Solo el creador puede hacer esta llamada": Messages.UNAUTHORIZED,
         "El llamado ya existe": Messages.ALREADY_CREATED,
@@ -241,6 +241,20 @@ class ContractManager:
 
         except Exception as e:
             logger.error(f"Error al consultar isAuthorized para la wallet {account_address}: {str(e)}")
+            raise e
+    
+    def get_call_details(self, call_id_hex: str) -> tuple[str, str]:
+        try:
+            logger.debug(f"Consultando detalles del llamado para CallId: {call_id_hex}")
+            
+            call_id_bytes = self.w3.to_bytes(hexstr=call_id_hex)
+            creator, cfp_address = self.contract.functions.calls(call_id_bytes).call()
+            
+            logger.debug(f"Detalles recuperados - Creador: {creator}, CFP: {cfp_address}")
+            return creator, cfp_address
+            
+        except Exception as e:
+            logger.error(f"Error al leer el mapeo de llamadas en el contrato: {str(e)}")
             raise e
     
     def execute_transaction(self, raw_tx_bytes: bytes) -> str:
