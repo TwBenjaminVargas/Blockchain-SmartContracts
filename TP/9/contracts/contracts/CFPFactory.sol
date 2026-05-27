@@ -7,6 +7,15 @@ contract CFPFactory {
     // Evento que se emite cuando se crea un llamado a presentación de propuestas
     event CFPCreated(address creator, bytes32 callId, CFP cfp);
 
+    //Evento que se emite cuando una cuenta llama a register para solicitar autorización
+    event CreatorRegistered(address indexed creator);
+
+    //Dueño de la factoria autoriza a una cuenta mediante authorize()
+    event CreatorAuthorized(address indexed creator);
+
+    // Dueño de la factoria quita la autorización a una cuenta mediante unauthorize()
+    event CreatorUnauthorized(address indexed creator);
+
     // Estructura que representa un llamado
     struct CallForProposals {
         address creator;
@@ -149,6 +158,7 @@ contract CFPFactory {
     {
         addressStatus[msg.sender] = AddressStatus.Pending;
         pendingList.push(msg.sender);
+        emit CreatorRegistered(msg.sender);
     }
 
 
@@ -187,9 +197,10 @@ contract CFPFactory {
                 // Eliminar la cuenta de la lista de pendientes
                 pendingList[i] = pendingList[pendingList.length - 1];
                 pendingList.pop();
+                emit CreatorAuthorized(creator);
                 break;
             }
-        }   
+        }
     }
 
     /** Quita la autorización de una cuenta para crear llamados.
@@ -206,6 +217,7 @@ contract CFPFactory {
                 // Eliminar la cuenta de la lista de pendientes
                 pendingList[i] = pendingList[pendingList.length - 1];
                 pendingList.pop();
+                emit CreatorUnauthorized(creator);
                 break;
             }
         }
