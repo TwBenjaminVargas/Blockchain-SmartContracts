@@ -127,6 +127,7 @@ contract CFPFactory {
         }
         createdByMap[msg.sender].push(cfp);
         emit CFPCreated(msg.sender, callId, cfp);
+        return cfp;
     }
 
     /**
@@ -147,6 +148,7 @@ contract CFPFactory {
         }
         createdByMap[creator].push(cfp);
         emit CFPCreated(creator, callId, cfp);
+        return cfp;
     }
 
     /** Permite que una cuenta se registre para poder crear llamados.
@@ -197,10 +199,10 @@ contract CFPFactory {
                 // Eliminar la cuenta de la lista de pendientes
                 pendingList[i] = pendingList[pendingList.length - 1];
                 pendingList.pop();
-                emit CreatorAuthorized(creator);
                 break;
             }
         }
+        emit CreatorAuthorized(creator);
     }
 
     /** Quita la autorización de una cuenta para crear llamados.
@@ -217,10 +219,10 @@ contract CFPFactory {
                 // Eliminar la cuenta de la lista de pendientes
                 pendingList[i] = pendingList[pendingList.length - 1];
                 pendingList.pop();
-                emit CreatorUnauthorized(creator);
                 break;
             }
         }
+        emit CreatorUnauthorized(creator);
 
     }
 
