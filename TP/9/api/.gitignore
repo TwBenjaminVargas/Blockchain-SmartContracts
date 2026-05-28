@@ -1,2 +1,5 @@
 .env
 *.db
+requests
+__pycache__
+.gitignore
