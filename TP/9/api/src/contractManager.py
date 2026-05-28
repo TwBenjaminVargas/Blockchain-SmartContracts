@@ -1,19 +1,13 @@
-import os
-import sys
-
-current_dir = os.path.dirname(os.path.abspath(__file__))
-if current_dir not in sys.path:
-    sys.path.insert(0, current_dir)
-    
 import json
 import logging
 from functools import lru_cache
 from fastapi import Depends
 from web3 import Web3
 from web3.providers import HTTPProvider
-from .settings import Settings, get_settings
+from src.settings import Settings, get_settings
 from web3.exceptions import ContractLogicError
 import messages as Messages
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -21,14 +15,12 @@ logger = logging.getLogger(__name__)
 class ContractManager:
     
     REVERT_TO_MESSAGE_MAP = {
-        "El cierre de la convocatoria no puede estar en el pasado": Messages.INVALID_CLOSING_TIME,
         #?"Convocatoria cerrada": Messages.INVALID_CLOSING_TIME,
         "La propuesta ya ha sido registrada": Messages.ALREADY_REGISTERED,
         "Solo el creador puede hacer esta llamada": Messages.UNAUTHORIZED,
         "El llamado ya existe": Messages.ALREADY_CREATED,
         "El llamado no existe": Messages.CALLID_NOT_FOUND,
         "No autorizado": Messages.UNAUTHORIZED,
-        "Ya se ha registrado": Messages.ALREADY_AUTHORIZED
     }
     
     
@@ -70,34 +62,58 @@ class ContractManager:
         # Creación del objeto de contrato nativo de web3.py
         self.contract = self.w3.eth.contract(address=self.contract_address, abi=abi_data)
         logger.debug(f"Sistema enlazado con éxito al Smart Contract: {self.contract_address}")
-            
-    def generate_hex_str_create_message(self, call_id_hex: str, unix_timestamp: int) -> str:
-        import struct
-
+    
+    def generate_call_id(self, title: str, description: str) -> str:
+        """
+        Genera el callId único calculando keccak256(rlp([title_utf8, description_utf8])).
+        """
         try:
-            # Normalizar la dirección del contrato: quitamos el '0x' y pasamos a minúsculas
-            contract_hex = self.contract_address.lower().replace("0x", "")
+            import rlp
+            from eth_utils import keccak
 
-            # Normalizar el callId: removemos el prefijo '0x' y aseguramos minúsculas.
-            call_id_clean = call_id_hex.lower().replace("0x", "")
+            # Convertir los strings de texto a bytes codificados en UTF-8
+            title_bytes = title.encode("utf-8")
+            description_bytes = description.encode("utf-8")
 
-            #Formatear el Timestamp a 32 bytes Hex (64 caracteres) en formato Big Endian
-            # Empacamos el entero en 8 bytes (Q = 64 bits) en formato Big Endian (>)
-            timestamp_bytes_8 = struct.pack('>Q', unix_timestamp)
-            # Rellenamos con 24 bytes vacíos a la izquierda para alcanzar los 32 bytes de la EVM
-            timestamp_bytes_32 = b'\x00' * 24 + timestamp_bytes_8
-            # Convertimos esos 32 bytes puros a su representación en texto hexadecimal (64 caracteres)
-            timestamp_hex = timestamp_bytes_32.hex()
+            # Codificación RLP estándar de la lista conteniendo ambos elementos binarios
+            rlp_encoded = rlp.encode([title_bytes, description_bytes])
 
-            #Concatenamos los tres bloques de texto y le agregamos el '0x' global al inicio
-            hex_message = f"0x{contract_hex}{call_id_clean}{timestamp_hex}"
+            # Calcular el hash Keccak256 del bloque RLP completo
+            keccak_hash = keccak(rlp_encoded)
 
-            logger.debug("Mensaje generado en formato String Hex: %s", hex_message)
-            return hex_message
+            # Retornar el resultado en formato String Hex con prefijo '0x'
+            return f"0x{keccak_hash.hex()}"
 
         except Exception as e:
-            logger.error(f"Error al estructurar el mensaje en formato String Hex: {str(e)}")
-            raise e
+            logger.error(f"Error al calcular el callId: {str(e)}")
+            raise Exception(str(e))
+        
+    def generate_hex_str_create_message(self, call_id_hex: str) -> str:
+        """
+        Genera el mensaje base de 62 bytes en formato String Hex (con prefijo 0x).
+        Asume que contract_address y call_id_hex ya vienen con el tamaño correcto.
+        """
+        try:
+            # Prefijo fijo de la acción: "createPOST" (10 bytes ASCII)
+            prefix_bytes = b"createPOST"
+
+            # Dirección del contrato CFPFactory: string hex a 20 bytes puros
+            contract_clean = self.contract_address.lower().replace("0x", "")
+            contract_bytes = bytes.fromhex(contract_clean)
+
+            # Identificador callId: string hex a 32 bytes puros
+            call_id_clean = call_id_hex.lower().replace("0x", "")
+            call_id_bytes = bytes.fromhex(call_id_clean)
+
+            # Concatenación binaria de los tres bloques (10 + 20 + 32 = 62 bytes)
+            message_bytes = prefix_bytes + contract_bytes + call_id_bytes
+
+            # Retorna la representación String Hex con prefijo 0x
+            return f"0x{message_bytes.hex()}"
+
+        except Exception as e:
+            logger.error(f"Error al estructurar el mensaje: {str(e)}")
+            raise Exception(str(e))
     
     def generate_hex_str_register_message(self) -> str:
         try:
@@ -299,7 +315,6 @@ class ContractManager:
             logger.error(f"Error o Timeout al intentar verificar la transacción {tx_hash_hex}: {str(e)}")
             raise e
         
-    
     def raise_revert_reason(self, tx_hash_hex: str):
         """
         Simula la transacción fallida en el nodo para extraer 
@@ -363,7 +378,6 @@ class ContractManager:
         logger.warning(f"No se encontró un mapeo específico para el error de la EVM: '{cle_message}'")
         return Messages.INTERNAL_ERROR
     
-    
     def get_cfp_contract_instance(self, cfp_address: str):
         try:
             logger.debug(f"Generando instancia de contrato CFP para la dirección: {cfp_address}")
@@ -405,7 +419,6 @@ class ContractManager:
         except Exception as e:
             logger.error(f"Error al consultar el owner del contrato factoría: {str(e)}")
             raise e
-    
     
     def get_cfp_proposal_data(self, cfp_address: str, proposal_hex: str) -> tuple[str, int, int]:
         try:
