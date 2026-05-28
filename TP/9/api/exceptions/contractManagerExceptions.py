@@ -11,3 +11,7 @@ class CryptographicHashingException(AppBaseException):
 class NodeRPCException(AppBaseException):
     """Lanzada cuando falla la comunicación con el nodo de Ethereum o el proveedor RPC."""
     pass
+
+class TextEncodingException(AppBaseException):
+    """Lanzada si el texto provisto no puede ser codificado en UTF-8 o excede las restricciones."""
+    pass

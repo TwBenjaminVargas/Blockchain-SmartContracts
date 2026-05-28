@@ -6,11 +6,13 @@ from fastapi.responses import JSONResponse
 import messages as Messages
 from services.signer import get_signer, Signer
 from models.CallCreate import CallCreate
-from models.schemas import RegisterSchema, RegisterProposalSchema
+from models.UserRegister import UserRegister
+from models.schemas import RegisterProposalSchema
 from services.contractManager import get_contract_manager, ContractManager
 from web3.exceptions import ContractLogicError
 from db.sqliteManager import DBManager, get_db_manager
 import re
+from models.persistence.User import UserState
 
 import exceptions.contractManagerExceptions as contract_exceptions
 import exceptions.SignerExceptions as signer_exceptions
@@ -165,74 +167,69 @@ async def create(
                             
                             
 @app.post(
-    "/register", 
+    "/register",
     status_code=status.HTTP_200_OK,
-    summary="Permite a un usuario registrarse para crear llamados, y los autoriza de inmediato",
-    response_description="El usuario ha sido registrado y autorizado exitosamente para crear llamados"
+    summary="Permite a un usuario registrarse en el sistema de forma local",
+    response_description="Registro procesado. Retorna el estado del solicitante al momento de la llamada."
 )
-
-async def register_and_authorize_user (
-    request: Request,
-    payload: RegisterSchema,
-    manager: ContractManager = Depends(get_contract_manager),
-    signer: Signer = Depends(get_signer)):
+async def register(
+    payload: UserRegister,
+    db_manager: DBManager = Depends(get_db_manager),
+    contract_manager: ContractManager = Depends(get_contract_manager),
+    signer: Signer = Depends(get_signer)
+):
     """
-    Permite a un usuario registrarse para crear llamados, y los autoriza de inmediato
+    Asocia localmente el nombre de un solicitante a su dirección de Ethereum.
+    Si la cuenta ya fue registrada pero se encuentra desautorizada, el registro previo se sobrescribe.
     """
-    
     try:
-        
-        plain_message_hex = manager.generate_hex_str_register_message()
-
+        #Reconstrucción Criptográfica del Mensaje y Recuperación de la Firma
         try:
-            emisor_address = signer.get_signer_address(
-                message_hexstr=plain_message_hex,
-                signature_hex=payload.signature
-            )
+            message_hex = contract_manager.generate_hex_str_register_message(payload.name)
+            recovered_signer = signer.get_signer_address(message_hex, payload.signature)
             
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=Messages.INVALID_SIGNATURE
-            )
-            
-        if emisor_address.lower() != payload.address.lower():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=Messages.INVALID_SIGNATURE
-            )
+            if recovered_signer.lower() != payload.address.lower():
+                return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"message": Messages.INVALID_SIGNATURE})
+                
+        except (signer_exceptions.InvalidSignatureException, signer_exceptions.InvalidInputException, 
+                contract_exceptions.InvalidInputTypeException, contract_exceptions.TextEncodingException, 
+                contract_exceptions.CryptographicHashingException):
+            return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"message": Messages.INVALID_SIGNATURE})
         
-        if manager.is_address_authorized(account_address=payload.address):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=Messages.ALREADY_AUTHORIZED)
-        
-        
-        tx_not_signed = manager.authorize_user(from_address=signer.address, user_address=payload.address)
-        tx_signed_bytes = signer.sign_transaction(tx_not_signed)
-        tx_hash_hex = manager.execute_transaction(tx_signed_bytes)
-        receipt = manager.get_transaction_receipt(tx_hash_hex)
-        
-        if receipt.get("status") != 1:
-            revert_reason_cle = manager.raise_revert_reason(tx_hash_hex)        
-        
-        return {"message": Messages.OK}
-    
-    except ContractLogicError as cle:
-        logger.error(f"Error de lógica en el Smart Contract: {cle.message}")
-        error_message = manager.map_revert_reason_to_message(cle.message)
-        
-        if error_message in [Messages.ALREADY_AUTHORIZED]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=error_message)
+        # Control de Reglas de Negocio / Verificación de estados en Blockchain y Base de Datos Local
+        is_onchain_authorized = contract_manager.is_address_authorized(payload.address)
+        local_user = db_manager.getUser(payload.address)
+
+        if is_onchain_authorized:
+            determined_status = UserState.AUTHORIZED
         else:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=Messages.INTERNAL_ERROR)
-    except HTTPException as http_ex:
-        raise http_ex
-    except Exception as e:
-        logger.error(f"Fallo no controlado en el flujo del endpoint: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=Messages.INTERNAL_ERROR
+            determined_status = UserState.PENDING
+
+        if local_user:
+            if local_user.state == UserState.AUTHORIZED:
+                return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content={"message": Messages.ALREADY_IN_SYSTEM})
+            
+            # Si existía pero fue desautorizado, se permite sobreescribir los datos
+            local_user.name = payload.name
+            local_user.signature = payload.signature
+            local_user.state = determined_status
+            db_manager.updateExistingUser(local_user)
+        else:
+            db_manager.createPendingUser(address=payload.address, name=payload.name, signature=payload.signature)
+
+        # Retorno Exitoso
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={"status": determined_status.value}
         )
 
+    except Exception as e:
+        logger.error(f"Fallo no controlado en /register: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"message": Messages.INTERNAL_ERROR}
+        )
+    
 @app.post(
     "/register-proposal", 
     status_code=status.HTTP_201_CREATED,

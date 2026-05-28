@@ -133,20 +133,52 @@ class ContractManager:
             logger.error(f"Error inesperado al estructurar el mensaje create: {str(e)}", exc_info=True)
             raise cm_exceptions.CryptographicHashingException("No se pudo construir el mensaje binario para la firma.")
     
-    def generate_hex_str_register_message(self) -> str:
+    def generate_hex_str_register_message(self, name: str) -> str:
+        """
+        Genera el mensaje base de registro en formato String Hex (con prefijo 0x).
+        Estructura: "registerPOST" (12B) + contract_address (20B) + 0 (32B big-endian) + name (UTF-8).
+
+        Raises:
+            cm_exceptions.InvalidInputTypeException: Si el nombre no es una cadena de texto.
+            cm_exceptions.TextEncodingException: Si el nombre falla al codificarse en UTF-8.
+            cm_exceptions.CryptographicHashingException: Si la dirección del contrato está malformada.
+        """
+        import struct
+
+        if not isinstance(name, str):
+            logger.error(f"Tipo de dato inválido para el campo name: {type(name)}")
+            raise cm_exceptions.InvalidInputTypeException("El nombre del solicitante debe ser un string válido.")
+
         try:
-            # La dirección del contrato ya representa exactamente los 20 bytes (40 caracteres hex).
-            # Aseguramos que empiece con '0x' y esté en minúsculas para mantener consistencia.
-            contract_hex = self.contract_address.lower()
-            if not contract_hex.startswith("0x"):
-                contract_hex = f"0x{contract_hex}"
+            # Prefijo fijo de la acción (12 bytes ASCII)
+            prefix_bytes = b"registerPOST"
 
-            logger.debug("Mensaje de registro generado en formato String Hex: %s", contract_hex)
-            return contract_hex
+            # Dirección del contrato (20 bytes puros)
+            contract_clean = self.contract_address.lower().replace("0x", "")
+            contract_bytes = bytes.fromhex(contract_clean)
+        except ValueError as hex_err:
+            logger.error(f"Error al parsear la dirección del contrato a bytes: {str(hex_err)}")
+            raise cm_exceptions.CryptographicHashingException("La dirección del contrato no tiene un formato hexadecimal válido.")
 
+        try:
+            # Valor 0 codificado como entero big-endian de 32 bytes (uint256 equivalente)
+            # '>Q' empaqueta en 8 bytes, rellenamos con 24 bytes de ceros a la izquierda para completar los 32 bytes
+            value_bytes = b"\x00" * 24 + struct.pack(">Q", 0)
+
+            # Nombre del solicitante codificado en UTF-8
+            name_bytes = name.encode("utf-8")
+        except UnicodeEncodeError as text_err:
+            logger.error(f"Error de codificación UTF-8 en el nombre: {str(text_err)}")
+            raise cm_exceptions.TextEncodingException("El nombre contiene caracteres que no pueden ser procesados en UTF-8.")
+
+        try:
+            # Concatenación binaria final de todos los bloques
+            message_bytes = prefix_bytes + contract_bytes + value_bytes + name_bytes
+            
+            return f"0x{message_bytes.hex()}"
         except Exception as e:
-            logger.error(f"Error al estructurar el mensaje de registro en formato String Hex: {str(e)}")
-            raise e
+            logger.error(f"Error inesperado al concatenar el mensaje de registro: {str(e)}", exc_info=True)
+            raise cm_exceptions.CryptographicHashingException("No se pudo construir la estructura binaria del mensaje.")
 
     def create_cfp_for(self, from_address: str,creator_address: str, call_id_hex: str, unix_timestamp: int) -> dict:
         try:
