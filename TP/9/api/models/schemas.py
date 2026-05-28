@@ -2,6 +2,7 @@
 from datetime import datetime
 from pydantic import BaseModel, Field
 
+#!Deprecada se migro a CallCreate
 class CFPSchema(BaseModel):
     callId: str = Field(
         ...,

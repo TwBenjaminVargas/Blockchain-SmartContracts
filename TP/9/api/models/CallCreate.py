@@ -1,8 +1,7 @@
-from pydantic import field_validator, Field
-from sqlmodel import SQLModel
+from pydantic import BaseModel, field_validator, Field
+import messages as Messages
 
-
-class CallCreate(SQLModel):
+class CallCreate(BaseModel):
     callId: str = Field(
         ...,
         description="Hash keccak256(rlp([title_utf8, description_utf8])) (32 bytes en formato hex con prefijo 0x)",
@@ -31,15 +30,15 @@ class CallCreate(SQLModel):
     @classmethod
     def clean_title(cls, value: str) -> str:
         if not isinstance(value, str):
-            raise ValueError("El título debe ser una cadena de texto.")
+            raise ValueError(Messages.INVALID_TITLE)
         
         cleaned_title = value.rstrip()
         
         if not cleaned_title:
-            raise ValueError("El título vacío no es válido.")
+            raise ValueError(Messages.INVALID_TITLE)
             
         if len(cleaned_title.encode("utf-8")) > 512:
-            raise ValueError("El título no puede superar los 512 bytes codificado en UTF-8.")
+            raise ValueError(Messages.TITLE_TOO_LONG)
             
         return cleaned_title
 
@@ -47,11 +46,11 @@ class CallCreate(SQLModel):
     @classmethod
     def clean_description(cls, value: str) -> str:
         if not isinstance(value, str):
-            raise ValueError("La descripción debe ser una cadena de texto.")
+            raise ValueError("El campo de descripción debe ser una cadena de texto.")
             
         cleaned_description = value.rstrip()
         
         if len(cleaned_description.encode("utf-8")) > 4096:
-            raise ValueError("La descripción no puede superar los 4096 bytes codificado en UTF-8.")
+            raise ValueError(Messages.DESCRIPTION_TOO_LONG)
             
         return cleaned_description

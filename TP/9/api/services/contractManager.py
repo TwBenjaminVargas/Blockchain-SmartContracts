@@ -4,10 +4,13 @@ from functools import lru_cache
 from fastapi import Depends
 from web3 import Web3
 from web3.providers import HTTPProvider
-from src.settings import Settings, get_settings
+from services.settings import Settings, get_settings
 from web3.exceptions import ContractLogicError
 import messages as Messages
 import os
+import exceptions.contractManagerExceptions as cm_exceptions
+from eth_utils import keccak
+import rlp
 
 logger = logging.getLogger(__name__)
 
@@ -66,33 +69,47 @@ class ContractManager:
     def generate_call_id(self, title: str, description: str) -> str:
         """
         Genera el callId único calculando keccak256(rlp([title_utf8, description_utf8])).
-        """
-        try:
-            import rlp
-            from eth_utils import keccak
 
+        Raises:
+            InvalidInputTypeException: Si los argumentos de entrada no son strings.
+            CryptographicHashingException: Si ocurre un error en la serialización o hashing.
+        """
+        # Validación preventiva de tipos de datos
+        if not isinstance(title, str) or not isinstance(description, str):
+            error_msg = f"Tipos de datos inválidos para CallId. Title: {type(title)}, Description: {type(description)}"
+            logger.error(error_msg)
+            raise cm_exceptions.InvalidInputTypeException("El título y la descripción deben ser strings válidos.")
+
+        try:
             # Convertir los strings de texto a bytes codificados en UTF-8
             title_bytes = title.encode("utf-8")
             description_bytes = description.encode("utf-8")
 
-            # Codificación RLP estándar de la lista conteniendo ambos elementos binarios
+            # Codificación RLP estándar de la lista
             rlp_encoded = rlp.encode([title_bytes, description_bytes])
 
-            # Calcular el hash Keccak256 del bloque RLP completo
+            # Keccak256 del bloque RLP completo
             keccak_hash = keccak(rlp_encoded)
 
             # Retornar el resultado en formato String Hex con prefijo '0x'
             return f"0x{keccak_hash.hex()}"
 
-        except Exception as e:
-            logger.error(f"Error al calcular el callId: {str(e)}")
-            raise Exception(str(e))
+        except Exception as crypto_err:
+            logger.error(f"Fallo crítico en librerías criptográficas al generar CallId: {str(crypto_err)}", exc_info=True)
+            raise cm_exceptions.CryptographicHashingException("No se pudo procesar la firma criptográfica de los datos.")
         
     def generate_hex_str_create_message(self, call_id_hex: str) -> str:
         """
         Genera el mensaje base de 62 bytes en formato String Hex (con prefijo 0x).
-        Asume que contract_address y call_id_hex ya vienen con el tamaño correcto.
+
+        Raises:
+            cm_exceptions.InvalidInputTypeException: Si call_id_hex no es una cadena de texto.
+            cm_exceptions.CryptographicHashingException: Si ocurre un error al procesar el formato hexadecimal.
         """
+        if not isinstance(call_id_hex, str):
+            logger.error(f"Tipo de dato inválido para call_id_hex: {type(call_id_hex)}")
+            raise cm_exceptions.InvalidInputTypeException("El callId debe ser una cadena de texto válida.")
+
         try:
             # Prefijo fijo de la acción: "createPOST" (10 bytes ASCII)
             prefix_bytes = b"createPOST"
@@ -107,13 +124,14 @@ class ContractManager:
 
             # Concatenación binaria de los tres bloques (10 + 20 + 32 = 62 bytes)
             message_bytes = prefix_bytes + contract_bytes + call_id_bytes
-
-            # Retorna la representación String Hex con prefijo 0x
             return f"0x{message_bytes.hex()}"
 
+        except ValueError as hex_err:
+            logger.error(f"Error de parseo hexadecimal en parámetros de mensaje create: {str(hex_err)}", exc_info=True)
+            raise cm_exceptions.CryptographicHashingException("Los datos estructurales no contienen un formato hexadecimal válido.")
         except Exception as e:
-            logger.error(f"Error al estructurar el mensaje: {str(e)}")
-            raise Exception(str(e))
+            logger.error(f"Error inesperado al estructurar el mensaje create: {str(e)}", exc_info=True)
+            raise cm_exceptions.CryptographicHashingException("No se pudo construir el mensaje binario para la firma.")
     
     def generate_hex_str_register_message(self) -> str:
         try:
@@ -260,19 +278,31 @@ class ContractManager:
             raise e
     
     def is_address_authorized(self, account_address: str) -> bool:
+        """
+        Consultando el estado de autorización (isAuthorized) en el Smart Contract.
+
+        Raises:
+            cm_exceptions.InvalidInputTypeException: Si la dirección recibida no es un string o está malformada.
+            cm_exceptions.NodeRPCException: Si ocurre un error de conectividad o ejecución en el nodo RPC.
+        """
+        if not isinstance(account_address, str):
+            logger.error(f"Tipo de dato inválido para account_address: {type(account_address)}")
+            raise cm_exceptions.InvalidInputTypeException("La dirección de la cuenta debe ser una cadena de texto válida.")
+
         try:
-            logger.debug(f"Consultando estado de autorización (isAuthorized) para: {account_address}")
-
             checksum_address = self.w3.to_checksum_address(account_address)
+        except ValueError as addr_err:
+            logger.error(f"La dirección provista no cumple con el formato hexadecimal/checksum de Ethereum: {account_address}")
+            raise cm_exceptions.InvalidInputTypeException("La dirección provista no es una dirección de Ethereum válida.")
 
+        try:
             is_auth = self.contract.functions.isAuthorized(checksum_address).call()
-
-            logger.debug(f"Resultado de isAuthorized para {account_address}: {is_auth}")
+            logger.debug(f"Resultado de isAuthorized para {checksum_address}: {is_auth}")
             return is_auth
 
-        except Exception as e:
-            logger.error(f"Error al consultar isAuthorized para la wallet {account_address}: {str(e)}")
-            raise e
+        except Exception as rpc_err:
+            logger.error(f"Error al consultar el estado de autorización en el nodo para la wallet {checksum_address}: {str(rpc_err)}", exc_info=True)
+            raise cm_exceptions.NodeRPCException("No se pudo obtener una respuesta del nodo de red para validar la autorización.")
     
     def get_call_details(self, call_id_hex: str) -> tuple[str, str]:
         try:

@@ -4,14 +4,17 @@ from fastapi import Depends, FastAPI, HTTPException, status, Request,Path
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 import messages as Messages
-from src.signer import get_signer, Signer
+from services.signer import get_signer, Signer
 from models.CallCreate import CallCreate
 from models.schemas import RegisterSchema, RegisterProposalSchema
-from src.contractManager import get_contract_manager, ContractManager
+from services.contractManager import get_contract_manager, ContractManager
 from web3.exceptions import ContractLogicError
 from db.sqliteManager import DBManager, get_db_manager
 import re
 
+import exceptions.contractManagerExceptions as contract_exceptions
+import exceptions.SignerExceptions as signer_exceptions
+import exceptions.databaseManagerExceptions as db_exceptions
 
 
 logging.basicConfig(
@@ -109,20 +112,20 @@ async def create(
                 title=payload.title, 
                 description=payload.description
             )
-        except Exception as e:
-            logger.error(f"Error interno calculando callId: {str(e)}")
+        except contract_exceptions.CryptographicHashingException:
             return JSONResponse(status_code=500, content={"message": Messages.INTERNAL_ERROR})
 
         if payload.callId.lower() != calculated_call_id.lower():
             return JSONResponse(status_code=400, content={"message": Messages.INVALID_CALLID})
-        
-        
-        if db_manager.existsCall(payload.callId):
-            return JSONResponse(status_code=403, content={"message": Messages.ALREADY_CREATED})
-
+        try:
+            if db_manager.existsCall(payload.callId):
+                return JSONResponse(status_code=403, content={"message": Messages.ALREADY_CREATED})
+        except db_exceptions.DatabaseConnectionException as sc_err:
+            logger.error(f"Error de conexión con la base de datos local: {str(sc_err)}")
+            return JSONResponse(status_code=500, content={"message": Messages.INTERNAL_ERROR})
         try:
             plain_message_hex = manager.generate_hex_str_create_message(call_id_hex=payload.callId)
-        except Exception as e:
+        except contract_exceptions.CryptographicHashingException as e:
             logger.error(f"Error estructurando mensaje binario: {str(e)}")
             return JSONResponse(status_code=500, content={"message": Messages.INTERNAL_ERROR})
 
@@ -131,12 +134,12 @@ async def create(
                 message_hexstr=plain_message_hex,
                 signature_hex=payload.signature
             )
-        except ValueError:
+        except signer_exceptions.InvalidSignatureException as ise:
             return JSONResponse(status_code=400, content={"message": Messages.INVALID_SIGNATURE})
 
         try:
             is_authorized = manager.is_address_authorized(emisor_address)
-        except Exception as sc_err:
+        except contract_exceptions.NodeRPCException as sc_err:
             logger.error(f"Error de conexión con CFPFactory: {str(sc_err)}")
             return JSONResponse(status_code=500, content={"message": Messages.INTERNAL_ERROR})
 
@@ -144,13 +147,14 @@ async def create(
             return JSONResponse(status_code=403, content={"message": Messages.UNAUTHORIZED})
         
         try:
-            new_call = db_manager.createPendingCall(call_id=payload.callId, title=payload.title,
+            db_manager.createPendingCall(call_id=payload.callId, title=payload.title,
                                                     description=payload.description,
                                                     signature=payload.signature,
                                                     creator_address=emisor_address)
-            db_manager.addCall(new_call)
-        except Exception as db_err:
-            logger.error(f"Error al escribir en SQLite: {str(db_err)}")
+        except db_exceptions.RecordAlreadyExistsException:
+            return JSONResponse(status_code=403, content={"message": Messages.ALREADY_CREATED})
+        except db_exceptions.DatabaseWriteException as db_write_err:
+            logger.error(f"Error al escribir en la base de datos local: {str(db_write_err)}")
             return JSONResponse(status_code=500, content={"message": Messages.INTERNAL_ERROR})
 
         return {"message": Messages.OK}

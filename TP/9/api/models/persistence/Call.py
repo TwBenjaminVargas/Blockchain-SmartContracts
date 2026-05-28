@@ -1,7 +1,7 @@
 from models.CallCreate import CallCreate
-from sqlmodel import Field
+from sqlmodel import Field, SQLModel
 
-class Call(CallCreate, table=True):
+class Call(CallCreate,SQLModel, table=True):
     __tablename__ = "calls"
 
     callId: str = Field(primary_key=True)

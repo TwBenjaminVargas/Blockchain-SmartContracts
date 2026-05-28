@@ -5,6 +5,7 @@ import logging
 from eth_account import Account
 from eth_account.messages import encode_defunct
 from web3 import Web3
+import exceptions.SignerExceptions as signer_exceptions
 
 logger = logging.getLogger(__name__)
 
@@ -32,28 +33,40 @@ class Signer:
         
         
     def get_signer_address(self, message_hexstr: str, signature_hex: str) -> str:
+        """
+        Recupera y valida la dirección de Ethereum asociada a una firma criptográfica.
+
+        Raises:
+            signer_exceptions.InvalidInputException: Si los parámetros de entrada no son válidos.
+            signer_exceptions.InvalidSignatureException: Si la firma está corrupta o falla el recover.
+        """
+        if not isinstance(message_hexstr, str) or not isinstance(signature_hex, str):
+            logger.error(f"Tipos de datos inválidos en get_signer_address. Message: {type(message_hexstr)}, Signature: {type(signature_hex)}")
+            raise signer_exceptions.InvalidInputException("El mensaje y la firma deben ser cadenas de texto.")
+
         try:
-            # Aplicar de forma interna el prefijo estándar \x19Ethereum Signed Message:\n84
+            # Aplica el prefijo estándar \x19Ethereum Signed Message:\n
             signable_message = encode_defunct(hexstr=message_hexstr)
             
-            #recuperar la dirección asociada a la firma
+            # Recupera la dirección asociada a la firma
             recovered_address = Account.recover_message(
                 signable_message, 
                 signature=signature_hex
             )
             
-            # Chequeo de consistencia: nos aseguramos que devolvió una address
             if not recovered_address:
-                raise ValueError("La dirección recuperada no tiene un formato válido de Ethereum.")
+                raise ValueError("La dirección recuperada está vacía.")
             
-            checksum_address = Web3.to_checksum_address(recovered_address)
+            return Web3.to_checksum_address(recovered_address)
             
-            logger.debug(f"Dirección del firmante recuperada con éxito: {checksum_address}")
-            return checksum_address
+        except (ValueError, TypeError) as crypto_err:
+            # Captura longitudes incorrectas, formatos hex inválidos o parámetros mal formados de la firma
+            logger.error(f"Firma criptográfica inválida o corrupta: {str(crypto_err)}", exc_info=True)
+            raise signer_exceptions.InvalidSignatureException("La firma provista no coincide o su formato es inválido.")
             
         except Exception as e:
-            logger.error(f"Fallo crítico al intentar recuperar el firmante: {str(e)}")
-            raise ValueError(f"Firma criptográfica inválida o corrupta: {str(e)}")  
+            logger.error(f"Fallo inesperado al recuperar el firmante: {str(e)}", exc_info=True)
+            raise signer_exceptions.InvalidSignatureException("No se pudo procesar la firma de Ethereum enviada.")  
         
     def sign_transaction(self, transaction_dict: dict) -> bytes:
         try:
