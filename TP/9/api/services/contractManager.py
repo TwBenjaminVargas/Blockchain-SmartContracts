@@ -328,6 +328,19 @@ class ContractManager:
             logger.error(f"Error crítico al construir la transacción register_proposal_tx: {str(e)}", exc_info=True)
             raise cm_exceptions.BlockchainTransactionException("No se pudo construir la transacción debido a un problema en el nodo emisor.")
     
+    def is_address_registered(self, account_address: str) -> bool:
+        """
+        Consulta al contrato Factory si una direccion se encuentra registrada.
+        """
+        try:
+            return self.contract.functions.isRegistered(
+                Web3.to_checksum_address(account_address)
+            ).call()
+        except Exception as e:
+            logger.error(f"Error executing isRegistered on-chain for {account_address}: {str(e)}")
+            raise cm_exceptions.BlockchainReadException(
+                "No se pudo verificar el estado de registro en la blockchain."
+            )
     def is_address_authorized(self, account_address: str) -> bool:
         """
         Consultando el estado de autorización (isAuthorized) en el Smart Contract.

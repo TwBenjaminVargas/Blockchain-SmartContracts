@@ -126,14 +126,7 @@ class DBManager:
     def createPendingUserIfNotExists(self, address: str, name: str, signature: str) -> User:
         """
         Instancia y guarda un usuario con estado 'pending' ÚNICAMENTE si no existe previamente.
-        Si ya existe, corta la ejecución de forma temprana lanzando una excepción de negocio.
-
-        Raises:
-            db_exceptions.InvalidInputTypeException: Si algún parámetro no es un string válido o está vacío.
-            db_exceptions.RecordAlreadyExistsException: Si el usuario ya existe en el almacenamiento local.
-            db_exceptions.DatabaseWriteException: Si ocurre un problema al persistir los datos.
         """
-        # Validación preventiva
         inputs = {"address": address, "name": name, "signature": signature}
         for field_name, value in inputs.items():
             if not isinstance(value, str) or not value.strip():
@@ -142,8 +135,7 @@ class DBManager:
 
         cleaned_address = address.strip()
 
-        #Verificación de existencia previa (Reutiliza tu método optimizado existUserLocal)
-        if self.existUserLocal(cleaned_address):
+        if self.existUser(cleaned_address):
             logger.warning(f"Intento de registro rechazado de forma temprana. El usuario ya existe: {cleaned_address}")
             raise db_exceptions.RecordAlreadyExistsException("El usuario con la dirección provista ya cuenta con un registro en el sistema.")
 
@@ -151,7 +143,8 @@ class DBManager:
             address=cleaned_address,
             name=name.strip(),
             signature=signature.strip(),
-            state=UserState.PENDING
+            state=UserState.PENDING,
+            nonce=0
         )
 
         logger.debug(f"Registrando nuevo usuario local PENDING para la wallet: {cleaned_address}")
@@ -160,17 +153,11 @@ class DBManager:
     def createPendingUser(self, address: str, name: str, signature: str) -> User:
         """
         Instancia y guarda un usuario con estado 'pending'
-
-        Raises:
-            db_exceptions.InvalidInputTypeException: Si algún parámetro no es un string válido o está vacío.
-            db_exceptions.RecordAlreadyExistsException: Si el usuario ya existe en el almacenamiento local.
-            db_exceptions.DatabaseWriteException: Si ocurre un problema al persistir los datos.
         """
-        # Validación preventiva
         inputs = {"address": address, "name": name, "signature": signature}
         for field_name, value in inputs.items():
             if not isinstance(value, str) or not value.strip():
-                logger.error(f"Parámetro inválido o vacío en createPendingUserIfNotExists: {field_name}={type(value)}")
+                logger.error(f"Parámetro inválido o vacío en createPendingUser: {field_name}={type(value)}")
                 raise db_exceptions.InvalidInputTypeException(f"El campo '{field_name}' debe ser una cadena de texto válida.")
 
         cleaned_address = address.strip()
@@ -179,12 +166,13 @@ class DBManager:
             address=cleaned_address,
             name=name.strip(),
             signature=signature.strip(),
-            state=UserState.PENDING
+            state=UserState.PENDING,
+            nonce=0
         )
 
         logger.debug(f"Registrando nuevo usuario local PENDING para la wallet: {cleaned_address}")
         return self._add(nuevo_usuario)
-
+    
     def getUser(self, address: str) -> User | None:
         """
         Recupera una entidad User completa desde el almacenamiento local.

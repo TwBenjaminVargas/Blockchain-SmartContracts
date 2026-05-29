@@ -21,7 +21,7 @@ import exceptions.databaseManagerExceptions as db_exceptions
 
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format="%(asctime)s - %(levelname)s - [%(name)s:%(lineno)d] - %(message)s"
 )
 logger = logging.getLogger("app")
@@ -95,7 +95,6 @@ async def custom_validation_exception_handler(request: Request, exc: RequestVali
         status_code=status.HTTP_400_BAD_REQUEST,
         content={"message": Messages.MISSING_FIELD}
     )
-
 
 @app.post(
     "/create", 
@@ -400,8 +399,6 @@ async def check_address_authorization(
             detail=Messages.INTERNAL_ERROR
         )
         
-    
-
 @app.get(
     "/calls/{call_id}",
     status_code=status.HTTP_200_OK,
@@ -523,7 +520,6 @@ async def get_closing_time_by_id(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=Messages.INTERNAL_ERROR
         )
-
 
 @app.get(
     "/contract-address",
@@ -650,3 +646,71 @@ async def get_proposal_data(
     except Exception as e:
         logger.error(f"Fallo no controlado en el endpoint GET /proposal-data: {str(e)}", exc_info=True)
         return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"message": Messages.INTERNAL_ERROR})
+    
+@app.get(
+    "/registrations/{address}",
+    status_code=status.HTTP_200_OK,
+    summary="Obtiene el estado de registro de una dirección en el sistema",
+)
+async def get_registration_status(
+    address: str = Path(..., description="Ethereum address (0x...)"),
+    db_manager: DBManager = Depends(get_db_manager),
+    contract_manager: ContractManager = Depends(get_contract_manager)
+):
+    try:
+        if not re.match(r"^0x[a-fA-F0-9]{40}$", address):
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"message": Messages.INVALID_ADDRESS}
+            )
+
+        # Intento de recuperacion local para evitar llamadas a la blockchain
+        try:
+            local_user = db_manager.getUser(address)
+            if local_user:
+                return JSONResponse(
+                    status_code=status.HTTP_200_OK,
+                    content={
+                        "status": local_user.state.value,
+                        "name": local_user.name,
+                        "nonce": local_user.nonce
+                    }
+                )
+        except db_exceptions.DatabaseConnectionException:
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content={"message": Messages.INTERNAL_ERROR}
+            )
+
+        # Flujo de rescate/fallback mediante consulta On-Chain
+        try:
+            is_reg = contract_manager.is_address_registered(address)
+            
+            if not is_reg:
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content={"message": Messages.INVALID_ADDRESS}
+                )
+                
+            is_auth = contract_manager.is_address_authorized(address)
+            
+            # Si esta registrado pero no autorizado, su estado es "registered"
+            account_status = "authorized" if is_auth else "registered"
+            
+            return JSONResponse(
+                status_code=status.HTTP_200_OK,
+                content={"status": account_status}
+            )
+
+        except contract_exceptions.BlockchainReadException:
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content={"message": Messages.INTERNAL_ERROR}
+            )
+
+    except Exception as e:
+        logger.error(f"Unhandled failure in GET /registrations/{address}: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"message": Messages.INTERNAL_ERROR}
+        )
