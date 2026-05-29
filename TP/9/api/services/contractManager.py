@@ -5,7 +5,8 @@ from fastapi import Depends
 from web3 import Web3
 from web3.providers import HTTPProvider
 from services.settings import Settings, get_settings
-from web3.exceptions import ContractLogicError, Web3ValidationError,TimeExhausted,TransactionNotFound
+from web3.types import BlockData
+from web3.exceptions import BadFunctionCallOutput, ContractLogicError, Web3ValidationError,TimeExhausted,TransactionNotFound
 import messages as Messages
 import os
 import exceptions.contractManagerExceptions as cm_exceptions
@@ -356,18 +357,30 @@ class ContractManager:
     
     def get_call_details(self, call_id_hex: str) -> tuple[str, str]:
         try:
+            # Validación defensiva del formato del callId
+            if not call_id_hex or not call_id_hex.startswith("0x"):
+                raise cm_exceptions.BlockchainReadException("El formato del identificador del llamado es inválido.")
+    
             logger.debug(f"Consultando detalles del llamado para CallId: {call_id_hex}")
             
             call_id_bytes = self.w3.to_bytes(hexstr=call_id_hex)
             creator, cfp_address = self.contract.functions.calls(call_id_bytes).call()
             
+            if creator == "0x0000000000000000000000000000000000000000":
+                logger.warning(f"El llamado {call_id_hex} se consultó pero no existe en el Smart Contract.")
+                return None, None
+            
             logger.debug(f"Detalles recuperados - Creador: {creator}, CFP: {cfp_address}")
             return creator, cfp_address
             
+        except (BadFunctionCallOutput, Web3ValidationError) as contract_err:
+            logger.error(f"Error de interfaz al consultar la factoría. Posible ABI desactualizado o contrato corrupto: {str(contract_err)}")
+            raise cm_exceptions.InvalidContractAddressException("La interfaz del contrato de la factoría devolvió una salida inesperada.")
+            
         except Exception as e:
-            logger.error(f"Error al leer el mapeo de llamadas en el contrato: {str(e)}")
-            raise e
-    
+            logger.error(f"Error crítico al leer el mapeo de llamadas en el contrato: {str(e)}", exc_info=True)
+            raise cm_exceptions.BlockchainReadException("No se pudieron recuperar los detalles del llamado desde la red blockchain.")
+        
     def execute_transaction(self, raw_tx_bytes: bytes) -> str:
         # Validación defensiva inicial
         if not raw_tx_bytes:
@@ -543,6 +556,43 @@ class ContractManager:
         logger.warning(f"No se encontró un mapeo específico para el error de la EVM: '{cle_message}'")
         return Messages.INTERNAL_ERROR
     
+    def get_block_data_by_number(self, block_number: int) -> BlockData:
+        """
+        Consulta on-chain y recupera toda la información técnica de un bloque específico.
+
+        :param block_number: Número de bloque a consultar.
+        :return: Objeto BlockData (un diccionario con los datos nativos de la EVM).
+        """
+        try:
+            if block_number is None or block_number < 0:
+                logger.error(f"Se intentó consultar un número de bloque inválido: {block_number}")
+                raise cm_exceptions.BlockchainReadException(
+                    "El número de bloque provisto no es válido."
+                )
+
+            logger.debug(f"Consultando metadatos en el nodo RPC para el bloque número: {block_number}")
+
+
+            # El parámetro full_transactions=False hace que solo devuelva los hashes de las TXs, 
+            # optimizando la velocidad y el consumo de memoria.
+            block_data = self.w3.eth.get_block(block_number, full_transactions=False)
+
+            if not block_data:
+                logger.warning(f"El bloque {block_number} fue consultado pero el nodo devolvió un objeto vacío.")
+                raise cm_exceptions.BlockchainReadException(
+                    f"El bloque número {block_number} no pudo ser encontrado en la cadena actual."
+                )
+
+            logger.debug(f"Datos de bloque {block_number} recuperados. Timestamp Unix: {block_data.get('timestamp')}")
+            return block_data
+
+        except Exception as e:
+            # Captura errores de infraestructura (Nodo RPC caído, timeouts de red, etc.)
+            logger.error(f"Error crítico de infraestructura al obtener el bloque {block_number}: {str(e)}", exc_info=True)
+            raise cm_exceptions.BlockchainReadException(
+                "No se pudieron recuperar los datos del bloque desde la red blockchain."
+            )
+    
     def get_cfp_contract_instance(self, cfp_address: str):
         try:
             logger.debug(f"Generando instancia de contrato CFP para la dirección: {cfp_address}")
@@ -561,17 +611,34 @@ class ContractManager:
     
     def get_cfp_closing_time_by_address(self, cfp_address: str) -> int:
         try:
-            logger.debug(f"Consultando variable closingTime en la dirección: {cfp_address}")
-            
+            if not cfp_address or not self.w3.is_address(cfp_address):
+                logger.error(f"Formato de dirección Ethereum inválido: '{cfp_address}'")
+                raise cm_exceptions.InvalidContractAddressException(
+                    "La dirección provista para el contrato CFP no es una dirección válida."
+                )
+
+            #Instanciación y llamada view on-chain
             cfp_contract = self.get_cfp_contract_instance(cfp_address)
             closing_time_timestamp = cfp_contract.functions.closingTime().call()
-            
+
             logger.debug(f"Timestamp de cierre recuperado: {closing_time_timestamp}")
             return closing_time_timestamp
-            
+
+        except (BadFunctionCallOutput, Web3ValidationError) as contract_err:
+            # Se ejecuta si la dirección no tiene código desplegado (EOA) o si el contrato no implementa 'closingTime'
+            logger.error(
+                f"La dirección {cfp_address} no responde a la interfaz CFP esperada (Falta variable closingTime): {str(contract_err)}"
+            )
+            raise cm_exceptions.InvalidContractAddressException(
+                "La dirección provista no corresponde a un Smart Contract de propuesta activo o compatible."
+            )
+
         except Exception as e:
-            logger.error(f"Error al obtener el closingTime del contrato CFP en {cfp_address}: {str(e)}")
-            raise e
+            # Captura errores de infraestructura (Nodo RPC caído, timeouts de red, etc.)
+            logger.error(f"Error crítico de infraestructura al obtener el closingTime en {cfp_address}: {str(e)}", exc_info=True)
+            raise cm_exceptions.BlockchainReadException(
+                "No se pudo recuperar la fecha de cierre del llamado desde la red blockchain."
+            )
     
     def get_factory_contract_owner(self) -> str:
         try:
@@ -587,19 +654,31 @@ class ContractManager:
     
     def get_cfp_proposal_data(self, cfp_address: str, proposal_hex: str) -> tuple[str, int, int]:
         try:
+            if not self.w3.is_address(cfp_address):
+                logger.error(f"Dirección de contrato CFP con formato inválido provista: {cfp_address}")
+                raise cm_exceptions.InvalidContractAddressException("La dirección provista para el contrato CFP no es una dirección Ethereum válida.")
+
+            if not proposal_hex or not proposal_hex.startswith("0x"):
+                raise cm_exceptions.BlockchainReadException("El formato del identificador de la propuesta es inválido.")
+
             logger.debug(f"Consultando datos de propuesta {proposal_hex} en el contrato CFP {cfp_address}")
-            
+
             cfp_contract = self.get_cfp_contract_instance(cfp_address)
             proposal_bytes = self.w3.to_bytes(hexstr=proposal_hex)
-            
+
             sender, block_number, timestamp = cfp_contract.functions.proposalData(proposal_bytes).call()
-            
+
             logger.debug(f"Datos recuperados - Sender: {sender}, Bloque: {block_number}, Timestamp: {timestamp}")
             return sender, block_number, timestamp
-            
+
+        except BadFunctionCallOutput:
+            # Se ejecuta si la dirección apunta a un contrato que NO implementa la función 'proposalData' (EOA o contrato erróneo)
+            logger.error(f"La dirección {cfp_address} no corresponde a un contrato CFP válido o no implementa 'proposalData'.")
+            raise cm_exceptions.InvalidContractAddressException("La dirección provista no corresponde a un Smart Contract de propuesta activo.")
+
         except Exception as e:
-            logger.error(f"Error al leer el mapeo proposalData en el contrato CFP: {str(e)}")
-            raise e
+            logger.error(f"Error de infraestructura al leer el mapeo proposalData en el contrato CFP: {str(e)}", exc_info=True)
+            raise cm_exceptions.BlockchainReadException("No se pudieron recuperar los datos de la propuesta desde el contrato on-chain.")
         
     def generate_merkle_tree(self, call_id: str, title: str, description: str, files: list[str]) -> tuple[str, dict[str, list[str]], str, str]:
         """

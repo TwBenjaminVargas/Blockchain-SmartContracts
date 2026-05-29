@@ -24,3 +24,9 @@ class Call(SQLModel, table=True):
         nullable=True,
         description="Dirección física del contrato inteligente en la red"
     )
+    
+    closingTime: Optional[int] = Field(
+        default=None,
+        nullable=True,
+        description="Timestamp Unix que determina la fecha y hora límite de cierre de la convocatoria"
+    )

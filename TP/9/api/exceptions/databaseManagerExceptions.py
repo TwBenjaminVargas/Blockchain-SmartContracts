@@ -27,3 +27,6 @@ class InvalidProposalDataException(AppBaseException):
 class CallNotFoundException(AppBaseException):
     """Lanzada cuando un llamado consultado no existe en el almacenamiento local."""
     pass
+class ProposalNotFoundException(AppBaseException):
+    """Lanzada cuando la propuesta solicitada no existe en la base de datos local."""
+    pass

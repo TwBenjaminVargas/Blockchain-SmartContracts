@@ -236,7 +236,7 @@ async def register(
     status_code=status.HTTP_201_CREATED,
     summary="Registra una propuesta de forma anónima asociándola a un llamado"
 )
-async def register_proposal_endpoint(
+async def register_proposal(
     payload: ProposalRegister,
     db_manager: DBManager = Depends(get_db_manager),
     signer: Signer = Depends(get_signer),
@@ -244,12 +244,25 @@ async def register_proposal_endpoint(
 ):
     try:
         try:
-            if not db_manager.existsCall(payload.callId):
-                return JSONResponse(
-                    status_code=status.HTTP_404_NOT_FOUND, 
-                    content={"message": Messages.CALLID_NOT_FOUND}
-                )
+            if db_manager.existsCall(payload.callId):
+                logger.debug(f"CallId {payload.callId} validado localmente en la base de datos.")
+            else:
+                logger.warning(f"CallId {payload.callId} no encontrado en BD local. Buscando on-chain...")
+                _, cfp_address = contract_manager.get_call_details(payload.callId)
+                
+                if not cfp_address or cfp_address == "0x0000000000000000000000000000000000000000":
+                    return JSONResponse(
+                        status_code=status.HTTP_404_NOT_FOUND, 
+                        content={"message": Messages.CALLID_NOT_FOUND}
+                    )
+                logger.info(f"CallId {payload.callId} verificado con éxito on-chain en el contrato {cfp_address}.")
+
         except db_exceptions.DatabaseConnectionException:
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+                content={"message": Messages.INTERNAL_ERROR}
+            )
+        except (contract_exceptions.InvalidContractAddressException, contract_exceptions.BlockchainReadException):
             return JSONResponse(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
                 content={"message": Messages.INTERNAL_ERROR}
@@ -267,7 +280,6 @@ async def register_proposal_endpoint(
                 status_code=status.HTTP_403_FORBIDDEN, 
                 content={"message": Messages.ALREADY_REGISTERED}
             )
-            
         try:
             tx_not_signed = contract_manager.register_proposal(
                 from_address=signer.address,
@@ -275,18 +287,20 @@ async def register_proposal_endpoint(
                 proposal_hex=proposal_id 
             )
 
-            # Firmado utilizando la llave privada de la API
+
             tx_signed_bytes = signer.sign_transaction(tx_not_signed)
 
-            # Difusión / Transmisión de la transacción cruda al mempool de la red
+
             tx_hash_hex = contract_manager.execute_transaction(tx_signed_bytes)
             
-            # Espera activa de confirmación del bloque (Inspecciona internamente el estatus del recibo)
             receipt = contract_manager.get_transaction_receipt(tx_hash_hex)
             logger.info(f"Confirmación on-chain exitosa para propuesta {proposal_id} en el bloque {receipt.get('blockNumber')}")
-
+            
+            mining_block = receipt.get('blockNumber')
+            block_data = contract_manager.get_block_data_by_number(block_number=mining_block)
+            block_timestamp = block_data.get('timestamp')
+            
         except contract_exceptions.BlockchainContractLogicException as bcle:
-            # El mensaje extraído de la simulación del revert se traduce al diccionario de mensajes de la API
             error_message = contract_manager.map_revert_reason_to_message(bcle.message)
             
             if error_message == Messages.ALREADY_REGISTERED:
@@ -309,11 +323,14 @@ async def register_proposal_endpoint(
                 call_id=payload.callId,
                 proposal_id=proposal_id,
                 title=payload.title,
-                title_hash=t_hash,
+                title_hash=t_hash,               
                 description=payload.description,
-                description_hash=d_hash,
-                files=payload.files,
-                proofs=merkle_proofs
+                description_hash=d_hash,         
+                files=payload.files,             
+                proofs=merkle_proofs,            
+                created=block_timestamp,
+                blocknumber=mining_block,
+                sender=receipt.get('from')       
             )
         except db_exceptions.RecordAlreadyExistsException:
             return JSONResponse(
@@ -327,7 +344,6 @@ async def register_proposal_endpoint(
                 content={"message": Messages.INTERNAL_ERROR}
             )
 
-        #RETORNO EXITOSO CONFORMADO (Requisito 201)
         return JSONResponse(
             status_code=status.HTTP_201_CREATED,
             content={
@@ -343,7 +359,7 @@ async def register_proposal_endpoint(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
             content={"message": Messages.INTERNAL_ERROR}
         )
-    
+            
 @app.get(
     "/authorized/{address}",
     status_code=status.HTTP_200_OK,
@@ -458,7 +474,7 @@ async def get_call(
             content={"message": Messages.INTERNAL_ERROR}
         )
     
-    
+ 
 @app.get(
     "/closing-time/{call_id}",
     status_code=status.HTTP_200_OK,
@@ -530,97 +546,107 @@ async def get_factory_address(
         )
 
 @app.get(
-    "/contract-owner",
-    status_code=status.HTTP_200_OK,
-    summary="Obtiene la dirección del dueño del contrato factoría",
-    response_description="Retorna la dirección de Ethereum del propietario (owner)"
-)
-async def get_factory_owner(
-    manager: ContractManager = Depends(get_contract_manager)
-):
-    try:
-        owner_address = manager.get_factory_contract_owner()
-        return {"address": owner_address}
-        
-    except ContractLogicError as cle:
-        logger.error(f"Error de lógica en la EVM al consultar el dueño: {cle.message}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=Messages.INTERNAL_ERROR
-        )
-        
-    except Exception as e:
-        logger.error(f"Fallo no controlado en el endpoint GET /contract-owner: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=Messages.INTERNAL_ERROR
-        )
-
-@app.get(
     "/proposal-data/{call_id}/{proposal}",
     status_code=status.HTTP_200_OK,
-    summary="Obtiene la información detallada de una propuesta",
-    response_description="Retorna el emisor, número de bloque y timestamp de la propuesta"
+    summary="Obtiene la información técnica y procedencia de una propuesta registrada"
 )
-async def get_proposal_data_by_id(
-    call_id: str = Path(..., description="Hash que identifica al llamado"),
-    proposal: str = Path(..., description="Hash que identifica a la propuesta"),
-    manager: ContractManager = Depends(get_contract_manager)
+async def get_proposal_data(
+    call_id: str = Path(..., description="Hash identificador del llamado (0x...)"),
+    proposal: str = Path(..., description="Hash raíz de Merkle de la propuesta (0x...)"),
+    db_manager: DBManager = Depends(get_db_manager),
+    contract_manager: ContractManager = Depends(get_contract_manager)
 ):
-    if not re.match(r"^0x[a-fA-F0-9]{64}$", call_id):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=Messages.INVALID_CALLID
-        )
-        
-    if not re.match(r"^0x[a-fA-F0-9]{64}$", proposal):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=Messages.INVALID_PROPOSAL
-        )
-
     try:
-        creator_address, cfp_address = manager.get_call_details(call_id_hex=call_id)
-        
-        address_zero = "0x" + "0" * 40
-        if creator_address == address_zero or cfp_address == address_zero:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=Messages.CALLID_NOT_FOUND
-            )
+        if not re.match(r"^0x[a-fA-F0-9]{64}$", call_id):
+            return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"message": Messages.INVALID_CALLID})
             
-        sender, block_number, timestamp = manager.get_cfp_proposal_data(
-            cfp_address=cfp_address, 
-            proposal_hex=proposal
-        )
-        
-        if sender == address_zero or block_number == 0 or timestamp == 0:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=Messages.PROPOSAL_NOT_FOUND
-            )
-            
-        iso_date = datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat().replace("+00:00", "Z")
-        
-        return {
+        if not re.match(r"^0x[a-fA-F0-9]{64}$", proposal):
+            return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"message": Messages.INVALID_PROPOSAL})
+
+        local_data = None
+        try:
+            # Trae una tupla (proposal_record, closing_time)
+            local_data = db_manager.get_proposal_with_call_state(call_id, proposal)
+        except db_exceptions.DatabaseConnectionException:
+            return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"message": Messages.INTERNAL_ERROR})
+
+        is_locally_registered = local_data is not None
+
+
+        sender: str
+        block_number: int
+        timestamp_unix: int
+        closing_time_unix: int
+        proposal_record = None
+
+
+        try:
+            if is_locally_registered:
+                proposal_record, closing_time_local = local_data
+                logger.debug(f"Propuesta {proposal} y llamado encontrados localmente. Minimizando tráfico con el nodo RPC.")
+                
+                sender = proposal_record.sender
+                block_number = proposal_record.blocknumber
+                timestamp_unix = proposal_record.created
+                
+                if closing_time_local is not None:
+                    closing_time_unix = closing_time_local
+                else:
+                    logger.debug("Falta 'closingTime' local. Realizando consulta de rescate a la Blockchain.")
+                    _, cfp_address = contract_manager.get_call_details(call_id)
+                    if cfp_address == "0x0000000000000000000000000000000000000000":
+                        return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={"message": Messages.CALLID_NOT_FOUND})
+                    closing_time_unix = contract_manager.get_cfp_closing_time_by_address(cfp_address)
+            else:
+                logger.debug(f"Propuesta {proposal} ausente en BD local. Extrayendo auditoría de la EVM.")
+                
+                _, cfp_address = contract_manager.get_call_details(call_id)
+                if cfp_address == "0x0000000000000000000000000000000000000000":
+                    return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={"message": Messages.CALLID_NOT_FOUND})
+
+                sender, block_number, timestamp_unix = contract_manager.get_cfp_proposal_data(cfp_address, proposal)
+                
+                if block_number == 0:
+                    return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={"message": Messages.PROPOSAL_NOT_FOUND})
+
+                closing_time_unix = contract_manager.get_cfp_closing_time_by_address(cfp_address)
+
+        except contract_exceptions.InvalidContractAddressException:
+            return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={"message": Messages.CALLID_NOT_FOUND})
+        except contract_exceptions.BlockchainReadException:
+            return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"message": Messages.INTERNAL_ERROR})
+
+
+        current_time_unix = int(datetime.now(timezone.utc).timestamp())
+        call_state = "open" if current_time_unix < closing_time_unix else "closed"
+
+        response_content = {
             "sender": sender,
             "blockNumber": block_number,
-            "timestamp": iso_date
+            "timestamp": datetime.fromtimestamp(timestamp_unix, tz=timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+            "estado": call_state
         }
-        
-    except HTTPException as http_ex:
-        raise http_ex
-        
-    except ContractLogicError as cle:
-        logger.error(f"Error de lógica en la EVM al consultar datos de la propuesta: {cle.message}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=Messages.INTERNAL_ERROR
-        )
-        
+
+        if is_locally_registered and proposal_record:
+            response_content["title"] = proposal_record.title
+            response_content["description"] = proposal_record.description
+            
+            full_proofs = db_manager.get_proof(proposal)
+            if full_proofs:
+                # Acceso seguro mediante introspección soportando camelCase o snake_case
+                t_hash_key = getattr(proposal_record, "titleHash", getattr(proposal_record, "title_hash", None))
+                d_hash_key = getattr(proposal_record, "descriptionHash", getattr(proposal_record, "description_hash", None))
+                call_id_key = call_id.lower()
+                
+                filtered_proofs = {}
+                for key in [call_id_key, t_hash_key, d_hash_key]:
+                    if key and key in full_proofs:
+                        filtered_proofs[key] = [h.lower() for h in full_proofs[key]]
+                
+                response_content["proof"] = filtered_proofs
+
+        return JSONResponse(status_code=status.HTTP_200_OK, content=response_content)
+
     except Exception as e:
-        logger.error(f"Fallo no controlado en el endpoint GET /proposal-data: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=Messages.INTERNAL_ERROR
-        )
+        logger.error(f"Fallo no controlado en el endpoint GET /proposal-data: {str(e)}", exc_info=True)
+        return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"message": Messages.INTERNAL_ERROR})

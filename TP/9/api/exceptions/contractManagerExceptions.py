@@ -46,3 +46,11 @@ class TransactionRevertedException(AppBaseException):
 class TransactionNotFoundException(AppBaseException):
     """Lanzada cuando el hash provisto no existe en el mempool ni en el histórico del nodo."""
     pass
+
+class BlockchainReadException(AppBaseException):
+    """Lanzada cuando falla una consulta de lectura (view) al nodo RPC por problemas de conectividad."""
+    pass
+
+class InvalidContractAddressException(AppBaseException):
+    """Lanzada cuando se intenta interactuar con una dirección que no es un contrato o no implementa la interfaz requerida."""
+    pass

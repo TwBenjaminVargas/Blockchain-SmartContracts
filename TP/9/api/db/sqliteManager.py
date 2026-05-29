@@ -7,7 +7,7 @@ from models.persistence.Proposal import Proposal
 import logging
 import exceptions.databaseManagerExceptions as db_exceptions
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
-from typing import TypeVar
+from typing import TypeVar, Optional, Tuple
 
 T = TypeVar("T", bound=SQLModel)
 
@@ -221,20 +221,33 @@ class DBManager:
             logger.error(f"Error al verificar existencia de propuesta {proposal_id}: {str(db_err)}")
             raise db_exceptions.DatabaseConnectionException("Error de base de datos.")
 
-    def register_proposal(self, call_id: str, proposal_id: str, title: str, title_hash: str, 
-                          description: str, description_hash: str, files: list[str], proofs: dict) -> Proposal:
-        """Crea el objeto Proposal serializando las estructuras complejas y las persiste."""
+    def register_proposal(
+        self, 
+        call_id: str, 
+        proposal_id: str, 
+        title: str, 
+        title_hash: str, 
+        description: str, 
+        description_hash: str, 
+        files: list, 
+        proofs: dict,
+        created: int,
+        blocknumber: int,
+        sender: str
+    ):
         import json
-        
         new_proposal = Proposal(
-            callId=call_id.lower(),
             proposalId=proposal_id.lower(),
+            callId=call_id.lower(),
             title=title,
-            titleHash=title_hash,
+            titleHash=title_hash.lower(),
             description=description,
-            descriptionHash=description_hash,
+            descriptionHash=description_hash.lower(),
             filesJson=json.dumps(files),
-            proofsJson=json.dumps(proofs)
+            proofsJson=json.dumps(proofs),
+            created=created,
+            blocknumber=blocknumber,
+            sender=sender.lower()
         )
         return self._add(new_proposal)
 
@@ -255,6 +268,59 @@ class DBManager:
         if not proposal:
             return {}
         return json.loads(proposal.proofsJson)
+
+    def getProposal(self, proposal_id: str) -> Proposal | None:
+        """
+        Busca y retorna una propuesta por su ID (raíz de Merkle) desde la BD local.
+        """
+        try:
+            with Session(self.engine) as session:
+                statement = select(Proposal).where(Proposal.proposalId == proposal_id.lower())
+                results = session.exec(statement)
+                return results.first()
+        except Exception as e:
+            logger.error(f"Error al consultar la propuesta {proposal_id} en la base de datos: {str(e)}")
+            raise db_exceptions.DatabaseConnectionException("Error de conexión con el almacenamiento local.")
+           
+    def get_proposal_with_call_state(self, call_id: str, proposal_id: str) -> Optional[Tuple[Proposal, int]]:
+        """
+        Recupera una propuesta vinculada a un llamado y obtiene de forma eficiente 
+        el 'closingTime' desde la tabla de llamados en un solo viaje a la base de datos (JOIN).
+
+        :param call_id: Hash identificador del llamado (0x...)
+        :param proposal_id: Hash raíz de Merkle de la propuesta (0x...)
+        :return: Una tupla (Proposal, closingTime) si existe coincidencia, de lo contrario None.
+        """
+        try:
+            logger.debug(
+                f"Ejecutando JOIN en BD para Proposal: {proposal_id} y CallId: {call_id}"
+            )
+            with Session(self.engine) as session:
+                statement = (
+                    select(Proposal, Call.closingTime)
+                    .join(Call, Proposal.callId == Call.callId)
+                    .where(
+                        Proposal.callId == call_id.lower(),
+                        Proposal.proposalId == proposal_id.lower()
+                    )
+                )
+                result = session.exec(statement).first()
+
+            if result:
+                logger.debug(f"Propuesta {proposal_id} y su closingTime encontrados con éxito localmente.")
+            else:
+                logger.warning(f"No se encontró ninguna coincidencia en BD para la combinación CallId/Proposal provista.")
+
+            return result
+
+        except Exception as e:
+            logger.error(
+                f"Fallo crítico de persistencia al intentar recuperar propuesta con JOIN {proposal_id}: {str(e)}", 
+                exc_info=True
+            )
+            raise db_exceptions.DatabaseConnectionException(
+                "Error de infraestructura al consultar el almacenamiento local de propuestas."
+            )
 
     def getCall(self, call_id: str) -> Call | None:
         """
