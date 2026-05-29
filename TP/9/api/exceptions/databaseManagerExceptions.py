@@ -23,3 +23,7 @@ class TooManyFilesException(AppBaseException):
 class InvalidProposalDataException(AppBaseException):
     """Lanzada cuando un hash de archivo está malformado o duplicado."""
     pass
+
+class CallNotFoundException(AppBaseException):
+    """Lanzada cuando un llamado consultado no existe en el almacenamiento local."""
+    pass

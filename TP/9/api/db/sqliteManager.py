@@ -1,7 +1,7 @@
 from fastapi import Depends
 from services.settings import Settings, get_settings
 from sqlmodel import Field, Session, SQLModel, create_engine,select, func
-from models.persistence.Call import Call
+from models.persistence.Call import Call, CallState
 from models.persistence.User import User, UserState
 from models.persistence.Proposal import Proposal
 import logging
@@ -91,7 +91,7 @@ class DBManager:
             description=description.strip(),
             signature=signature.strip(),
             creator=creator_address.strip(),
-            state="PENDING"
+            state=CallState.PENDING
         )
         
         return self._add(nuevo_llamado)
@@ -255,6 +255,19 @@ class DBManager:
         if not proposal:
             return {}
         return json.loads(proposal.proofsJson)
+
+    def getCall(self, call_id: str) -> Call | None:
+        """
+        Busca un llamado registrado localmente por su callId.
+        Retorna la entidad Call si existe, o None si no es encontrada.
+        """
+        try:
+            with Session(self.engine) as session:
+                statement = select(Call).where(Call.callId == call_id.lower())
+                return session.exec(statement).first()
+        except SQLAlchemyError as db_err:
+            logger.error(f"Error al recuperar el llamado {call_id}: {str(db_err)}")
+            raise db_exceptions.DatabaseConnectionException("Error de lectura en el almacenamiento local.")
 
 def get_db_manager(settings: Settings = Depends(get_settings)) -> DBManager:
     """

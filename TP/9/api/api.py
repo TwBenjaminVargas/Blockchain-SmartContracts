@@ -5,6 +5,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 import messages as Messages
 from services.signer import get_signer, Signer
+from models.persistence.Call import CallState
 from models.CallCreate import CallCreate
 from models.UserRegister import UserRegister
 from models.ProposalRegister import ProposalRegister
@@ -236,7 +237,7 @@ async def register(
     summary="Registra una propuesta de forma anónima asociándola a un llamado",
     response_description="La propuesta ha sido procesada e indexada mediante su árbol de Merkle",
 )
-async def register_proposal_endpoint(
+async def register_proposal(
     payload: ProposalRegister,
     db_manager: DBManager = Depends(get_db_manager),
     contract_manager: ContractManager = Depends(get_contract_manager)
@@ -337,49 +338,73 @@ async def check_address_authorization(
 @app.get(
     "/calls/{call_id}",
     status_code=status.HTTP_200_OK,
-    summary="Obtiene los detalles de un llamado específico",
-    response_description="Retorna la dirección del creador y del contrato del llamado"
+    summary="Obtiene la información de un llamado registrado localmente"
 )
-async def get_call_by_id(
-    call_id: str = Path(..., description="Hash que identifica al llamado"),
-    manager: ContractManager = Depends(get_contract_manager)
+async def get_call(
+    call_id: str = Path(..., description="Hash identificador del llamado (0x...)"),
+    db_manager: DBManager = Depends(get_db_manager)
 ):
-    if not re.match(r"^0x[a-fA-F0-9]{64}$", call_id):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=Messages.INVALID_CALLID
-        )
-
     try:
-        creator_address, cfp_address = manager.get_call_details(call_id_hex=call_id)
-        
-        address_zero = "0x" + "0" * 40
-        if creator_address == address_zero or cfp_address == address_zero:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=Messages.CALLID_NOT_FOUND
+        # Validación estricta del formato del callId (Requisito 400)
+        if not re.match(r"^0x[a-fA-F0-9]{64}$", call_id):
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST, 
+                content={"message": Messages.INVALID_CALLID}
+            )
+
+        # Búsqueda del registro en la base de datos local
+        try:
+            call_record = db_manager.getCall(call_id)
+        except db_exceptions.DatabaseConnectionException:
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+                content={"message": Messages.INTERNAL_ERROR}
+            )
+
+        #Control de existencia (Requisito 404)
+        if not call_record:
+            return JSONResponse(
+                status_code=status.HTTP_404_NOT_FOUND, 
+                content={"message": Messages.CALLID_NOT_FOUND}
+            )
+
+        current_state = call_record.state
+
+        if current_state == CallState.PENDING:
+            return JSONResponse(
+                status_code=status.HTTP_200_OK,
+                content={
+                    "title": call_record.title,
+                    "description": call_record.description,
+                    "status": "pending"
+                }
             )
             
-        return {
-            "creator": creator_address,
-            "cfp": cfp_address
-        }
+        elif current_state == CallState.CREATED:
+            return JSONResponse(
+                status_code=status.HTTP_200_OK,
+                content={
+                    "creator": call_record.creator,
+                    "cfp": call_record.contractAddress if call_record.contractAddress else "0x0000000000000000000000000000000000000000",
+                    "title": call_record.title,
+                    "description": call_record.description,
+                    "status": "created"
+                }
+            )
+            
+        else:
+            # Salvaguarda por si existiera otro estado interno no mapeado
+            logger.error(f"Estado inesperado '{call_record.state}' para el llamado {call_id}")
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+                content={"message": Messages.INTERNAL_ERROR}
+            )
 
-    except HTTPException as http_ex:
-        raise http_ex
-        
-    except ContractLogicError as cle:
-        logger.error(f"Error de lógica en el contrato al buscar el llamado: {cle.message}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=Messages.INTERNAL_ERROR
-        )
-        
     except Exception as e:
-        logger.error(f"Fallo no controlado en el endpoint GET /calls: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=Messages.INTERNAL_ERROR
+        logger.error(f"Fallo no controlado en GET /calls/{{call_id}}: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            content={"message": Messages.INTERNAL_ERROR}
         )
     
     
