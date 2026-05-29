@@ -70,23 +70,46 @@ class Signer:
         
     def sign_transaction(self, transaction_dict: dict) -> bytes:
         try:
-            logger.debug("Iniciando el firmado offline de la transacción para el destino: %s", transaction_dict.get("to"))
-            
-            #Firmar la transacción utilizando la cuenta interna
+            # Validación temprana de seguridad defensiva
+            if not transaction_dict:
+                raise signer_exceptions.InvalidTransactionStructureException(
+                    "El diccionario de la transacción no puede estar vacío."
+                )
+
+            logger.debug(
+                "Iniciando el firmado offline de la transacción para el destino: %s", 
+                transaction_dict.get("to")
+            )
+
+            # Firmar la transacción utilizando la cuenta interna
             signed_tx = self._account.sign_transaction(transaction_dict)
-            
-            #Extraemos los bytes del atributo rawTransaction
+
+            # Extraemos los bytes del atributo rawTransaction
             raw_tx_bytes = signed_tx.raw_transaction
-            
+
             logger.debug("Transacción firmada criptográficamente con éxito de forma offline (Bytes listos).")
             return raw_tx_bytes
-            
+
         except ValueError as ve:
-            logger.error("Error de validación en la estructura de la transacción: %s", str(ve))
-            raise ve
+            # Ocurre si faltan campos obligatorios (nonce, gas, to, chainId) o tienen tipos incorrectos
+            logger.error("Campos inválidos o faltantes en el diccionario de la transacción: %s", str(ve))
+            raise signer_exceptions.InvalidTransactionStructureException(
+                "La estructura de la transacción provista es inválida para el firmado."
+            )
+
+        except (TypeError, AttributeError) as te:
+            # Ocurre si la clave privada de la cuenta interna o el formato del diccionario están corruptos
+            logger.error("Error de tipo o configuración en la clave privada o cuenta emisora: %s", str(te))
+            raise signer_exceptions.CryptographicSigningException(
+                "Error de configuración interna en la clave criptográfica emisora."
+            )
+
         except Exception as e:
-            logger.error("Fallo crítico al firmar la transacción: %s", str(e))
-            raise e
+            # Cualquier otro fallo crítico inesperado de la librería subyacente
+            logger.error("Fallo crítico inesperado al firmar la transacción de forma offline: %s", str(e), exc_info=True)
+            raise signer_exceptions.CryptographicSigningException(
+                "No se pudo completar el firmado digital de la transacción."
+            )
 
 def get_signer(settings: Settings = Depends(get_settings)) -> Signer:
     return Signer(

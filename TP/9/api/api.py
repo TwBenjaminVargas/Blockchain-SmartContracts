@@ -234,23 +234,27 @@ async def register(
 @app.post(
     "/register-proposal",
     status_code=status.HTTP_201_CREATED,
-    summary="Registra una propuesta de forma anónima asociándola a un llamado",
-    response_description="La propuesta ha sido procesada e indexada mediante su árbol de Merkle",
+    summary="Registra una propuesta de forma anónima asociándola a un llamado"
 )
-async def register_proposal(
+async def register_proposal_endpoint(
     payload: ProposalRegister,
     db_manager: DBManager = Depends(get_db_manager),
+    signer: Signer = Depends(get_signer),
     contract_manager: ContractManager = Depends(get_contract_manager)
 ):
     try:
-        # Verificar existencia del llamado padre (Requisito 404)
         try:
             if not db_manager.existsCall(payload.callId):
-                return JSONResponse(status_code=404, content={"message": Messages.CALLID_NOT_FOUND})
+                return JSONResponse(
+                    status_code=status.HTTP_404_NOT_FOUND, 
+                    content={"message": Messages.CALLID_NOT_FOUND}
+                )
         except db_exceptions.DatabaseConnectionException:
-            return JSONResponse(status_code=500, content={"message": Messages.INTERNAL_ERROR})
-
-        # Generación del proposalId (Raíz Merkle) y sus pruebas estructurales
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+                content={"message": Messages.INTERNAL_ERROR}
+            )
+            
         proposal_id, merkle_proofs, t_hash, d_hash = contract_manager.generate_merkle_tree(
             call_id=payload.callId,
             title=payload.title,
@@ -258,11 +262,48 @@ async def register_proposal(
             files=payload.files
         )
 
-        # Control de colisión por duplicados
         if db_manager.existsProposal(proposal_id):
-            return JSONResponse(status_code=403, content={"message": Messages.ALREADY_REGISTERED})
+            return JSONResponse(
+                status_code=status.HTTP_403_FORBIDDEN, 
+                content={"message": Messages.ALREADY_REGISTERED}
+            )
+            
+        try:
+            tx_not_signed = contract_manager.register_proposal(
+                from_address=signer.address,
+                call_id_hex=payload.callId,
+                proposal_hex=proposal_id 
+            )
 
-        # Guardar registro completo en base de datos local
+            # Firmado utilizando la llave privada de la API
+            tx_signed_bytes = signer.sign_transaction(tx_not_signed)
+
+            # Difusión / Transmisión de la transacción cruda al mempool de la red
+            tx_hash_hex = contract_manager.execute_transaction(tx_signed_bytes)
+            
+            # Espera activa de confirmación del bloque (Inspecciona internamente el estatus del recibo)
+            receipt = contract_manager.get_transaction_receipt(tx_hash_hex)
+            logger.info(f"Confirmación on-chain exitosa para propuesta {proposal_id} en el bloque {receipt.get('blockNumber')}")
+
+        except contract_exceptions.BlockchainContractLogicException as bcle:
+            # El mensaje extraído de la simulación del revert se traduce al diccionario de mensajes de la API
+            error_message = contract_manager.map_revert_reason_to_message(bcle.message)
+            
+            if error_message == Messages.ALREADY_REGISTERED:
+                return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content={"message": error_message})
+            elif error_message == Messages.CALLID_NOT_FOUND:
+                return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={"message": error_message})
+            else:
+                return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"message": Messages.INTERNAL_ERROR})
+
+        except contract_exceptions.BlockchainTransactionException as bte:
+            logger.error(f"Fallo de infraestructura en la red blockchain: {str(bte)}")
+            return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"message": Messages.INTERNAL_ERROR})
+
+        except contract_exceptions.UnderfundedWalletException as uwe:
+            logger.critical(f"ALERTA OPERATIVA: El nodo rechazó la operación por falta de gas. {str(uwe)}")
+            return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"message": Messages.INTERNAL_ERROR})
+
         try:
             db_manager.register_proposal(
                 call_id=payload.callId,
@@ -275,11 +316,18 @@ async def register_proposal(
                 proofs=merkle_proofs
             )
         except db_exceptions.RecordAlreadyExistsException:
-            return JSONResponse(status_code=403, content={"message": Messages.ALREADY_REGISTERED})
+            return JSONResponse(
+                status_code=status.HTTP_403_FORBIDDEN, 
+                content={"message": Messages.ALREADY_REGISTERED}
+            )
         except db_exceptions.DatabaseWriteException:
-            return JSONResponse(status_code=500, content={"message": Messages.INTERNAL_ERROR})
+            logger.error(f"Error crítico: Transacción minada con éxito pero falló el guardado local en SQLite para: {proposal_id}")
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+                content={"message": Messages.INTERNAL_ERROR}
+            )
 
-        #Respuesta exitosa estructurada
+        #RETORNO EXITOSO CONFORMADO (Requisito 201)
         return JSONResponse(
             status_code=status.HTTP_201_CREATED,
             content={
@@ -290,8 +338,11 @@ async def register_proposal(
         )
 
     except Exception as e:
-        logger.error(f"Fallo no controlado en /register-proposal: {str(e)}", exc_info=True)
-        return JSONResponse(status_code=500, content={"message": Messages.INTERNAL_ERROR})
+        logger.error(f"Fallo no controlado en el flujo del endpoint /register-proposal: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            content={"message": Messages.INTERNAL_ERROR}
+        )
     
 @app.get(
     "/authorized/{address}",

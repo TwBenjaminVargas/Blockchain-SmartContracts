@@ -5,12 +5,13 @@ from fastapi import Depends
 from web3 import Web3
 from web3.providers import HTTPProvider
 from services.settings import Settings, get_settings
-from web3.exceptions import ContractLogicError
+from web3.exceptions import ContractLogicError, Web3ValidationError,TimeExhausted,TransactionNotFound
 import messages as Messages
 import os
 import exceptions.contractManagerExceptions as cm_exceptions
 from eth_utils import keccak
 import rlp
+from deprecated import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -280,19 +281,28 @@ class ContractManager:
         try:
             logger.debug(
                 f"Preparando transacción 'registerProposal' para CallId: {call_id_hex} "
-                f"y Proposal: {proposal_hex}"
+                f"y Proposal: {proposal_hex} desde {from_address}"
             )
 
-            nonce = self.w3.eth.get_transaction_count(from_address)
+            #Parámetros de red obtenidos de forma segura
+            try:
+                nonce = self.w3.eth.get_transaction_count(from_address)
+                chain_id = self.w3.eth.chain_id
+                gas_price = self.w3.eth.gas_price
+                priority_fee = self.w3.eth.max_priority_fee
+            except Exception as net_err:
+                logger.error(f"No se pudieron obtener los parámetros de red del nodo RPC: {str(net_err)}")
+                raise cm_exceptions.BlockchainTransactionException("Error de comunicación con el nodo Blockchain.")
 
             tx_params = {
                 'from': from_address,
                 'nonce': nonce,
-                'chainId': self.w3.eth.chain_id,
-                'maxFeePerGas': self.w3.eth.gas_price,
-                'maxPriorityFeePerGas': self.w3.eth.max_priority_fee,
+                'chainId': chain_id,
+                'maxFeePerGas': gas_price,
+                'maxPriorityFeePerGas': priority_fee,
             }
 
+            #Construcción y estimación de la transacción
             transaction_dict = self.contract.functions.registerProposal(
                 call_id_hex,
                 proposal_hex
@@ -300,14 +310,22 @@ class ContractManager:
 
             logger.debug("Diccionario de transacción 'registerProposal' construido exitosamente.")
             return transaction_dict
-        
+
         except ContractLogicError as cle:
-            logger.error(f"Error de lógica en el Smart Contract al construir registerProposal: {cle.message}")
-            raise cle
-            
+            # Captura los revert() y require() del Smart Contract (ej: "Call is not active")
+            error_msg = getattr(cle, "message", str(cle))
+            logger.warning(f"Lógica del Smart Contract rechazó la transacción registerProposal: {error_msg}")
+            raise cm_exceptions.BlockchainContractLogicException(f"Revert en Smart Contract: {error_msg}")
+
+        except (Web3ValidationError, ValueError) as val_err:
+            # Captura errores si las direcciones o hashes hex pasados están mal formados para Web3
+            logger.error(f"Argumentos inválidos pasados a la función del contrato: {str(val_err)}")
+            raise cm_exceptions.BlockchainTransactionException("Los datos criptográficos provistos tienen un formato inválido.")
+
         except Exception as e:
-            logger.error(f"Error al construir la transacción register_proposal_tx: {str(e)}")
-            raise e
+            # Captura fondos insuficientes (insufficient funds), nonces viejos, o caídas del nodo
+            logger.error(f"Error crítico al construir la transacción register_proposal_tx: {str(e)}", exc_info=True)
+            raise cm_exceptions.BlockchainTransactionException("No se pudo construir la transacción debido a un problema en el nodo emisor.")
     
     def is_address_authorized(self, account_address: str) -> bool:
         """
@@ -351,32 +369,117 @@ class ContractManager:
             raise e
     
     def execute_transaction(self, raw_tx_bytes: bytes) -> str:
+        # Validación defensiva inicial
+        if not raw_tx_bytes:
+            raise cm_exceptions.BlockchainBroadcastException(
+                "Los bytes de la transacción firmada no pueden estar vacíos."
+            )
+
         logger.debug("Transmitiendo transacción firmada al nodo RPC...")
         try:
+            # Transmisión a la red
             tx_hash = self.w3.eth.send_raw_transaction(raw_tx_bytes)
 
             tx_hash_hex = self.w3.to_hex(tx_hash)
             logger.info(f"Transacción transmitida con éxito al nodo. Hash: {tx_hash_hex}")
 
             return tx_hash_hex
+
+        except ValueError as ve:
+            # Los nodos EVM (Geth, Hardhat, Anvil) suelen devolver los errores de mempool como ValueErrors con un JSON interno
+            error_msg = str(ve).lower()
+            logger.error(f"El nodo RPC rechazó la transacción cruda debido a reglas de mempool: {str(ve)}")
+
+            if "insufficient funds" in error_msg:
+                raise cm_exceptions.UnderfundedWalletException(
+                    "La billetera del servidor no posee fondos suficientes para costear el Gas de la transacción."
+                )
+            elif "nonce too low" in error_msg or "nonce" in error_msg:
+                raise cm_exceptions.NonceCollisionException(
+                    "Colisión de Nonce detectada. La transacción está desfasada con el estado actual de la red."
+                )
+            else:
+                raise cm_exceptions.BlockchainBroadcastException(
+                    f"La transacción fue rechazada por el nodo: {str(ve)}"
+                )
+
         except Exception as e:
-            logger.error(f"Error al transmitir la transacción al nodo RPC: {str(e)}")
-            raise e
+            # Captura errores de conectividad de red (HTTPError, timeout del nodo RPC, etc.)
+            logger.error(f"Error crítico de conectividad o infraestructura al transmitir al nodo RPC: {str(e)}", exc_info=True)
+            raise cm_exceptions.BlockchainBroadcastException(
+                "No se pudo establecer comunicación con la red Blockchain para transmitir la transacción."
+            )
     
     def get_transaction_receipt(self, tx_hash_hex: str, timeout: int = 120) -> dict:
-        try:
-            logger.debug(f"Esperando confirmación del bloque para la transacción: {tx_hash_hex}")
+        # Validación defensiva del formato del hash
+        if not tx_hash_hex or not tx_hash_hex.startswith("0x"):
+            raise cm_exceptions.TransactionNotFoundException(
+                "El formato del hash de la transacción es inválido."
+            )
 
-            # Esperamos de forma síncrona a que el nodo mine la transacción y devuelva el recibo
+        logger.debug(f"Esperando confirmación del bloque para la transacción: {tx_hash_hex} (Timeout: {timeout}s)")
+        try:
+            # Esperamos a que el nodo mine la transacción
             receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash_hex, timeout=timeout)
 
-            logger.info(f"Transacción minada en el bloque {receipt['blockNumber']}")
-            return receipt
+            if receipt.get("status") == 0:
+                revert_reason = self._extract_revert_reason(tx_hash_hex)
+                logger.warning(f"Transacción {tx_hash_hex} falló. Razón del Smart Contract: {revert_reason}")
+                # Lanzamos la excepción de dominio llevando el mensaje original de Solidity
+                raise cm_exceptions.BlockchainContractLogicException(revert_reason)
+
+            logger.info(f"Transacción minada con éxito en el bloque {receipt['blockNumber']}")
+            return dict(receipt)
+
+        except TimeExhausted as te: 
+            # La transacción sigue viva en el mempool, pero el servidor no puede esperar más
+            logger.warning(f"Tiempo de espera agotado ({timeout}s) esperando el recibo de {tx_hash_hex}: {str(te)}")
+            raise cm_exceptions.BlockchainTimeoutException(
+                "La transacción está tardando demasiado en minarse debido a la congestión de la red."
+            )
+
+        except TransactionNotFound as tnf:
+            # El nodo no conoce este hash
+            logger.error(f"El hash de transacción {tx_hash_hex} no fue encontrado en el nodo: {str(tnf)}")
+            raise cm_exceptions.TransactionNotFoundException(
+                "La transacción especificada no existe o fue descartada por el mempool."
+            )
+
+        except cm_exceptions.TransactionRevertedException:
+            # Volvemos a lanzar nuestra propia excepción de revert detectada en el bloque IF de arriba
+            raise
 
         except Exception as e:
-            logger.error(f"Error o Timeout al intentar verificar la transacción {tx_hash_hex}: {str(e)}")
-            raise e
-        
+            # Errores de red o pérdida de conexión con el nodo RPC en medio de la espera
+            logger.error(f"Fallo crítico de infraestructura al verificar el recibo {tx_hash_hex}: {str(e)}", exc_info=True)
+            raise cm_exceptions.BlockchainBroadcastException(
+                "Se perdió la conexión con el nodo RPC mientras se esperaba la confirmación del bloque."
+            )
+    
+    def _extract_revert_reason(self, tx_hash_hex: str) -> str:
+        """
+        Simula la transacción fallida de forma interna para extraer el texto del revert.
+        """
+        try:
+            tx = self.w3.eth.get_transaction(tx_hash_hex)
+            # Reejecutamos de forma virtual en el mismo bloque
+            self.w3.eth.call({
+                'to': tx['to'],
+                'from': tx['from'],
+                'data': tx['input'],
+                'value': tx['value']
+            }, tx['blockNumber'])
+
+            return "Unknown revert reason (simulation succeeded)"
+
+        except ContractLogicError as cle:
+            # Extraemos el mensaje limpio (ej: "Call is not active" o "Already registered")
+            return getattr(cle, "message", str(cle))
+        except Exception as e:
+            logger.error(f"No se pudo simular el revert para {tx_hash_hex}: {str(e)}")
+            return "Execution reverted without reason"
+    
+    @deprecated(version='2.0.0', reason="Migrado al nuevo metodo de manejo de receipt")
     def raise_revert_reason(self, tx_hash_hex: str):
         """
         Simula la transacción fallida en el nodo para extraer 
