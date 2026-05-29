@@ -497,7 +497,76 @@ class ContractManager:
         except Exception as e:
             logger.error(f"Error al leer el mapeo proposalData en el contrato CFP: {str(e)}")
             raise e
+        
+    def generate_merkle_tree(self, call_id: str, title: str, description: str, files: list[str]) -> tuple[str, dict[str, list[str]], str, str]:
+        """
+        Calcula la raíz de Merkle (proposalId) y las pruebas individuales para cada hoja.
+        Nodos calculados como keccak256(min(a,b) ++ max(a,b)) e indexados lexicográficamente.
+        """
+        try:
+            #Hashing seguro de los componentes de texto planos
+            title_hash = f"0x{keccak(title.encode('utf-8')).hex()}".lower()
+            desc_hash = f"0x{keccak(description.encode('utf-8')).hex()}".lower()
+            
+            # Recopilar y ordenar hojas de forma lexicográfica única
+            leaves = list(set([call_id.lower(), title_hash, desc_hash] + [f.lower() for f in files]))
+            leaves.sort()
+            
+            # Conversión a bytes
+            try:
+                current_level = [bytes.fromhex(l.replace("0x", "")) for l in leaves]
+            except ValueError as hex_err:
+                logger.error(f"Error de formato hexadecimal al procesar elementos del árbol Merkle: {str(hex_err)}")
+                raise cm_exceptions.InvalidInputTypeException("Formato hexadecimal inválido en los hashes de entrada.")
+            
+            tree_structure = [current_level.copy()]
 
+            # Construcción del árbol capa por capa
+            while len(current_level) > 1:
+                next_level = []
+                for i in range(0, len(current_level), 2):
+                    if i + 1 < len(current_level):
+                        a, b = current_level[i], current_level[i+1]
+                        # Lógica OpenZeppelin standard pairing
+                        combined = min(a, b) + max(a, b)
+                        next_level.append(keccak(combined))
+                    else:
+                        # Nodo huérfano sube directo al siguiente nivel
+                        next_level.append(current_level[i])
+                current_level = next_level
+                tree_structure.append(current_level.copy())
+
+            proposal_id_root = f"0x{current_level[0].hex()}".lower()
+            
+            # Generación de pruebas individuales de Merkle por hoja
+            proofs = {}
+            for idx, leaf_str in enumerate(leaves):
+                proof_hashes = []
+                current_idx = idx
+                
+                # Recorremos la estructura para recolectar hermanos
+                for level in tree_structure[:-1]:
+                    if current_idx % 2 == 0:
+                        if current_idx + 1 < len(level):
+                            sibling = level[current_idx + 1]
+                            proof_hashes.append(f"0x{sibling.hex()}".lower())
+                    else:
+                        sibling = level[current_idx - 1]
+                        proof_hashes.append(f"0x{sibling.hex()}".lower())
+                    current_idx //= 2 # Division entera
+                    
+                proofs[leaf_str] = proof_hashes
+
+            return proposal_id_root, proofs, title_hash, desc_hash
+
+        except Exception as e:
+            if isinstance(e, cm_exceptions.InvalidInputTypeException):
+                raise e
+            logger.error(f"Fallo criptográfico inesperado al calcular la raíz Merkle: {str(e)}")
+            raise cm_exceptions.CryptographicHashingException("Error interno en el procesamiento criptográfico del árbol.")
+    
+        
+        
 def get_contract_manager(settings: Settings = Depends(get_settings)) -> ContractManager:
     """
     Inyecta de forma interna la configuración del archivo .env.

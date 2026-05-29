@@ -15,3 +15,11 @@ class InvalidInputTypeException(AppBaseException):
 class RecordAlreadyExistsException(AppBaseException):
     """Lanzada cuando se intenta insertar un registro con una clave primaria o única duplicada."""
     pass
+
+class TooManyFilesException(AppBaseException):
+    """Lanzada cuando la lista de archivos supera los 125 elementos."""
+    pass
+
+class InvalidProposalDataException(AppBaseException):
+    """Lanzada cuando un hash de archivo está malformado o duplicado."""
+    pass

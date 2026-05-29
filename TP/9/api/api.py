@@ -7,7 +7,7 @@ import messages as Messages
 from services.signer import get_signer, Signer
 from models.CallCreate import CallCreate
 from models.UserRegister import UserRegister
-from models.schemas import RegisterProposalSchema
+from models.ProposalRegister import ProposalRegister
 from services.contractManager import get_contract_manager, ContractManager
 from web3.exceptions import ContractLogicError
 from db.sqliteManager import DBManager, get_db_manager
@@ -231,65 +231,67 @@ async def register(
         )
     
 @app.post(
-    "/register-proposal", 
+    "/register-proposal",
     status_code=status.HTTP_201_CREATED,
-    summary="Permite a un usuario registrar una propuesta en un determinado llamado.Este registro es anónimo, es decir, la dirección que quedará registrada en el contrato es la utilizada por el servidor de la API.",
-    response_description="La propuesta ha sido registrada exitosamente en el sistema"
+    summary="Registra una propuesta de forma anónima asociándola a un llamado",
+    response_description="La propuesta ha sido procesada e indexada mediante su árbol de Merkle",
 )
-
-async def register_proposal (
-    request: Request,
-    payload: RegisterProposalSchema,
-    manager: ContractManager = Depends(get_contract_manager),
-    signer: Signer = Depends(get_signer)):
-    """
-    Endpoint asíncrono para el registro de propuestas en un llamado específico.
-    Este registro es anónimo, es decir, la dirección que quedará registrada en el
-    contrato es la utilizada por el servidor de la API. 
-    """
-
+async def register_proposal_endpoint(
+    payload: ProposalRegister,
+    db_manager: DBManager = Depends(get_db_manager),
+    contract_manager: ContractManager = Depends(get_contract_manager)
+):
     try:
-        
+        # Verificar existencia del llamado padre (Requisito 404)
+        try:
+            if not db_manager.existsCall(payload.callId):
+                return JSONResponse(status_code=404, content={"message": Messages.CALLID_NOT_FOUND})
+        except db_exceptions.DatabaseConnectionException:
+            return JSONResponse(status_code=500, content={"message": Messages.INTERNAL_ERROR})
 
-        tx_not_signed = manager.register_proposal(
-            from_address=signer.address,
-            call_id_hex=payload.callId,
-            proposal_hex=payload.proposal
+        # Generación del proposalId (Raíz Merkle) y sus pruebas estructurales
+        proposal_id, merkle_proofs, t_hash, d_hash = contract_manager.generate_merkle_tree(
+            call_id=payload.callId,
+            title=payload.title,
+            description=payload.description,
+            files=payload.files
         )
 
-        tx_signed_bytes = signer.sign_transaction(tx_not_signed)
+        # Control de colisión por duplicados
+        if db_manager.existsProposal(proposal_id):
+            return JSONResponse(status_code=403, content={"message": Messages.ALREADY_REGISTERED})
 
-        tx_hash_hex = manager.execute_transaction(tx_signed_bytes)
-        
-        receipt = manager.get_transaction_receipt(tx_hash_hex)
-        
-            
-        if receipt.get("status") != 1:
-            revert_reason_cle = manager.raise_revert_reason(tx_hash_hex)
-            
-        
-        return {"message": Messages.OK}
-    
-    except ContractLogicError as cle:
-        logger.error(f"Error de lógica en el Smart Contract: {cle.message}")
-        error_message = manager.map_revert_reason_to_message(cle.message)
-        
-        if error_message == Messages.ALREADY_REGISTERED:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=error_message)
-        elif error_message == Messages.CALLID_NOT_FOUND:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=error_message)
-        else:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=Messages.INTERNAL_ERROR)
-    except HTTPException as http_ex:
-        raise http_ex
+        # Guardar registro completo en base de datos local
+        try:
+            db_manager.register_proposal(
+                call_id=payload.callId,
+                proposal_id=proposal_id,
+                title=payload.title,
+                title_hash=t_hash,
+                description=payload.description,
+                description_hash=d_hash,
+                files=payload.files,
+                proofs=merkle_proofs
+            )
+        except db_exceptions.RecordAlreadyExistsException:
+            return JSONResponse(status_code=403, content={"message": Messages.ALREADY_REGISTERED})
+        except db_exceptions.DatabaseWriteException:
+            return JSONResponse(status_code=500, content={"message": Messages.INTERNAL_ERROR})
+
+        #Respuesta exitosa estructurada
+        return JSONResponse(
+            status_code=status.HTTP_201_CREATED,
+            content={
+                "message": "OK",
+                "proposalId": proposal_id,
+                "proof": merkle_proofs
+            }
+        )
+
     except Exception as e:
-        logger.error(f"Fallo no controlado en el flujo del endpoint: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=Messages.INTERNAL_ERROR
-        )
-        
-        
+        logger.error(f"Fallo no controlado en /register-proposal: {str(e)}", exc_info=True)
+        return JSONResponse(status_code=500, content={"message": Messages.INTERNAL_ERROR})
+    
 @app.get(
     "/authorized/{address}",
     status_code=status.HTTP_200_OK,

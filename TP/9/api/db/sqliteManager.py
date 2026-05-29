@@ -3,6 +3,7 @@ from services.settings import Settings, get_settings
 from sqlmodel import Field, Session, SQLModel, create_engine,select, func
 from models.persistence.Call import Call
 from models.persistence.User import User, UserState
+from models.persistence.Proposal import Proposal
 import logging
 import exceptions.databaseManagerExceptions as db_exceptions
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
@@ -209,6 +210,51 @@ class DBManager:
         except SQLAlchemyError as db_err:
             logger.error(f"Fallo crítico al actualizar el usuario '{user.address}': {str(db_err)}")
             raise db_exceptions.DatabaseWriteException("El almacenamiento local no está disponible.")
+    
+    def existsProposal(self, proposal_id: str) -> bool:
+        """Verifica si un proposalId ya existe en el almacenamiento local."""
+        try:
+            with Session(self.engine) as session:
+                statement = select(func.count()).where(Proposal.proposalId == proposal_id.lower())
+                return session.exec(statement).one() > 0
+        except SQLAlchemyError as db_err:
+            logger.error(f"Error al verificar existencia de propuesta {proposal_id}: {str(db_err)}")
+            raise db_exceptions.DatabaseConnectionException("Error de base de datos.")
+
+    def register_proposal(self, call_id: str, proposal_id: str, title: str, title_hash: str, 
+                          description: str, description_hash: str, files: list[str], proofs: dict) -> Proposal:
+        """Crea el objeto Proposal serializando las estructuras complejas y las persiste."""
+        import json
+        
+        new_proposal = Proposal(
+            callId=call_id.lower(),
+            proposalId=proposal_id.lower(),
+            title=title,
+            titleHash=title_hash,
+            description=description,
+            descriptionHash=description_hash,
+            filesJson=json.dumps(files),
+            proofsJson=json.dumps(proofs)
+        )
+        return self._add(new_proposal)
+
+    def get_proof(self, proposal_id: str) -> dict | None:
+        """Recupera la entidad para procesamiento interno."""
+        try:
+            with Session(self.engine) as session:
+                statement = select(Proposal).where(Proposal.proposalId == proposal_id.lower())
+                return session.exec(statement).first()
+        except SQLAlchemyError as db_err:
+            logger.error(f"Fallo al leer propuesta del llamado {proposal_id}: {str(db_err)}")
+            raise db_exceptions.DatabaseConnectionException("Error de lectura local.")
+
+    def get_proof_json(self, proposal_id: str) -> dict:
+        """Devuelve directamente las pruebas de Merkle mapeadas desde el JSON persistido."""
+        import json
+        proposal = self.get_proof(proposal_id)
+        if not proposal:
+            return {}
+        return json.loads(proposal.proofsJson)
 
 def get_db_manager(settings: Settings = Depends(get_settings)) -> DBManager:
     """
