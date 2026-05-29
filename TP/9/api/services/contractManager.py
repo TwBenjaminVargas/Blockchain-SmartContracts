@@ -1,10 +1,9 @@
 import json
 import logging
 from functools import lru_cache
-from fastapi import Depends
 from web3 import Web3
 from web3.providers import HTTPProvider
-from services.settings import Settings, get_settings
+from services.settings import get_settings
 from web3.types import BlockData
 from web3.exceptions import BadFunctionCallOutput, ContractLogicError, Web3ValidationError,TimeExhausted,TransactionNotFound
 import messages as Messages
@@ -29,11 +28,12 @@ class ContractManager:
     }
     
     
-    def __init__(self, provider_url: str, contract_address: str):
+    def __init__(self):
         logger.debug("Inicializando ContractManager con proveedor: %s y contrato: %s", provider_url, contract_address)
         
+        settings = get_settings()
         # Configuración del proveedor HTTP
-        provider_path = provider_url.strip()
+        provider_path = settings.web3_provider_url
         if not provider_path.lower().startswith(("http://", "https://")):
             raise ValueError(
                 f"Proveedor de red no soportado en ContractManager: {provider_path}. "
@@ -44,7 +44,7 @@ class ContractManager:
         self.w3 = Web3(HTTPProvider(provider_path))
         
         #Formateo seguro de la dirección del contrato (Checksum Address)
-        self.contract_address = self.w3.to_checksum_address(contract_address)
+        self.contract_address = self.w3.to_checksum_address(settings.contract_address)
         
         #Carga e instanciación del archivo ABI (ubicado en la carpeta 'src/')
         factory_abi_path = os.path.join(os.path.dirname(__file__), "cfp_factory_abi.json")
@@ -181,6 +181,23 @@ class ContractManager:
         except Exception as e:
             logger.error(f"Error inesperado al concatenar el mensaje de registro: {str(e)}", exc_info=True)
             raise cm_exceptions.CryptographicHashingException("No se pudo construir la estructura binaria del mensaje.")
+
+    def generate_hex_str_user_patch(self, nonce: int, new_name: str) -> str:
+        """
+        Genera el string hexadecimal del mensaje de actualizacion para PATCH.
+        """
+        prefix_bytes = b"registrationsPATCH" # 18 bytes
+        
+        contract_address_bytes = Web3.to_bytes(hexstr=self.contract.address) # 20 bytes
+        
+        if nonce > 0xFFFFFFFF:
+            raise ValueError("Nonce overflow")
+            
+        nonce_bytes = nonce.to_bytes(4, byteorder="big") # 32 bits / 4 bytes big-endian
+        name_bytes = new_name.encode("utf-8")
+        
+        raw_message = prefix_bytes + contract_address_bytes + nonce_bytes + name_bytes
+        return raw_message.hex()
 
     def create_cfp_for(self, from_address: str,creator_address: str, call_id_hex: str, unix_timestamp: int) -> dict:
         try:
@@ -341,6 +358,7 @@ class ContractManager:
             raise cm_exceptions.BlockchainReadException(
                 "No se pudo verificar el estado de registro en la blockchain."
             )
+    
     def is_address_authorized(self, account_address: str) -> bool:
         """
         Consultando el estado de autorización (isAuthorized) en el Smart Contract.
@@ -760,15 +778,12 @@ class ContractManager:
             logger.error(f"Fallo criptográfico inesperado al calcular la raíz Merkle: {str(e)}")
             raise cm_exceptions.CryptographicHashingException("Error interno en el procesamiento criptográfico del árbol.")
     
-        
-        
-def get_contract_manager(settings: Settings = Depends(get_settings)) -> ContractManager:
+
+@lru_cache()
+def get_contract_manager() -> ContractManager:
     """
     Inyecta de forma interna la configuración del archivo .env.
     Gracias al decorador @lru_cache, la lectura del ABI y la inicialización del 
     proveedor HTTP ocurren UNA SOLA VEZ al recibir la primera petición HTTP de la API.
     """
-    return ContractManager(
-        provider_url=settings.web3_provider_url,
-        contract_address=settings.contract_address
-    )
+    return ContractManager()

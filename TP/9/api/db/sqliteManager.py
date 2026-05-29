@@ -8,14 +8,16 @@ import logging
 import exceptions.databaseManagerExceptions as db_exceptions
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from typing import TypeVar, Optional, Tuple
+from functools import lru_cache
 
 T = TypeVar("T", bound=SQLModel)
 
 logger = logging.getLogger(__name__)
 
 class DBManager:
-    def __init__(self, db_path: str):
-        self.db_path = db_path
+    def __init__(self):
+        settings = get_settings()
+        self.db_path = settings.db_path
         self.db_url = f"sqlite:///{self.db_path}"
         self.engine = create_engine(self.db_url, connect_args={"check_same_thread": False})
         SQLModel.metadata.create_all(self.engine)
@@ -149,6 +151,32 @@ class DBManager:
 
         logger.debug(f"Registrando nuevo usuario local PENDING para la wallet: {cleaned_address}")
         return self._add(nuevo_usuario)
+ 
+    def createAdminUser(self, address: str) -> User:
+            """
+            Instancia y guarda un usuario administrador
+            """
+
+            if not isinstance(address, str) or not address.strip():
+                logger.error(f"Parámetro inválido o vacío en createAdminUser")
+                raise db_exceptions.InvalidInputTypeException(f"El campo '{address}' debe ser una cadena de texto válida.")
+
+            cleaned_address = address.strip()
+
+            if self.existUser(cleaned_address):
+                logger.warning(f"Intento de registro rechazado de forma temprana. El usuario ya existe: {cleaned_address}")
+                raise db_exceptions.RecordAlreadyExistsException("El usuario con la dirección provista ya cuenta con un registro en el sistema.")
+
+            nuevo_usuario = User(
+                address=cleaned_address,
+                name="admin",
+                signature="0x0",
+                state=UserState.AUTHORIZED,
+                nonce=1
+            )
+
+            logger.debug(f"Registrando usuario admin local con la wallet: {cleaned_address}")
+            return self._add(nuevo_usuario)
     
     def createPendingUser(self, address: str, name: str, signature: str) -> User:
         """
@@ -323,10 +351,9 @@ class DBManager:
             logger.error(f"Error al recuperar el llamado {call_id}: {str(db_err)}")
             raise db_exceptions.DatabaseConnectionException("Error de lectura en el almacenamiento local.")
 
-def get_db_manager(settings: Settings = Depends(get_settings)) -> DBManager:
+@lru_cache()
+def get_db_manager() -> DBManager:
     """
     Inyecta de forma interna la configuración del archivo .env.
     """
-    return DBManager(
-        db_path=settings.db_path
-    )
+    return DBManager()

@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     mnemonic_phrase: str = Field(alias="CFP_MNEMONIC")
     derivacion_path: str = Field(alias="DERIVACION_PATH")
     db_path: str = Field(alias="CFP_DB_PATH")
+    admin_address: str = Field(alias="CFP_ADMIN_ADDRESS")
 
     #carga la configuración desde el archivo .env y permite ignorar campos adicionales no definidos en esta clase
     model_config = SettingsConfigDict(env_file=".env",

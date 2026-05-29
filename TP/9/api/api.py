@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
+from contextlib import asynccontextmanager
 import logging
+import sys
 from fastapi import Depends, FastAPI, HTTPException, status, Request,Path
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -27,7 +29,33 @@ logging.basicConfig(
 )
 logger = logging.getLogger("app")
 
-app = FastAPI(title="API de Convocatoria de Propuestas (CFP) - TP 8")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    db_manager = get_db_manager()
+    signer = get_signer()
+    admin_address = signer.admin_address.lower()
+
+    try:
+        admin_user = db_manager.getUser(admin_address)
+        if not admin_user:
+            logger.info(f"Sembrando cuenta de administrador en base de datos: {admin_address}")
+            db_manager.createAdminUser(admin_address)
+            logger.info("Administrador verificado e insertado con éxito.")
+        else:
+            logger.info(f"El administrador ya se encuentra registrado. Nonce actual: {admin_user.nonce}")
+    except Exception as e:
+        logger.critical(
+            f"FALLO CRÍTICO AL INICIALIZAR DATOS DEL SISTEMA: {str(e)}. "
+            f"El sistema se detendrá inmediatamente por seguridad.", 
+            exc_info=True
+        )
+        # sys.exit(1) aborta el proceso de Python por completo, matando a Uvicorn
+        sys.exit(1)
+    
+    yield
+
+app = FastAPI(title="API de Convocatoria de Propuestas (CFP) - TP 8",lifespan=lifespan)
 
 #formato de respuesta personalizada para errores HTTP y validación de datos
 @app.exception_handler(HTTPException)
@@ -789,6 +817,38 @@ async def update_registration_name(
 
     except Exception as e:
         logger.error(f"Fallo no manejado en PATCH /registrations/{address}: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"message": Messages.INTERNAL_ERROR}
+        )
+
+@app.get(
+    "/admin/nonce",
+    status_code=status.HTTP_200_OK,
+    summary="Retorna el nonce actual del administrador para firmas de autorizacion"
+)
+async def get_admin_nonce(
+    db_manager: DBManager = Depends(get_db_manager),
+    signer: Signer = Depends(get_signer)
+):
+    try:
+        admin_address = signer.admin_address
+        
+        try:
+            admin_user = db_manager.getUser(admin_address)
+        except db_exceptions.DatabaseConnectionException:
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content={"message": Messages.INTERNAL_ERROR}
+            )
+
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={"nonce": admin_user.nonce}
+        )
+
+    except Exception as e:
+        logger.error(f"Unhandled exception in GET /admin/nonce: {str(e)}", exc_info=True)
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"message": Messages.INTERNAL_ERROR}

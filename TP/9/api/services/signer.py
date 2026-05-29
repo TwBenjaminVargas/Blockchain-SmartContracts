@@ -11,20 +11,22 @@ logger = logging.getLogger(__name__)
 
 
 class Signer:
-    def __init__(self, mnemonic: str = "test test test test test test test test test test test junk",
-                 derivacion_path: str = "m/44'/60'/0'/0/0"):
-        
-        logger.debug("Inicializando con frase mnemonica de wallet: %s", mnemonic)
+    def __init__(self):
+        setting = get_settings()
+        self.mnemonic = setting.mnemonic_phrase
+        self.derivacion_path = setting.derivacion_path
+        self.admin_address = setting.admin_address
+        logger.debug("Inicializando con frase mnemonica de wallet: %s", self.mnemonic)
         
         # Habilitar HD Wallet en local
         Account.enable_unaudited_hdwallet_features()
         
-        logger.debug(f"Derivando cuenta local usando la ruta estándar: {derivacion_path}")
+        logger.debug(f"Derivando cuenta local usando la ruta estándar: {self.derivacion_path}")
         
         #Derivamos la cuenta especificando la ruta
         self._account = Account.from_mnemonic(
-            mnemonic=mnemonic.strip(),
-            account_path=derivacion_path
+            mnemonic=self.mnemonic.strip(),
+            account_path=self.derivacion_path
         )
     
         self.address = self._account.address
@@ -111,8 +113,6 @@ class Signer:
                 "No se pudo completar el firmado digital de la transacción."
             )
 
-def get_signer(settings: Settings = Depends(get_settings)) -> Signer:
-    return Signer(
-        mnemonic=settings.mnemonic_phrase,
-        derivacion_path=settings.derivacion_path
-    )
+@lru_cache()
+def get_signer() -> Signer:
+    return Signer()
