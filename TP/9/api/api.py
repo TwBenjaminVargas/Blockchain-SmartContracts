@@ -9,6 +9,7 @@ from models.persistence.Call import CallState
 from models.CallCreate import CallCreate
 from models.UserRegister import UserRegister
 from models.ProposalRegister import ProposalRegister
+from models.UserPatch import UserPatch
 from services.contractManager import get_contract_manager, ContractManager
 from web3.exceptions import ContractLogicError
 from db.sqliteManager import DBManager, get_db_manager
@@ -709,7 +710,85 @@ async def get_registration_status(
             )
 
     except Exception as e:
-        logger.error(f"Unhandled failure in GET /registrations/{address}: {str(e)}", exc_info=True)
+        logger.error(f"Fallo no manejado en GET /registrations/{address}: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"message": Messages.INTERNAL_ERROR}
+        )
+
+@app.patch(
+    "/registrations/{address}",
+    status_code=status.HTTP_200_OK,
+    summary="Actualiza el nombre asociado a una dirección registrada, incrementando su nonce para mantener la sincronización con la blockchain"
+)
+async def update_registration_name(
+    request: Request,
+    payload: UserPatch,
+    address: str = Path(..., description="Ethereum address (0x...)"),
+    db_manager: DBManager = Depends(get_db_manager),
+    contract_manager: ContractManager = Depends(get_contract_manager),
+    signer: Signer = Depends(get_signer)
+):
+    try:
+        if not re.match(r"^0x[a-fA-F0-9]{40}$", address):
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"message": Messages.INVALID_ADDRESS}
+            )
+
+        address_lower = address.lower()
+
+        try:
+            user = db_manager.getUser(address_lower)
+            if not user:
+                return JSONResponse(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    content={"message": Messages.NOT_REGISTERED}
+                )
+        except db_exceptions.DatabaseConnectionException:
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content={"message": Messages.INTERNAL_ERROR}
+            )
+
+        if user.nonce >= 0xFFFFFFFF:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"message": Messages.NONCE_OVERFLOW}
+            )
+
+        try:
+            message_hex = contract_manager.generate_hex_str_user_patch(user.nonce, payload.name)
+            recovered_address = signer.get_signer_address(message_hex, payload.signature)
+        except Exception:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"message": Messages.INVALID_SIGNATURE}
+            )
+
+        if recovered_address.lower() != address_lower:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"message": Messages.INVALID_SIGNATURE}
+            )
+
+        try:
+            user.name = payload.name
+            user.nonce += 1
+            db_manager.updateExistingUser(user)
+        except db_exceptions.DatabaseWriteException:
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content={"message": Messages.INTERNAL_ERROR}
+            )
+
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={"message": "OK"}
+        )
+
+    except Exception as e:
+        logger.error(f"Fallo no manejado en PATCH /registrations/{address}: {str(e)}", exc_info=True)
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"message": Messages.INTERNAL_ERROR}
