@@ -145,8 +145,8 @@ class BlockchainWorker:
                         f"Usuario desautorizado on-chain {creator_address} ignorado: no existe registro en la DB local."
                     )
                     continue
-                
-                self.db_manager.unauthorizeUser(creator_address)
+                creator_count = self.contract_manager.get_created_by_count(creator_address)
+                self.db_manager.unauthorizeUser(creator_address, creator_count)
                 logger.info(f"Proceso de desautorización ejecutado con éxito en DB para: {creator_address}")
                 
             except Exception as event_err:
