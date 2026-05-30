@@ -380,27 +380,37 @@ class DBManager:
     
     def unauthorizeUser(self, address: str) -> User | None:
         """
-        Revoca la autorización de un usuario local. 
-        Si su nonce es 0, se elimina la cuenta; de lo contrario, pasa al estado UserState.ARCHIVED.
+        Revoca la autorización de un usuario local.
+        Si posee llamados creados en el sistema se archiva, de lo contrario se elimina la cuenta.
         """
-        user = self.getUser(address)
+        cleaned_address = address.strip().lower()
+        user = self.getUser(cleaned_address)
         if not user:
             raise db_exceptions.UserNotFoundException("La dirección solicitada no está registrada en el sistema.")
         
-        if user.nonce == 0:
+        # Consultar si el usuario tiene llamados asociados como creador
+        try:
+            with Session(self.engine) as session:
+                statement = select(func.count()).where(func.lower(Call.creator) == cleaned_address)
+                calls_count = session.exec(statement).one()
+        except SQLAlchemyError as db_err:
+            logger.error(f"Error al contabilizar llamados para la dirección {cleaned_address}: {str(db_err)}")
+            raise db_exceptions.DatabaseConnectionException("Error de infraestructura al consultar los llamados locales.")
+
+        # Si no tiene llamados creados, se elimina el registro del usuario por completo
+        if calls_count == 0:
             try:
                 with Session(self.engine) as session:
-                    # Traemos el objeto a la sesión actual para poder borrarlo de forma segura
                     session.add(user)
                     session.delete(user)
                     session.commit()
-                logger.debug(f"Usuario con nonce 0 eliminado del almacenamiento local: {address}")
+                logger.debug(f"Usuario sin llamados eliminado del almacenamiento local: {cleaned_address}")
                 return None
             except SQLAlchemyError as e:
-                logger.error(f"Fallo al eliminar el usuario {address} con nonce 0: {str(e)}")
+                logger.error(f"Fallo al eliminar el usuario {cleaned_address} sin llamados: {str(e)}")
                 raise db_exceptions.DatabaseWriteException("Error interno al intentar eliminar el registro local.")
         
-        # Si el nonce es mayor a 0, preservamos el historial cambiándolo a ARCHIVED
+        # Si tiene al menos 1 llamado creado, protegemos la integridad referencial pasándolo a ARCHIVED
         user.state = UserState.ARCHIVED
         return self.updateExistingUser(user)
     
