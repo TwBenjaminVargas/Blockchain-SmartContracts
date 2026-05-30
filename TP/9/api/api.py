@@ -282,7 +282,7 @@ async def register(
         is_onchain_authorized = contract_manager.is_address_authorized(payload.address)
         is_onchain_registered = contract_manager.is_address_registered(payload.address)
 
-        if is_onchain_registered: # devuelve false si esta desautorizado tambien
+        if is_onchain_registered:
             determined_status = UserState.REGISTERED
             if is_onchain_authorized:
                 determined_status = UserState.AUTHORIZED
@@ -921,7 +921,7 @@ async def authorize_address(
 
         # Verificar existencia del usuario objetivo en la base de datos local
         target_user = db_manager.getUser(target_address)
-        if not target_user:
+        if not target_user or target_user.state == UserState.ARCHIVED:
             return JSONResponse(
                 status_code=status.HTTP_404_NOT_FOUND,
                 content={"message": Messages.NOT_REGISTERED}
@@ -929,7 +929,7 @@ async def authorize_address(
 
         # Obtener la cuenta del administrador local para extraer su nonce actual
         admin_user = db_manager.getUser(signer.admin_address)
-        current_admin_nonce = admin_user.nonce if admin_user else 1
+        current_admin_nonce = admin_user.nonce
 
         if current_admin_nonce >= 2**32 - 1:
             return JSONResponse(
