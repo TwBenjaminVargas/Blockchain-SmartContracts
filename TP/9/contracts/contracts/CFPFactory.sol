@@ -21,7 +21,7 @@ contract CFPFactory {
         address creator;
         CFP cfp;
     }
-    enum AddressStatus { None, Pending, Authorized, Unauthorized }
+    enum AddressStatus { None, Pending, Authorized}
 
     modifier onlyOwner()
     {
@@ -106,7 +106,7 @@ contract CFPFactory {
     
     // Devuelve verdadero si una cuenta se ha registrado, tanto si su estado es pendiente como si ya se la ha autorizado.
     function isRegistered(address account) public view returns (bool)
-    {return addressStatus[account] != AddressStatus.None && addressStatus[account] != AddressStatus.Unauthorized;}
+    {return addressStatus[account] != AddressStatus.None;}
 
     // Devuelve verdadero si una cuenta está autorizada a crear llamados.
     function isAuthorized(address account) public view returns (bool) {return addressStatus[account] == AddressStatus.Authorized;}
@@ -213,7 +213,7 @@ contract CFPFactory {
     function unauthorize(address creator) public 
     onlyOwner()
     {
-        addressStatus[creator] = AddressStatus.Unauthorized;
+        addressStatus[creator] = AddressStatus.None;
         for (uint256 i = 0; i < pendingList.length; i++) {
             if (pendingList[i] == creator) {
                 // Eliminar la cuenta de la lista de pendientes

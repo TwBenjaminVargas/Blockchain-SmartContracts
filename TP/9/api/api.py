@@ -264,30 +264,34 @@ async def register(
             return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"message": Messages.INVALID_SIGNATURE})
         
         # Control de Reglas de Negocio / Verificación de estados en Blockchain y Base de Datos Local
-        is_onchain_authorized = contract_manager.is_address_authorized(payload.address)
-        is_onchain_registered = contract_manager.is_address_registered(payload.address)
         local_user = db_manager.getUser(payload.address)
-
-        if is_onchain_authorized:
-            determined_status = UserState.AUTHORIZED
-        elif is_onchain_registered:
-            determined_status = UserState.REGISTERED
-        else:
-            determined_status = UserState.PENDING
-
         if local_user:
             if local_user.state != UserState.ARCHIVED:
                 return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content={"message": Messages.ALREADY_IN_SYSTEM})
             
-            # Si existía pero fue desautorizado, se permite sobreescribir los datos
             local_user.name = payload.name
             local_user.signature = payload.signature
-            local_user.state = determined_status
+            local_user.state = UserState.REGISTERED
             db_manager.updateExistingUser(local_user)
-        else:
-            db_manager.createPendingUser(address=payload.address, name=payload.name, signature=payload.signature)
+            # Retorno Exitoso
+            return JSONResponse(
+                status_code=status.HTTP_200_OK,
+                content={"status": UserState.REGISTERED.value}
+            )
+            
+        is_onchain_authorized = contract_manager.is_address_authorized(payload.address)
+        is_onchain_registered = contract_manager.is_address_registered(payload.address)
 
-        # Retorno Exitoso
+        if is_onchain_registered: # devuelve false si esta desautorizado tambien
+            determined_status = UserState.REGISTERED
+            if is_onchain_authorized:
+                determined_status = UserState.AUTHORIZED
+        else:
+            determined_status = UserState.PENDING
+            
+        
+        db_manager.createUser(address=payload.address, name=payload.name, signature=payload.signature, state=determined_status)
+
         return JSONResponse(
             status_code=status.HTTP_200_OK,
             content={"status": determined_status.value}
@@ -1013,7 +1017,7 @@ async def unauthorize_address(
 
         # Obtener la cuenta del administrador local para extraer su nonce actual
         admin_user = db_manager.getUser(signer.admin_address)
-        current_admin_nonce = admin_user.nonce if admin_user else 1
+        current_admin_nonce = admin_user.nonce
 
         if current_admin_nonce >= 2**32 - 1:
             return JSONResponse(
@@ -1037,14 +1041,16 @@ async def unauthorize_address(
             raw_tx_bytes = signer.sign_transaction(tx_dict)
             tx_hash = contract_manager.execute_transaction(raw_tx_bytes)
             _ = contract_manager.get_transaction_receipt(tx_hash)
-            
+            created_count = contract_manager.get_created_by_count(target_address)
         except contract_exceptions.BlockchainContractLogicException as bcle:
             error_message = contract_manager.map_revert_reason_to_message(bcle.message)
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 content={"message": error_message}
             )
-        except (contract_exceptions.NodeRPCException, contract_exceptions.BlockchainTransactionException):
+        except (contract_exceptions.NodeRPCException,
+                contract_exceptions.BlockchainTransactionException,
+                contract_exceptions.BlockchainReadException):
             return JSONResponse(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 content={"message": Messages.INTERNAL_ERROR}
@@ -1052,7 +1058,7 @@ async def unauthorize_address(
 
         # Persistir cambios locales en la base de datos tras éxito On-Chain
         db_manager.incrementUserNonce(signer.admin_address)
-        db_manager.unauthorizeUser(target_address)
+        db_manager.unauthorizeUser(target_address,created_count)
 
         return JSONResponse(
             status_code=status.HTTP_200_OK,

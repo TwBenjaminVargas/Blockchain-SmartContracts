@@ -202,6 +202,29 @@ class DBManager:
         logger.debug(f"Registrando nuevo usuario local PENDING para la wallet: {cleaned_address}")
         return self._add(nuevo_usuario)
     
+    def createUser(self, address: str, name: str, signature: str, state: UserState = UserState.PENDING) -> User:
+        """
+        Instancia y guarda un usuario con estado 'pending'
+        """
+        inputs = {"address": address, "name": name, "signature": signature}
+        for field_name, value in inputs.items():
+            if not isinstance(value, str) or not value.strip():
+                logger.error(f"Parámetro inválido o vacío en createUser: {field_name}={type(value)}")
+                raise db_exceptions.InvalidInputTypeException(f"El campo '{field_name}' debe ser una cadena de texto válida.")
+
+        cleaned_address = address.strip()
+
+        nuevo_usuario = User(
+            address=cleaned_address,
+            name=name.strip(),
+            signature=signature.strip(),
+            state=state,
+            nonce=1
+        )
+
+        logger.debug(f"Registrando nuevo usuario local PENDING para la wallet: {cleaned_address}")
+        return self._add(nuevo_usuario)
+    
     def getUser(self, address: str) -> User | None:
         """
         Recupera una entidad User completa desde el almacenamiento local.
@@ -379,7 +402,7 @@ class DBManager:
         user.state = UserState.AUTHORIZED
         return self.updateExistingUser(user)
     
-    def unauthorizeUser(self, address: str) -> User | None:
+    def unauthorizeUser(self, address: str, created_count: int) -> User | None:
         """
         Revoca la autorización de un usuario local.
         Si posee llamados creados en el sistema se archiva, de lo contrario se elimina la cuenta.
@@ -389,17 +412,8 @@ class DBManager:
         if not user:
             raise db_exceptions.UserNotFoundException("La dirección solicitada no está registrada en el sistema.")
         
-        # Consultar si el usuario tiene llamados asociados como creador
-        try:
-            with Session(self.engine) as session:
-                statement = select(func.count()).where(func.lower(Call.creator) == cleaned_address)
-                calls_count = session.exec(statement).one()
-        except SQLAlchemyError as db_err:
-            logger.error(f"Error al contabilizar llamados para la dirección {cleaned_address}: {str(db_err)}")
-            raise db_exceptions.DatabaseConnectionException("Error de infraestructura al consultar los llamados locales.")
-
         # Si no tiene llamados creados, se elimina el registro del usuario por completo
-        if calls_count == 0:
+        if created_count == 0:
             try:
                 with Session(self.engine) as session:
                     session.add(user)
@@ -411,7 +425,6 @@ class DBManager:
                 logger.error(f"Fallo al eliminar el usuario {cleaned_address} sin llamados: {str(e)}")
                 raise db_exceptions.DatabaseWriteException("Error interno al intentar eliminar el registro local.")
         
-        # Si tiene al menos 1 llamado creado, protegemos la integridad referencial pasándolo a ARCHIVED
         user.state = UserState.ARCHIVED
         return self.updateExistingUser(user)
     

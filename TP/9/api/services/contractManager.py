@@ -662,7 +662,24 @@ class ContractManager:
         except Exception as e:
             logger.error(f"No se pudo simular el revert para {tx_hash_hex}: {str(e)}")
             return "Execution reverted without reason"
-    
+
+
+    def get_created_by_count(self, creator_address: str) -> int:
+        """
+        Llama a la función view 'createdByCount' del contrato para obtener
+        la cantidad de llamados creados por una dirección específica.
+        """
+        try:
+            checksum_address = Web3.to_checksum_address(creator_address)
+            count = self.contract.functions.createdByCount(checksum_address).call()
+            return int(count)
+            
+        except Exception as e:
+            logger.error(f"Error al obtener createdByCount para {creator_address}: {e}")
+            raise cm_exceptions.BlockchainReadException(
+                "No se pudo recuperar la cantidad de llamados creados por la dirección desde la blockchain."
+            )
+            
     @deprecated(version='2.0.0', reason="Migrado al nuevo metodo de manejo de receipt")
     def raise_revert_reason(self, tx_hash_hex: str):
         """
