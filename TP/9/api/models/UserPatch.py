@@ -1,4 +1,5 @@
 from pydantic import BaseModel, Field, field_validator
+from pydantic_core import PydanticCustomError
 import messages as Messages
 
 class UserPatch(BaseModel):
@@ -18,13 +19,13 @@ class UserPatch(BaseModel):
     @classmethod
     def validate_and_clean_name(cls, value: str) -> str:
         if not isinstance(value, str):
-            raise ValueError("El nombre debe ser una cadena de texto.")
+            raise PydanticCustomError("value_error", "El nombre debe ser una cadena de texto.")
         
         cleaned = value.rstrip()
         if not cleaned:
-            raise ValueError(Messages.INVALID_NAME)
+            raise PydanticCustomError("value_error", Messages.INVALID_NAME)
             
         if len(cleaned.encode("utf-8")) > 512:
-            raise ValueError(Messages.NAME_TOO_LONG)
+            raise PydanticCustomError("value_error", Messages.NAME_TOO_LONG)
             
         return cleaned

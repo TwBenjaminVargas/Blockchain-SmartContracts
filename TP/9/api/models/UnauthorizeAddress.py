@@ -1,4 +1,5 @@
 from pydantic import BaseModel, Field, field_validator
+from pydantic_core import PydanticCustomError
 import re
 import messages as Messages
 
@@ -9,12 +10,11 @@ class UnauthorizeAddress(BaseModel):
     @classmethod
     def validate_signature_format(cls, value: str) -> str:
         if not value or not isinstance(value, str):
-            raise ValueError(Messages.MISSING_FIELD)
+            raise PydanticCustomError("value_error", Messages.MISSING_FIELD)
         
         cleaned = value.strip()
-        # Valida formato hexadecimal estándar de Ethereum (65 bytes = 130 caracteres + 0x opcional)
         pattern = re.compile(r"^(0x)?[0-9a-fA-F]{130}$")
         if not pattern.match(cleaned):
-            raise ValueError(Messages.INVALID_SIGNATURE)
+            raise PydanticCustomError("value_error", Messages.INVALID_SIGNATURE)
             
         return cleaned

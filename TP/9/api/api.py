@@ -86,7 +86,6 @@ async def custom_http_exception_handler(request: Request, exc: HTTPException):
 
 @app.exception_handler(RequestValidationError)
 async def custom_validation_exception_handler(request: Request, exc: RequestValidationError):
-    # Validar mimetype solo si el método espera un body
     if request.method in ["POST", "PUT", "PATCH"]:
         content_type = request.headers.get("content-type", "")
         if "application/json" not in content_type:
@@ -103,47 +102,67 @@ async def custom_validation_exception_handler(request: Request, exc: RequestVali
         location = first_error.get("loc", [])
         error_type = first_error.get("type", "")
         
-        #Prioridad máxima a los campos faltantes (missing)
-        if error_type == "missing":
+        if error_type in ["missing", "type_error.missing"]:
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 content={"message": Messages.MISSING_FIELD}
             )
 
-        # Errores en parámetros de ruta (path)
+        ctx = first_error.get("ctx")
+        if ctx and "error" in ctx:
+            error_msg = str(ctx["error"])
+            clean_msg = error_msg.replace("Value error, ", "")
+            
+            valid_messages = [
+                Messages.INVALID_SIGNATURE,
+                Messages.INVALID_ADDRESS,
+                Messages.INVALID_CALLID,
+                Messages.INVALID_NAME,
+                Messages.INVALID_PROPOSAL,
+                Messages.TITLE_TOO_LONG,
+                Messages.DESCRIPTION_TOO_LONG,
+                Messages.NAME_TOO_LONG,
+                Messages.TOO_MANY_FILES,
+                Messages.PROOF_TOO_LONG,
+                Messages.MISSING_FIELD,
+                Messages.INVALID_TITLE
+            ]
+            
+            if any(msg in clean_msg for msg in valid_messages):
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content={"message": clean_msg}
+                )
+
         if "path" in location and "address" in location:
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 content={"message": Messages.INVALID_ADDRESS}
             )
 
-        # Errores específicos de formato en el cuerpo (body)
         if len(location) > 1 and location[0] == "body":
             field_name = location[1]
-            
+            if field_name == "signature":
+                return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"message": Messages.INVALID_SIGNATURE})
+            if field_name == "address":
+                return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"message": Messages.INVALID_ADDRESS})
             if field_name == "callId":
                 return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"message": Messages.INVALID_CALLID})
-            elif field_name in ["closingTime", "closing_time"] or any("closing" in str(loc).lower() for loc in location):
-                return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"message": Messages.INVALID_TIME_FORMAT})
-            elif field_name == "signature":
-                return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"message": Messages.INVALID_SIGNATURE})
-            elif field_name == "address":
-                return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"message": Messages.INVALID_ADDRESS})
-            elif field_name == "proposal":
+            if field_name == "name":
+                return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"message": Messages.INVALID_NAME})
+            if field_name == "title":
+                return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"message": Messages.INVALID_TITLE})
+            if field_name in ["proposalId", "leaf", "proposal", "files"]:
                 return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"message": Messages.INVALID_PROPOSAL})
-
-        # Fallback para el formato de closing_time
-        if any("closing" in str(loc).lower() for loc in location):
-            return JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content={"message": Messages.INVALID_TIME_FORMAT}
-            )
+            if field_name == "proof":
+                return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"message": Messages.PROOF_TOO_LONG})
 
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
         content={"message": Messages.MISSING_FIELD}
     )
-
+    
+    
 @app.post(
     "/create", 
     status_code=status.HTTP_201_CREATED,

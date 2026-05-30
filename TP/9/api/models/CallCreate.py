@@ -1,4 +1,5 @@
 from pydantic import BaseModel, field_validator, Field
+from pydantic_core import PydanticCustomError
 import messages as Messages
 
 class CallCreate(BaseModel):
@@ -25,20 +26,19 @@ class CallCreate(BaseModel):
         examples=["0x4355c47d63920e8a56e04d34bb4276babdda28d53d142812ba51fe3f65557ef252fec4b4c2049e59b315bab9d7962fec34d28d3615fa2fc7274092b1a16e7fb61b"]
     )
 
-
     @field_validator("title", mode="before")
     @classmethod
     def clean_title(cls, value: str) -> str:
         if not isinstance(value, str):
-            raise ValueError(Messages.INVALID_TITLE)
+            raise PydanticCustomError("value_error", Messages.INVALID_TITLE)
         
         cleaned_title = value.rstrip()
         
         if not cleaned_title:
-            raise ValueError(Messages.INVALID_TITLE)
+            raise PydanticCustomError("value_error", Messages.INVALID_TITLE)
             
         if len(cleaned_title.encode("utf-8")) > 512:
-            raise ValueError(Messages.TITLE_TOO_LONG)
+            raise PydanticCustomError("value_error", Messages.TITLE_TOO_LONG)
             
         return cleaned_title
 
@@ -46,11 +46,11 @@ class CallCreate(BaseModel):
     @classmethod
     def clean_description(cls, value: str) -> str:
         if not isinstance(value, str):
-            raise ValueError("El campo de descripción debe ser una cadena de texto.")
+            raise PydanticCustomError("value_error", "El campo de descripción debe ser una cadena de texto.")
             
         cleaned_description = value.rstrip()
         
         if len(cleaned_description.encode("utf-8")) > 4096:
-            raise ValueError(Messages.DESCRIPTION_TOO_LONG)
+            raise PydanticCustomError("value_error", Messages.DESCRIPTION_TOO_LONG)
             
         return cleaned_description
