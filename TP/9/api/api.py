@@ -1009,7 +1009,7 @@ async def unauthorize_address(
 
         # Verificar existencia del usuario objetivo en la base de datos local
         target_user = db_manager.getUser(target_address)
-        if not target_user:
+        if not target_user or target_user.state == UserState.ARCHIVED:
             return JSONResponse(
                 status_code=status.HTTP_404_NOT_FOUND,
                 content={"message": Messages.NOT_REGISTERED}
