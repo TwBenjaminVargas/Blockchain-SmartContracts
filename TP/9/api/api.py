@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 import messages as Messages
 from models.AuthorieAddress import AuthorizeAddress
 from models.UnauthorizeAddress import UnauthorizeAddress
+from models.VerifyProof import VerifyProof
 from services.signer import get_signer, Signer
 from models.persistence.Call import CallState
 from models.CallCreate import CallCreate
@@ -1027,6 +1028,38 @@ async def unauthorize_address(
         )
     except Exception as e:
         logger.error(f"Unexpected crash in POST /unauthorize: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"message": Messages.INTERNAL_ERROR}
+        )
+    
+@app.post(
+    "/verify-proof",
+    status_code=status.HTTP_200_OK
+)
+async def verify_proof(
+    payload: VerifyProof,
+    contract_manager: ContractManager = Depends(get_contract_manager)
+):
+    try:
+        is_valid = contract_manager.verify_merkle_proof(
+            proposal_id=payload.proposalId,
+            leaf=payload.leaf,
+            proof=payload.proof
+        )
+        
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={"valid": is_valid}
+        )
+
+    except contract_exceptions.CryptographicHashingException:
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"message": Messages.INTERNAL_ERROR}
+        )
+    except Exception as e:
+        logger.error(f"Unexpected crash in POST /verify-proof: {str(e)}", exc_info=True)
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"message": Messages.INTERNAL_ERROR}

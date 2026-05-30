@@ -9,7 +9,7 @@ from web3.exceptions import BadFunctionCallOutput, ContractLogicError, Web3Excep
 import messages as Messages
 import os
 import exceptions.contractManagerExceptions as cm_exceptions
-from eth_utils import keccak, to_bytes, is_hex, to_checksum_address
+from eth_utils import keccak, to_bytes, is_hex,to_hex
 import rlp
 from deprecated import deprecated
 
@@ -918,6 +918,31 @@ class ContractManager:
             logger.error(f"Fallo criptográfico inesperado al calcular la raíz Merkle: {str(e)}")
             raise cm_exceptions.CryptographicHashingException("Error interno en el procesamiento criptográfico del árbol.")
     
+    def verify_merkle_proof(self, proposal_id: str, leaf: str, proof: list[str]) -> bool:
+        """
+        Verifica de forma local si una hoja pertenece al árbol de Merkle usando el algoritmo de OpenZeppelin.
+        Cada nodo interno se calcula como keccak256(min(a, b) ++ max(a, b)).
+        """
+        try:
+            current_hash = to_bytes(hexstr=leaf)
+            
+            for proof_element in proof:
+                element_bytes = to_bytes(hexstr=proof_element)
+                
+                # Ordenamiento lexicográfico estricto byte a byte
+                if current_hash <= element_bytes:
+                    combined = current_hash + element_bytes
+                else:
+                    combined = element_bytes + current_hash
+                    
+                current_hash = keccak(combined)
+            
+            computed_root = to_hex(current_hash).lower()
+            return computed_root == proposal_id.lower()
+            
+        except Exception as e:
+            logger.error(f"Fallo crítico durante la verificación de la prueba Merkle: {str(e)}")
+            raise cm_exceptions.CryptographicHashingException("No se pudo procesar la verificación criptográfica de la prueba.")
 
 @lru_cache()
 def get_contract_manager() -> ContractManager:
