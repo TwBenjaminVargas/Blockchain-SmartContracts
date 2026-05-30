@@ -377,7 +377,33 @@ class DBManager:
         
         user.state = UserState.AUTHORIZED
         return self.updateExistingUser(user)
-
+    
+    def unauthorizeUser(self, address: str) -> User | None:
+        """
+        Revoca la autorización de un usuario local. 
+        Si su nonce es 0, se elimina la cuenta; de lo contrario, pasa al estado UserState.ARCHIVED.
+        """
+        user = self.getUser(address)
+        if not user:
+            raise db_exceptions.UserNotFoundException("La dirección solicitada no está registrada en el sistema.")
+        
+        if user.nonce == 0:
+            try:
+                with Session(self.engine) as session:
+                    # Traemos el objeto a la sesión actual para poder borrarlo de forma segura
+                    session.add(user)
+                    session.delete(user)
+                    session.commit()
+                logger.debug(f"Usuario con nonce 0 eliminado del almacenamiento local: {address}")
+                return None
+            except SQLAlchemyError as e:
+                logger.error(f"Fallo al eliminar el usuario {address} con nonce 0: {str(e)}")
+                raise db_exceptions.DatabaseWriteException("Error interno al intentar eliminar el registro local.")
+        
+        # Si el nonce es mayor a 0, preservamos el historial cambiándolo a ARCHIVED
+        user.state = UserState.ARCHIVED
+        return self.updateExistingUser(user)
+    
 @lru_cache()
 def get_db_manager() -> DBManager:
     """
