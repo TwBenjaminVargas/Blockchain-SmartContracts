@@ -4,6 +4,7 @@ from sqlmodel import Field, Session, SQLModel, create_engine,select, func
 from models.persistence.Call import Call, CallState
 from models.persistence.User import User, UserState
 from models.persistence.Proposal import Proposal
+from models.persistence.SyncState import SyncState
 import logging
 import exceptions.databaseManagerExceptions as db_exceptions
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
@@ -146,7 +147,7 @@ class DBManager:
             name=name.strip(),
             signature=signature.strip(),
             state=UserState.PENDING,
-            nonce=0
+            nonce=1
         )
 
         logger.debug(f"Registrando nuevo usuario local PENDING para la wallet: {cleaned_address}")
@@ -414,6 +415,54 @@ class DBManager:
         user.state = UserState.ARCHIVED
         return self.updateExistingUser(user)
     
+    def get_or_create_last_block(self, fallback_block: int) -> int:
+        """
+        Recupera el último bloque guardado en 'sync_state'. 
+        Si no existe, lo inicializa con el fallback_block provisto.
+        """
+        try:
+            with Session(self.engine) as session:
+                state = session.exec(select(SyncState).where(SyncState.id == 1)).first()
+                if state:
+                    return state.last_scanned_block
+                
+                new_state = SyncState(id=1, last_scanned_block=fallback_block)
+                session.add(new_state)
+                session.commit()
+                return fallback_block
+        except SQLAlchemyError as e:
+            logger.error(f"Fallo de DB al leer/inicializar sync_state: {str(e)}")
+            return fallback_block
+
+    def update_last_block(self, block_number: int):
+        """
+        Actualiza el número del último bloque procesado con éxito.
+        """
+        try:
+            with Session(self.engine) as session:
+                state = session.exec(select(SyncState).where(SyncState.id == 1)).first()
+                if state:
+                    state.last_scanned_block = block_number
+                    session.add(state)
+                    session.commit()
+        except SQLAlchemyError as e:
+            logger.error(f"Fallo de DB al actualizar checkpoint al bloque {block_number}: {str(e)}")
+    
+    def updateExistingCall(self, call: Call) -> Call:
+        """
+        Guarda los cambios de un objeto Call ya modificado en la base de datos local.
+        """
+        try:
+            with Session(self.engine) as session:
+                session.add(call)
+                session.commit()
+                session.refresh(call)
+                logger.info(f"Llamado '{call.callId}' guardado con éxito en el almacenamiento local.")
+                return call
+        except SQLAlchemyError as db_err:
+            logger.error(f"Fallo crítico al guardar el llamado '{call.callId}': {str(db_err)}")
+            raise db_exceptions.DatabaseWriteException("El almacenamiento local no está disponible para actualizar el llamado.")
+        
 @lru_cache()
 def get_db_manager() -> DBManager:
     """

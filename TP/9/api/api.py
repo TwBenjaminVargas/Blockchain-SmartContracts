@@ -5,6 +5,7 @@ import sys
 from fastapi import Depends, FastAPI, HTTPException, status, Request,Path
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from listeners.BlockChainWorker import BlockchainWorker
 import messages as Messages
 from models.AuthorieAddress import AuthorizeAddress
 from models.UnauthorizeAddress import UnauthorizeAddress
@@ -20,7 +21,7 @@ from web3.exceptions import ContractLogicError
 from db.sqliteManager import DBManager, get_db_manager
 import re
 from models.persistence.User import UserState
-
+import asyncio
 import exceptions.contractManagerExceptions as contract_exceptions
 import exceptions.SignerExceptions as signer_exceptions
 import exceptions.databaseManagerExceptions as db_exceptions
@@ -55,8 +56,23 @@ async def lifespan(app: FastAPI):
         )
         # sys.exit(1) aborta el proceso de Python por completo, matando a Uvicorn
         sys.exit(1)
+        
+    worker = BlockchainWorker()
+    
+    # Creamos una tarea en segundo plano en el event loop de Python
+    worker_task = asyncio.create_task(worker.start_worker(interval_seconds=3))
+    logger.info("Tarea del Blockchain Worker registrada en el event loop.")
     
     yield
+    
+    logger.info("Iniciando apagado controlado del Worker...")
+    worker.stop_worker()
+    
+    try:
+        await asyncio.wait_for(worker_task, timeout=5.0)
+        logger.info("Worker de Blockchain detenido exitosamente.")
+    except asyncio.TimeoutError:
+        logger.warning("El Worker tardó demasiado en cerrarse y fue forzado.")
 
 app = FastAPI(title="API de Convocatoria de Propuestas (CFP) - TP 8",lifespan=lifespan)
 
@@ -230,15 +246,18 @@ async def register(
         
         # Control de Reglas de Negocio / Verificación de estados en Blockchain y Base de Datos Local
         is_onchain_authorized = contract_manager.is_address_authorized(payload.address)
+        is_onchain_registered = contract_manager.is_address_registered(payload.address)
         local_user = db_manager.getUser(payload.address)
 
         if is_onchain_authorized:
             determined_status = UserState.AUTHORIZED
+        elif is_onchain_registered:
+            determined_status = UserState.REGISTERED
         else:
             determined_status = UserState.PENDING
 
         if local_user:
-            if local_user.state == UserState.AUTHORIZED:
+            if local_user.state != UserState.ARCHIVED:
                 return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content={"message": Messages.ALREADY_IN_SYSTEM})
             
             # Si existía pero fue desautorizado, se permite sobreescribir los datos

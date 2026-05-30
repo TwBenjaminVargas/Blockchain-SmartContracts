@@ -19,6 +19,6 @@ class User(SQLModel, table=True):
         description="Estado de registro del solicitante sincronizado con la blockchain"
     )
     nonce: int = SQLField(
-        default=0,
-        description="Valor numérico único de un solo uso para prevenir ataques de replicación, inicia en 0"
+        default=1,
+        description="Valor numérico único de un solo uso para prevenir ataques de replicación, inicia en 1"
     )
