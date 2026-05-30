@@ -30,3 +30,11 @@ class CallNotFoundException(AppBaseException):
 class ProposalNotFoundException(AppBaseException):
     """Lanzada cuando la propuesta solicitada no existe en la base de datos local."""
     pass
+
+class UserNotFoundException(AppBaseException):
+    """Lanzada cuando la dirección buscada no existe en la base de datos."""
+    pass
+
+class NonceOverflowException(AppBaseException):
+    """Lanzada cuando el valor numérico del nonce excede el límite seguro de 32 bits."""
+    pass

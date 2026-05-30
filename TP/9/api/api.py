@@ -6,6 +6,7 @@ from fastapi import Depends, FastAPI, HTTPException, status, Request,Path
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 import messages as Messages
+from models.AuthorieAddress import AuthorizeAddress
 from services.signer import get_signer, Signer
 from models.persistence.Call import CallState
 from models.CallCreate import CallCreate
@@ -849,6 +850,94 @@ async def get_admin_nonce(
 
     except Exception as e:
         logger.error(f"Unhandled exception in GET /admin/nonce: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"message": Messages.INTERNAL_ERROR}
+        )
+
+@app.post(
+    "/authorize/{address}",
+    status_code=status.HTTP_200_OK
+)
+async def authorize_address(
+    payload: AuthorizeAddress,
+    address: str = Path(..., description="Dirección de la wallet que será autorizada"),
+    db_manager: DBManager = Depends(get_db_manager),
+    signer: Signer = Depends(get_signer),
+    contract_manager: ContractManager = Depends(get_contract_manager)
+):
+    try:
+        # Validar formato hexadecimal de la dirección del parámetro de ruta
+        target_address = address.strip()
+        if not re.match(r"^(0x)?[0-9a-fA-F]{40}$", target_address):
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"message": Messages.INVALID_ADDRESS}
+            )
+
+        # Verificar existencia del usuario objetivo en la base de datos local
+        target_user = db_manager.getUser(target_address)
+        if not target_user:
+            return JSONResponse(
+                status_code=status.HTTP_404_NOT_FOUND,
+                content={"message": Messages.NOT_REGISTERED}
+            )
+
+        # Obtener la cuenta del administrador local para extraer su nonce actual
+        admin_user = db_manager.getUser(signer.admin_address)
+        current_admin_nonce = admin_user.nonce if admin_user else 1
+
+        if current_admin_nonce >= 2**32 - 1:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"message": Messages.NONCE_OVERFLOW}
+            )
+
+        #Reconstruir el mensaje binario esperado y verificar la firma criptográfica
+        raw_msg = contract_manager.generate_hex_str_authorize_address(current_admin_nonce, target_address)
+        is_valid_signature = signer.check_admin_sign(raw_msg, payload.signature)
+        
+        if not is_valid_signature:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"message": Messages.INVALID_SIGNATURE}
+            )
+
+        # Operaciones On-Chain en la Blockchain
+        try:
+            tx_dict = contract_manager.authorize_user(signer.address, target_address)
+            raw_tx_bytes = signer.sign_transaction(tx_dict)
+            tx_hash = contract_manager.execute_transaction(raw_tx_bytes)
+            _ = contract_manager.get_transaction_receipt(tx_hash)
+            
+        except contract_exceptions.BlockchainContractLogicException as bcle:
+            error_message = contract_manager.map_revert_reason_to_message(bcle.message)
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"message": error_message}
+            )
+        except (contract_exceptions.NodeRPCException, contract_exceptions.BlockchainTransactionException):
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content={"message": Messages.INTERNAL_ERROR}
+            )
+
+        # Persistir cambios locales en la base de datos tras éxito On-Chain
+        db_manager.incrementUserNonce(signer.admin_address)
+        db_manager.authorizeUser(target_address)
+
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={"message": "OK"}
+        )
+
+    except db_exceptions.DatabaseConnectionException:
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"message": Messages.INTERNAL_ERROR}
+        )
+    except Exception as e:
+        logger.error(f"Unexpected crash in POST /authorize: {str(e)}", exc_info=True)
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"message": Messages.INTERNAL_ERROR}

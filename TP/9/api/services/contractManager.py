@@ -5,11 +5,11 @@ from web3 import Web3
 from web3.providers import HTTPProvider
 from services.settings import get_settings
 from web3.types import BlockData
-from web3.exceptions import BadFunctionCallOutput, ContractLogicError, Web3ValidationError,TimeExhausted,TransactionNotFound
+from web3.exceptions import BadFunctionCallOutput, ContractLogicError, Web3Exception, Web3ValidationError,TimeExhausted,TransactionNotFound
 import messages as Messages
 import os
 import exceptions.contractManagerExceptions as cm_exceptions
-from eth_utils import keccak
+from eth_utils import keccak, to_bytes, is_hex, to_checksum_address
 import rlp
 from deprecated import deprecated
 
@@ -29,22 +29,23 @@ class ContractManager:
     
     
     def __init__(self):
-        logger.debug("Inicializando ContractManager con proveedor: %s y contrato: %s", provider_url, contract_address)
         
         settings = get_settings()
         # Configuración del proveedor HTTP
-        provider_path = settings.web3_provider_url
-        if not provider_path.lower().startswith(("http://", "https://")):
+        self.provider_path = settings.web3_provider_url
+        if not self.provider_path.lower().startswith(("http://", "https://")):
             raise ValueError(
-                f"Proveedor de red no soportado en ContractManager: {provider_path}. "
+                f"Proveedor de red no soportado en ContractManager: {self.provider_path}. "
                 f"La URL debe comenzar con http:// o https://"
             )
 
         # Instancia única de Web3
-        self.w3 = Web3(HTTPProvider(provider_path))
+        self.w3 = Web3(HTTPProvider(self.provider_path))
         
         #Formateo seguro de la dirección del contrato (Checksum Address)
         self.contract_address = self.w3.to_checksum_address(settings.contract_address)
+        
+        logger.debug("Inicializando ContractManager con proveedor: %s y contrato: %s", self.provider_path, self.contract_address)
         
         #Carga e instanciación del archivo ABI (ubicado en la carpeta 'src/')
         factory_abi_path = os.path.join(os.path.dirname(__file__), "cfp_factory_abi.json")
@@ -199,6 +200,35 @@ class ContractManager:
         raw_message = prefix_bytes + contract_address_bytes + nonce_bytes + name_bytes
         return raw_message.hex()
 
+    def generate_hex_str_authorize_address(self, admin_nonce: int, address_to_authorize: str) -> str:
+        """
+        Genera el mensaje binario crudo para la operación de autorización en formato hexadecimal.
+        Concatena: prefix (13B) + contract (20B) + nonce (32B) + target_address (20B).
+        """
+        # Validaciones de tipo y rango del Nonce
+        if not isinstance(admin_nonce, int) or admin_nonce < 0:
+            raise cm_exceptions.InvalidInputTypeException("El nonce del administrador debe ser un entero no negativo.")
+
+        if admin_nonce >= 2**32 - 1:
+            raise cm_exceptions.NonceOverflowException("El nonce del administrador excede el límite máximo de 32 bits.")
+
+        #Validación de formato de la dirección de destino
+        if not isinstance(address_to_authorize, str) or not is_hex(address_to_authorize):
+            raise cm_exceptions.InvalidInputTypeException("La dirección a autorizar no tiene un formato hexadecimal válido.")
+        
+        try:
+            prefix_bytes = b"authorizePOST" # 13 bytes
+            contract_bytes = to_bytes(hexstr=self.contract_address) # 20 bytes
+            nonce_bytes = admin_nonce.to_bytes(32, byteorder="big") # 32 bytes
+            target_bytes = to_bytes(hexstr=address_to_authorize) # 20 bytes
+
+            raw_message = prefix_bytes + contract_bytes + nonce_bytes + target_bytes
+            return raw_message.hex()
+
+        except Exception as e:
+            logger.error(f"Error packing authorize message structure: {str(e)}", exc_info=True)
+            raise cm_exceptions.CryptographicHashingException("No se pudo construir la estructura binaria del mensaje debido a un fallo de codificación.")
+
     def create_cfp_for(self, from_address: str,creator_address: str, call_id_hex: str, unix_timestamp: int) -> dict:
         try:
             logger.debug(f"Preparando transacción 'create' para CallId: {call_id_hex}")
@@ -265,35 +295,60 @@ class ContractManager:
             raise e
     
     def authorize_user(self, from_address: str, user_address: str) -> dict:
+        """
+        Construye y retorna el diccionario de la transacción 'authorize' listo para ser firmado.
+        """
         try:
-            logger.debug(f"Preparando transacción 'authorize' para autorizar a: {user_address}")
+            logger.debug(f"Preparando parámetros para transacción 'authorize' a: {user_address}")
+            checksum_from = Web3.to_checksum_address(from_address)
+            checksum_target = Web3.to_checksum_address(user_address)
 
-            # Obtenemos el nonce actual de la wallet del Owner (la API) directamente del nodo RPC
-            nonce = self.w3.eth.get_transaction_count(from_address)
+            try:
+                # Usamos la dirección con checksum para consultar el nodo
+                nonce = self.w3.eth.get_transaction_count(checksum_from)
+                chain_id = self.w3.eth.chain_id
+                gas_price = self.w3.eth.gas_price
+                max_priority_fee = self.w3.eth.max_priority_fee
+            except Web3Exception as rpc_err:
+                logger.error(f"Fallo de conexión RPC al consultar parámetros de red: {str(rpc_err)}")
+                raise cm_exceptions.NodeRPCException(
+                    "Error al conectar con el proveedor RPC de Ethereum para consultar el nonce o tarifas de gas."
+                )
 
-            # Construimos los parámetros base de la transacción on-chain
             tx_params = {
-                'from': from_address,
+                'from': checksum_from, # Con checksum
                 'nonce': nonce,
-                'chainId': self.w3.eth.chain_id,
-                'maxFeePerGas': self.w3.eth.gas_price,
-                'maxPriorityFeePerGas': self.w3.eth.max_priority_fee,
+                'chainId': chain_id,
+                'maxFeePerGas': gas_price,
+                'maxPriorityFeePerGas': max_priority_fee,
             }
 
-            # Invocamos la función 'authorize' de Solidity pasando el parámetro requerido
-            transaction_dict = self.contract.functions.authorize(
-                user_address
-            ).build_transaction(tx_params)
+            try:
+                transaction_dict = self.contract.functions.authorize(
+                    checksum_target
+                ).build_transaction(tx_params)
 
-            logger.debug(f"Diccionario de transacción 'authorize' para {user_address} construido exitosamente.")
-            return transaction_dict
-        
-        except ContractLogicError as cle:
-            logger.error(f"Error de lógica en el Smart Contract al construir authorize: {cle.message}")
-            raise cle
+                logger.debug(f"Diccionario de transacción generado para {user_address}.")
+                return transaction_dict
+
+            except ContractLogicError as cle:
+                error_msg = str(cle).replace("execution reverted:", "").strip()
+                logger.warning(f"El Smart Contract revirtió la simulación de 'authorize': {error_msg}")
+                raise cm_exceptions.BlockchainContractLogicException(
+                    f"La validación del Smart Contract falló. Razón: {error_msg}"
+                )
+            except Web3Exception as tx_err:
+                logger.error(f"Error de infraestructura al compilar parámetros de la tx: {str(tx_err)}")
+                raise cm_exceptions.BlockchainTransactionException(
+                    f"No se pudo estructurar la transacción debido a un problema de infraestructura: {str(tx_err)}"
+                )
+
+        except (cm_exceptions.NodeRPCException, cm_exceptions.BlockchainContractLogicException, cm_exceptions.BlockchainTransactionException):
+            raise
+
         except Exception as e:
-            logger.error(f"Error al construir la transacción authorize_user: {str(e)}")
-            raise e
+            logger.error(f"Fallo inesperado fuera del flujo Web3 en authorize_user: {str(e)}", exc_info=True)
+            raise cm_exceptions.BlockchainTransactionException(f"Error interno fatal al preparar la autorización: {str(e)}")
     
     def register_proposal(self, from_address: str, call_id_hex: str, proposal_hex: str) -> dict:
         try:

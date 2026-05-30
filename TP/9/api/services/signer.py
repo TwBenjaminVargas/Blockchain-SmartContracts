@@ -30,7 +30,7 @@ class Signer:
         )
     
         self.address = self._account.address
-        logger.debug("Sistema inicializado con la dirección de wallet: %s", self.address)
+        logger.debug("Sistema inicializado con la dirección de wallet owner: %s", self.address)
         self.private_key = self._account.key
         
         
@@ -70,6 +70,23 @@ class Signer:
             logger.error(f"Fallo inesperado al recuperar el firmante: {str(e)}", exc_info=True)
             raise signer_exceptions.InvalidSignatureException("No se pudo procesar la firma de Ethereum enviada.")  
         
+    def check_admin_sign(self, raw_message: str, signature_hex: str) -> bool:
+        """
+        Verifica si la firma provista corresponde a la clave privada del administrador del sistema.
+        Aplica internamente el prefijo estándar de firma de Ethereum.
+        """
+        try:
+            # Aplica el prefijo \x19Ethereum Signed Message:\n e incluye la longitud automáticamente
+            signable_message = encode_defunct(hexstr=raw_message)
+            
+            # Recupera la dirección pública que generó la firma
+            recovered_address = Account.recover_message(signable_message, signature=signature_hex)
+            
+            return recovered_address.lower() == self.admin_address.lower()
+        except Exception as e:
+            logger.warning(f"Signature recovery failed: {str(e)}")
+            return False
+    
     def sign_transaction(self, transaction_dict: dict) -> bytes:
         try:
             # Validación temprana de seguridad defensiva
