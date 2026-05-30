@@ -351,6 +351,33 @@ class DBManager:
             logger.error(f"Error al recuperar el llamado {call_id}: {str(db_err)}")
             raise db_exceptions.DatabaseConnectionException("Error de lectura en el almacenamiento local.")
 
+    def incrementUserNonce(self, address: str) -> int:
+        """
+        Incrementa el nonce de un usuario en 1 reutilizando la lógica interna.
+        Retorna el nuevo valor asignado.
+        """
+        user = self.getUser(address)
+        if not user:
+            raise db_exceptions.UserNotFoundException("La dirección solicitada no está registrada en el sistema.")
+        
+        if user.nonce >= 2**32 - 1:
+            raise db_exceptions.NonceOverflowException("Se ha alcanzado el límite máximo para el valor del nonce.")
+            
+        user.nonce += 1
+        self.updateExistingUser(user)
+        return user.nonce
+
+    def authorizeUser(self, address: str) -> User:
+        """
+        Modifica el estado de un usuario local al valor AUTHORIZED reutilizando la lógica interna.
+        """
+        user = self.getUser(address)
+        if not user:
+            raise db_exceptions.UserNotFoundException("La dirección solicitada no está registrada en el sistema.")
+        
+        user.state = UserState.AUTHORIZED
+        return self.updateExistingUser(user)
+
 @lru_cache()
 def get_db_manager() -> DBManager:
     """
