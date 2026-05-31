@@ -383,7 +383,7 @@ class DBManager:
         """
         try:
             with Session(self.engine) as session:
-                statement = select(Call).where(Call.callId == call_id.lower())
+                statement = select(Call).where(Call.callId == call_id)
                 return session.exec(statement).first()
         except SQLAlchemyError as db_err:
             logger.error(f"Error al recuperar el llamado {call_id}: {str(db_err)}")

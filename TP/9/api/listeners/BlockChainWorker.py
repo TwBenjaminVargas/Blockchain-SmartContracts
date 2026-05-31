@@ -168,7 +168,7 @@ class BlockchainWorker:
                 call_id_raw = event.args.callId
                 call_id_hex = "0x" + call_id_raw.hex() if isinstance(call_id_raw, bytes) else str(call_id_raw).lower()
                 cfp_contract_address = event.args.cfp.lower()
-                creator_address = event.args.creator.lower()
+                creator_address = event.args.creator
                 
                 logger.info(f"Evento on-chain capturado: CFPCreated ID {call_id_hex} asignado a {cfp_contract_address}")
                 
