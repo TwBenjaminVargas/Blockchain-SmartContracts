@@ -709,7 +709,7 @@ async def get_proposal_data(
                 logger.debug(f"Propuesta {proposal} ausente en BD local. Extrayendo auditoría de la EVM.")
                 
                 _, cfp_address = contract_manager.get_call_details(call_id)
-                if cfp_address == "0x0000000000000000000000000000000000000000":
+                if not cfp_address:
                     return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={"message": Messages.CALLID_NOT_FOUND})
 
                 sender, block_number, timestamp_unix = contract_manager.get_cfp_proposal_data(cfp_address, proposal)
