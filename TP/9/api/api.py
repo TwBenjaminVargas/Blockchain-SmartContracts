@@ -833,7 +833,6 @@ async def get_registration_status(
     summary="Actualiza el nombre asociado a una dirección registrada, incrementando su nonce para mantener la sincronización con la blockchain"
 )
 async def update_registration_name(
-    request: Request,
     payload: UserPatch,
     address: str = Path(..., description="Ethereum address (0x...)"),
     db_manager: DBManager = Depends(get_db_manager),
@@ -871,7 +870,8 @@ async def update_registration_name(
         try:
             message_hex = contract_manager.generate_hex_str_user_patch(user.nonce, payload.name)
             recovered_address = signer.get_signer_address(message_hex, payload.signature)
-        except Exception:
+        except Exception as e:
+            logger.error(f"Error al verificar la firma para actualización de registro de {address_lower}: {str(e)}")
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 content={"message": Messages.INVALID_SIGNATURE}
