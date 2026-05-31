@@ -14,13 +14,13 @@ class UserPatch(BaseModel):
         examples=["0xd72c1655fde0f5179687dbf4b6e3c25d45f24d819d2b93bdf5d34ab86967c387015b863608371d925cd1d3c9796cad0b486e38a9938bd38820e0e24ad70f567b1b"]
     )
     
-    #! Problema de 513 bytes con test test_update_registration_name_limit
+    #! Problema de 513 bytes recibidos con test test_update_registration_name_limit
     @field_validator("name", mode="before")
     @classmethod
     def validate_and_clean_name(cls, value: str) -> str:
         if not isinstance(value, str):
             raise InvalidNameException()
-        #* Descomentar para ver el problema de los 513 bytes
+        #* Descomentar para ver el problema de los 513 bytes recibidos en el test test_update_registration_name_limit
         #print(f"BYTES: {len(value.encode('utf-8'))}")
         #print(f"CHARS: {len(value)}")
         #print(f"ULTIMOS 3 CHARS: {[hex(ord(c)) for c in value[-3:]]}")
