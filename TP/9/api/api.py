@@ -959,15 +959,6 @@ async def authorize_address(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 content={"message": Messages.INVALID_ADDRESS}
             )
-
-        # Verificar existencia del usuario objetivo en la base de datos local
-        target_user = db_manager.getUser(target_address)
-        if not target_user or target_user.state == UserState.ARCHIVED:
-            return JSONResponse(
-                status_code=status.HTTP_404_NOT_FOUND,
-                content={"message": Messages.NOT_REGISTERED}
-            )
-
         # Obtener la cuenta del administrador local para extraer su nonce actual
         admin_user = db_manager.getUser(signer.admin_address)
         current_admin_nonce = admin_user.nonce
@@ -977,7 +968,6 @@ async def authorize_address(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 content={"message": Messages.NONCE_OVERFLOW}
             )
-
         #Reconstruir el mensaje binario esperado y verificar la firma criptográfica
         raw_msg = contract_manager.generate_hex_str_authorize_address(current_admin_nonce, target_address)
         is_valid_signature = signer.check_admin_sign(raw_msg, payload.signature)
@@ -986,6 +976,14 @@ async def authorize_address(
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 content={"message": Messages.INVALID_SIGNATURE}
+            )
+
+        # Verificar existencia del usuario objetivo en la base de datos local
+        target_user = db_manager.getUser(target_address)
+        if not target_user or target_user.state == UserState.ARCHIVED:
+            return JSONResponse(
+                status_code=status.HTTP_404_NOT_FOUND,
+                content={"message": Messages.NOT_REGISTERED}
             )
 
         # Operaciones On-Chain en la Blockchain
@@ -1048,14 +1046,6 @@ async def unauthorize_address(
                 content={"message": Messages.INVALID_ADDRESS}
             )
 
-        # Verificar existencia del usuario objetivo en la base de datos local
-        target_user = db_manager.getUser(target_address)
-        if not target_user or target_user.state == UserState.ARCHIVED:
-            return JSONResponse(
-                status_code=status.HTTP_404_NOT_FOUND,
-                content={"message": Messages.NOT_REGISTERED}
-            )
-
         # Obtener la cuenta del administrador local para extraer su nonce actual
         admin_user = db_manager.getUser(signer.admin_address)
         current_admin_nonce = admin_user.nonce
@@ -1075,6 +1065,14 @@ async def unauthorize_address(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 content={"message": Messages.INVALID_SIGNATURE}
             )
+        # Verificar existencia del usuario objetivo en la base de datos local
+        target_user = db_manager.getUser(target_address)
+        if not target_user or target_user.state == UserState.ARCHIVED:
+            return JSONResponse(
+                status_code=status.HTTP_404_NOT_FOUND,
+                content={"message": Messages.NOT_REGISTERED}
+            )
+
 
         # Operaciones On-Chain en la Blockchain
         try:
