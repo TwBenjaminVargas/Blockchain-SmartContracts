@@ -1,6 +1,6 @@
-from fastapi import Depends
-from services.settings import Settings, get_settings
-from sqlmodel import Field, Session, SQLModel, create_engine,select, func
+import json
+from services.settings import get_settings
+from sqlmodel import Session, SQLModel, create_engine,select, func
 from models.persistence.Call import Call, CallState
 from models.persistence.User import User, UserState
 from models.persistence.Proposal import Proposal
@@ -292,15 +292,29 @@ class DBManager:
         return self._add(new_proposal)
 
     def get_proof(self, proposal_id: str) -> dict | None:
-        """Recupera la entidad para procesamiento interno."""
+        """Recupera la prueba de la base de datos y la convierte a un diccionario real de Python."""
         try:
             with Session(self.engine) as session:
                 statement = select(Proposal).where(Proposal.proposalId == proposal_id.lower())
-                return session.exec(statement).first()
+                proposal_record = session.exec(statement).first()
+
+                if not proposal_record or not proposal_record.proofsJson:
+                    return None
+
+
+                if isinstance(proposal_record.proofsJson, str):
+                    return json.loads(proposal_record.proofsJson)
+
+                # Si ORM ya lo parseó automáticamente, lo devolvemos directo
+                return proposal_record.proofsJson
+
         except SQLAlchemyError as db_err:
             logger.error(f"Fallo al leer propuesta del llamado {proposal_id}: {str(db_err)}")
             raise db_exceptions.DatabaseConnectionException("Error de lectura local.")
-
+        except json.JSONDecodeError as json_err:
+            logger.error(f"Error crítico de parseo: El campo proofsJson para {proposal_id} está mal formado: {str(json_err)}")
+            return None
+    
     def get_proof_json(self, proposal_id: str) -> dict:
         """Devuelve directamente las pruebas de Merkle mapeadas desde el JSON persistido."""
         import json

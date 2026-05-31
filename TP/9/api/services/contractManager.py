@@ -904,6 +904,7 @@ class ContractManager:
                 tree[i] = keccak(combined)
 
             proposal_id_root = f"0x{tree[0].hex()}".lower()
+            logger.debug(f"Raíz de Merkle calculada: {proposal_id_root}")
 
             # Generación de Pruebas (Proofs) navegando de forma inversa desde cada hoja hacia la raíz
             proofs = {}
@@ -929,6 +930,7 @@ class ContractManager:
                     current_idx = parent_idx
 
                 proofs[leaf_str] = proof_hashes
+                logger.debug(f"Pruebas generadas {proofs}")
 
             return proposal_id_root, proofs, title_hash, desc_hash
 

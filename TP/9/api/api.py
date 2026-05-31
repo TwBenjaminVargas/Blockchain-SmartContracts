@@ -739,11 +739,11 @@ async def get_proposal_data(
             response_content["title"] = proposal_record.title
             response_content["description"] = proposal_record.description
             
-            full_proofs = db_manager.get_proof(proposal)
+            full_proofs= db_manager.get_proof(proposal)
+            
             if full_proofs:
-                # Acceso seguro mediante introspección soportando camelCase o snake_case
-                t_hash_key = getattr(proposal_record, "titleHash", getattr(proposal_record, "title_hash", None))
-                d_hash_key = getattr(proposal_record, "descriptionHash", getattr(proposal_record, "description_hash", None))
+                t_hash_key = proposal_record.titleHash
+                d_hash_key = proposal_record.descriptionHash
                 call_id_key = call_id.lower()
                 
                 filtered_proofs = {}
@@ -751,6 +751,7 @@ async def get_proposal_data(
                     if key and key in full_proofs:
                         filtered_proofs[key] = [h.lower() for h in full_proofs[key]]
                 
+                logger.debug(f"Pruebas filtradas para la respuesta: {filtered_proofs}")
                 response_content["proof"] = filtered_proofs
 
         return JSONResponse(status_code=status.HTTP_200_OK, content=response_content)
@@ -1145,4 +1146,35 @@ async def verify_proof(
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"message": Messages.INTERNAL_ERROR}
+        )
+        
+@app.get(
+    "/contract-owner",
+    status_code=status.HTTP_200_OK,
+    summary="Obtiene la dirección del dueño del contrato factoría",
+    description="Retorna un objeto JSON con el campo 'address' que contiene la dirección del propietario."
+)
+async def get_contract_owner(
+    signer: Signer = Depends(get_signer)
+):
+    try:
+        owner_address = signer.address
+        
+        if not owner_address:
+            logger.error("Signer no tiene inicializada la propiedad 'address'.")
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content={"message": "Error interno: dirección del contrato no configurada"}
+            )
+            
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={"address": owner_address.lower()}
+        )
+        
+    except Exception as e:
+        logger.error(f"Error no manejado en GET /contract-owner: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"message": "Internal Server Error"}
         )
