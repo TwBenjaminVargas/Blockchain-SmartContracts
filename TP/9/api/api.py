@@ -542,7 +542,6 @@ async def get_call(
             content={"message": Messages.INTERNAL_ERROR}
         )
     
- 
 @app.get(
     "/closing-time/{call_id}",
     status_code=status.HTTP_200_OK,
@@ -551,45 +550,87 @@ async def get_call(
 )
 async def get_closing_time_by_id(
     call_id: str = Path(..., description="Hash que identifica al llamado"),
+    db_manager: DBManager = Depends(get_db_manager),
     manager: ContractManager = Depends(get_contract_manager)
 ):
     if not re.match(r"^0x[a-fA-F0-9]{64}$", call_id):
-        raise HTTPException(
+        return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=Messages.INVALID_CALLID
+            content={"message": Messages.INVALID_CALLID}
         )
 
+    cfp_address = None
+
     try:
-        creator_address, cfp_address = manager.get_call_details(call_id_hex=call_id)
+        call_record = db_manager.getCall(call_id)
         
-        address_zero = "0x" + "0" * 40
-        if creator_address == address_zero or cfp_address == address_zero:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=Messages.CALLID_NOT_FOUND
-            )
+        if call_record:
+            if call_record.state != CallState.PENDING:
+                cfp_address = call_record.contractAddress
+            else:
+                return JSONResponse(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    content={"message": Messages.CALLID_NOT_FOUND}
+                 )
+                
+                
+    except db_exceptions.DatabaseConnectionException as db_err:
+        logger.error(f"Fallo de lectura en BD local al buscar {call_id}: {str(db_err)}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"message": Messages.INTERNAL_ERROR}
+        )
+
+    if not cfp_address:
+        try:
+            creator_address, contract_chain_address = manager.get_call_details(call_id_hex=call_id)
+             
+            address_zero = "0x" + "0" * 40
+            if creator_address == address_zero or contract_chain_address == address_zero:
+                return JSONResponse(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    content={"message": Messages.CALLID_NOT_FOUND}
+                )
+                
+            cfp_address = contract_chain_address
             
+        except (contract_exceptions.InvalidContractAddressException, contract_exceptions.BlockchainReadException) as chain_err:
+            logger.error(f"Error al obtener detalles del llamado en la Blockchain: {str(chain_err)}")
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content={"message": Messages.INTERNAL_ERROR}
+            )
+        except Exception as e:
+            logger.error(f"Fallo inesperado al conectar con el nodo RPC para recuperar el llamado: {str(e)}")
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content={"message": Messages.INTERNAL_ERROR}
+            )
+
+    try:
         timestamp = manager.get_cfp_closing_time_by_address(cfp_address=cfp_address)
         
         iso_date = datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat().replace("+00:00", "Z")
         
         return {"closingTime": iso_date}
         
-    except HTTPException as http_ex:
-        raise http_ex
-        
-    except ContractLogicError as cle:
-        logger.error(f"Error de lógica en la EVM al consultar tiempo de cierre: {cle.message}")
-        raise HTTPException(
+    except contract_exceptions.InvalidContractAddressException as ice:
+        logger.error(f"Dirección de contrato inválida o no compatible detectada: {str(ice)}")
+        return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=Messages.INTERNAL_ERROR
+            content={"message": Messages.INTERNAL_ERROR}
         )
-        
-    except Exception as e:
-        logger.error(f"Fallo no controlado en el endpoint GET /closing-time: {str(e)}")
-        raise HTTPException(
+    except contract_exceptions.BlockchainReadException as bre:
+        logger.error(f"Error de infraestructura de red al leer closingTime: {str(bre)}")
+        return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=Messages.INTERNAL_ERROR
+            content={"message": Messages.INTERNAL_ERROR}
+        )
+    except Exception as e:
+        logger.error(f"Fallo no controlado en la fase final de /closing-time: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"message": Messages.INTERNAL_ERROR}
         )
 
 @app.get(
