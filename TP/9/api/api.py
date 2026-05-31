@@ -586,7 +586,7 @@ async def get_closing_time_by_id(
             creator_address, contract_chain_address = manager.get_call_details(call_id_hex=call_id)
              
             address_zero = "0x" + "0" * 40
-            if creator_address == address_zero or contract_chain_address == address_zero:
+            if not creator_address or not contract_chain_address:
                 return JSONResponse(
                     status_code=status.HTTP_404_NOT_FOUND,
                     content={"message": Messages.CALLID_NOT_FOUND}
