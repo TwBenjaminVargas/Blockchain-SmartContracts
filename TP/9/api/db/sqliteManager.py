@@ -81,7 +81,7 @@ class DBManager:
             db_exceptions.DatabaseWriteException: Si el motor de base de datos falla al escribir.
         """
         # Validación preventiva
-        inputs = {"call_id": call_id, "title": title, "description": description, "signature": signature, "creator_address": creator_address}
+        inputs = {"call_id": call_id, "title": title, "signature": signature, "creator_address": creator_address}
         for name, value in inputs.items():
             if not isinstance(value, str) or not value.strip():
                 logger.error(f"Parámetro inválido o vacío detectado en createPendingCall: {name}={type(value)}")
