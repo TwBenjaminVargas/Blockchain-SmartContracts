@@ -1,244 +1,123 @@
 # Trabajo práctico 9
 
-Este trabajo práctico construye sobre los dos trabajos prácticos anteriores. 
+Este práctico integra los contratos del sistema de llamados a propuestas con una API REST y una base de datos SQLite para almacenar información fuera de la cadena. La idea central es que la cadena conserve solo lo mínimo necesario para verificar integridad, mientras que la información descriptiva y operativa quede disponible off chain.
 
-* El directorio `contracts` debe contener los contratos `CFPFactory.sol` y `CFP.sol`, que serán versiones modificadas de los producidos para el práctico 7. Las nuevas especificaciones se encuentran en el archivo [README.md](contracts/README.md) de ese directorio.
-* El directorio `api` contiene la implementación de una API REST que interactúa con los contratos, y además trabaja con una base de datos local para almacenar información fuera de la cadena (*off chain*). Las nuevas especificaciones se encuentran en el archivo [README.md](api/README.md) de ese directorio.
+## Qué se hizo
 
-## Nuevos conceptos
+Se trabajó sobre dos piezas principales:
 
-### Almacenamiento *off chain*
+* `contracts`: contiene las versiones finales de `CFP.sol` y `CFPFactory.sol`, adaptadas para este práctico.
+* `api`: contiene la API REST que interactúa con esos contratos, firma operaciones con una cuenta derivada desde una mnemónica y persiste datos locales en SQLite.
 
-Hasta este práctico, toda la información relevante del sistema vivía exclusivamente en el contrato: quién había presentado una propuesta, cuándo, con qué identificador. Esta arquitectura es atractiva porque los datos en la cadena son inmutables, públicamente verificables y no dependen de ningún servidor externo. Sin embargo, tiene un costo muy concreto: almacenar datos en Ethereum es caro.
+Además, se incorporó un esquema de eventos para mantener consistencia entre lo que ocurre on chain y lo que se guarda en la base de datos local.
 
-El costo de almacenamiento en Ethereum se paga en *gas*. Cada byte que se escribe en el estado del contrato tiene un costo fijo en gas, y ese gas se traduce en Ether. Almacenar un string de 100 caracteres puede costar varios dólares; almacenar documentos, imágenes o incluso descripciones largas resulta prohibitivo. Además, la cadena no está diseñada como un sistema de almacenamiento de propósito general: su fortaleza es garantizar la ejecución correcta de código y la integridad de los datos, no el acceso eficiente a grandes volúmenes de información.
+## Cómo se ejecuta
 
-La solución adoptada en este práctico es una arquitectura híbrida: se almacena *on chain* únicamente el hash de los datos relevantes, y los datos en sí se guardan *off chain*, en una base de datos convencional administrada por el servidor de la API. El contrato no sabe nada sobre el título ni la descripción de una propuesta; solo conoce su identificador (la raíz de un árbol de Merkle). Quien quiera verificar que una propuesta no fue alterada puede recalcular el hash a partir de los datos off chain y compararlo con lo que está registrado en el contrato.
+Primero hay que abrir una terminal en la carpeta `contracts` y levantar la red local de Hardhat:
 
-#### Motivaciones
-
-* **Costo**: guardar datos descriptivos (título, descripción, archivos) en la cadena es innecesariamente costoso cuando basta con registrar su huella digital.
-* **Escalabilidad**: los nodos de Ethereum replican el estado completo de todos los contratos. Reducir lo que se almacena on chain beneficia a toda la red.
-* **Flexibilidad**: los datos off chain pueden indexarse, buscarse y presentarse con herramientas convencionales (bases de datos SQL, motores de búsqueda), algo que no es práctico hacer sobre el estado de un contrato.
-
-#### Desafíos
-
-* **Consistencia**: el registro off chain y la transacción on chain son dos operaciones distintas que pueden fallar de forma independiente. Si el servidor guarda los datos en la base de datos pero la transacción on chain falla (o viceversa), el sistema queda en un estado inconsistente. En este práctico se aborda este problema mediante la escucha de eventos (ver sección siguiente): la base de datos se actualiza recién cuando se confirma el evento correspondiente en la cadena.
-* **Disponibilidad**: a diferencia de los datos on chain, los datos off chain dependen de que el servidor esté disponible. Si el servidor se cae o se corrompe, los datos descriptivos pueden perderse aunque los hashes persistan en el contrato.
-* **Confianza**: un tercero que consulta el sistema debe confiar en que el servidor no alteró los datos off chain. Esta confianza se puede verificar recalculando el hash, pero requiere que el cliente tenga acceso a los datos originales y al contrato.
-
-#### Inconvenientes
-
-La principal desventaja de esta arquitectura es que rompe la propiedad de descentralización total. El contrato es confiable por naturaleza; el servidor *off chain* no lo es necesariamente. Si el servidor desaparece, los hashes quedan en la cadena pero los datos que representan se pierden. En aplicaciones donde la persistencia de los datos es crítica se suelen usar sistemas de almacenamiento descentralizados como IPFS, en los que el contenido se identifica por su hash y cualquier nodo puede servir los datos.
-
-No obstante esto, todo depende de la naturaleza del problema que se desea resolver. En este caso, estamos resolviendo el problema de una organización que desea brindar transparencia a sus procesos de compra. Pero los procesos de compra son propios de la organización, no distribuidos en múltiples partes interesadas, por lo que es apropidado que parte de esa información esté en bases de datos propias.
-
----
-
-### Escucha de eventos y consistencia entre cadena y base de datos
-
-Cuando una acción implica tanto una transacción en la cadena como un registro en la base de datos local, es fundamental que ambos registros sean consistentes. Si el servidor actualiza la base de datos antes de que la transacción se confirme, corre el riesgo de que la transacción falle y los registros queden desincronizados.
-
-La solución es invertir el orden: el servidor escucha los eventos emitidos por el contrato y actualiza la base de datos recién cuando confirma que la transacción fue minada. Los contratos de este práctico emiten eventos como `CreatorRegistered`, `CreatorAuthorized` y `CFPCreated`; el servidor los usa como señal confiable de que la acción ocurrió efectivamente en la cadena.
-
-#### Cómo funciona la escucha de eventos
-
-Un nodo Ethereum almacena los eventos emitidos por los contratos en los recibos de las transacciones. Las bibliotecas de cliente (web3.py, ethers.js) permiten suscribirse a estos eventos o consultarlos en bloques pasados.
-
-La estrategia más simple en un servidor sin soporte de WebSocket es el *polling*: cada cierto tiempo se consultan los logs de los últimos bloques y se procesan los eventos nuevos.
-
-#### Ejemplo en Python con web3.py
-
-```python
-from web3 import Web3
-
-w3 = Web3(Web3.HTTPProvider("http://localhost:8545"))
-
-# Instancia del contrato (requiere ABI y dirección)
-factory = w3.eth.contract(address=factory_address, abi=factory_abi)
-
-# Crear un filtro para el evento CreatorRegistered desde el bloque actual
-event_filter = factory.events.CreatorRegistered.create_filter(from_block="latest")
-
-# Bucle de polling (en producción se ejecuta en un hilo separado)
-while True:
-    for event in event_filter.get_new_entries():
-        creator = event["args"]["creator"]
-        print(f"Nuevo creador registrado: {creator}")
-        # Actualizar la base de datos local...
-    time.sleep(2)
+```bash
+npx hardhat node
 ```
 
-Para consultar eventos emitidos en un rango de bloques pasados:
+Después, en otra terminal y también parado en `contracts`, se despliegan los contratos con el script de despliegue:
 
-```python
-logs = factory.events.CFPCreated.get_logs(
-    from_block=desde_bloque,
-    to_block="latest"
-)
-for log in logs:
-    creator = log["args"]["creator"]
-    call_id = log["args"]["callId"].hex()
-    cfp_address = log["args"]["cfp"]
-    print(f"CFP creado: callId={call_id}, contrato={cfp_address}, creador={creator}")
+```bash
+npx hardhat run scripts/deploy.js --network localhost
 ```
 
-#### Ejemplo en JavaScript con ethers.js (v6)
+La dirección resultante de `CFPFactory` debe cargarse luego en la API.
 
-```javascript
-import { ethers } from "ethers";
+Por último, la API se ejecuta desde la carpeta `api` con:
 
-const provider = new ethers.JsonRpcProvider("http://localhost:8545");
-const factory = new ethers.Contract(factoryAddress, factoryAbi, provider);
-
-// Escucha continua de eventos (requiere soporte de suscripciones o polling interno)
-factory.on("CreatorRegistered", (creator, event) => {
-    console.log(`Nuevo creador registrado: ${creator}`);
-    // Actualizar la base de datos local...
-});
-
-factory.on("CFPCreated", (creator, callId, cfp, event) => {
-    console.log(`CFP creado: callId=${callId}, contrato=${cfp}, creador=${creator}`);
-    // Actualizar la base de datos local...
-});
+```bash
+uvicorn api:app --port 5000
 ```
 
-Para consultar eventos pasados en un rango de bloques:
+## Variables de entorno
 
-```javascript
-// queryFilter devuelve todos los eventos que coincidan en el rango indicado
-const events = await factory.queryFilter("CFPCreated", desdeBloque, "latest");
-for (const e of events) {
-    const { creator, callId, cfp } = e.args;
-    console.log(`CFP creado: callId=${callId}, contrato=${cfp}, creador=${creator}`);
-}
-```
+El archivo [api/.env.example](api/.env.example) muestra las variables requeridas para correr el proyecto, pero no obliga a usar un único mecanismo de carga. Se pueden definir en un archivo `.env`, exportarlas en la sesión, pasarlas inline al comando o usar cualquier otro método equivalente.
 
-#### Consideraciones prácticas
+Las variables principales son:
 
-* **Reorganizaciones de la cadena** (*reorgs*): en redes reales, un bloque confirmado puede quedar huérfano si la cadena se reorganiza. Por eso se suele esperar un número de confirmaciones (por ejemplo, 6 bloques) antes de considerar una transacción definitiva. En Hardhat esto no ocurre, pero es importante tenerlo en cuenta en producción.
-* **Punto de arranque**: al reiniciar el servidor, es necesario procesar los eventos que ocurrieron mientras estaba apagado. Para ello se guarda el último bloque procesado y, al iniciar, se consultan los eventos desde ese bloque.
-* **Idempotencia**: el procesamiento de un evento debe ser idempotente, es decir, aplicarlo dos veces no debe producir un estado distinto al de aplicarlo una vez. Esto protege ante reinicios o fallos parciales.
+* `WEB3_PROVIDER_URL`: URL del nodo JSON-RPC. En este práctico suele ser `http://localhost:8545`.
+* `CFP_FACTORY_ADDRESS`: dirección del contrato `CFPFactory` desplegado.
+* `CFP_MNEMONIC`: frase mnemónica usada para derivar la cuenta local con la que firma la API.
+* `DERIVACION_PATH`: ruta HD de derivación. Por defecto se usa `m/44'/60'/0'/0/0`.
+* `CFP_DB_PATH`: ruta del archivo SQLite donde se guardan los datos off chain.
+* `CFP_ADMIN_ADDRESS`: dirección del administrador que autoriza y desautoriza cuentas.
 
----
+## Estructura del proyecto
 
-### Árboles de Merkle
-
-En este práctico, una propuesta no se identifica por un hash arbitrario provisto por el cliente, sino por la raíz de un árbol de Merkle construido a partir de sus datos constitutivos: el `callId`, el título, la descripción y los hashes de los archivos adjuntos. Esta elección permite algo poderoso: demostrar que un dato particular forma parte de una propuesta sin revelar el resto.
-
-#### Motivación
-
-Supongamos que una propuesta tiene diez archivos adjuntos. Registrar los diez hashes en el contrato costaría diez veces más gas que registrar uno solo. Con un árbol de Merkle, se registra un único hash (la raíz) que compromete de forma criptográfica a todos los datos. Además, es posible probar que un archivo específico estaba incluido presentando solo una fracción de los datos del árbol, sin revelar los demás.
-
-#### Construcción del árbol
-
-Un árbol de Merkle es un árbol binario en el que cada hoja contiene el hash de un dato, y cada nodo interno contiene el hash de la concatenación de sus dos hijos.
-
-![Árbol de Merkle con cuatro hojas](img/merkle-tree.svg)
-
-La raíz es el identificador del conjunto completo. Cualquier cambio en una hoja produce una raíz completamente distinta.
-
-Cuando el número de hojas no es una potencia de dos, las implementaciones difieren en cómo manejan el "desbalance". La biblioteca OpenZeppelin, que es la que se usa en este práctico, ordena las hojas lexicográficamente y calcula cada nodo interno como `keccak256(min(a, b) ++ max(a, b))`, es decir, el hash de la concatenación del menor y el mayor de los dos hijos (en orden lexicográfico). Este ordenamiento asegura que la operación sea conmutativa y el árbol sea determinista independientemente del orden en que se presenten las hojas.
-
-#### Pruebas de Merkle
-
-Una prueba de Merkle (*Merkle proof*) demuestra que una hoja pertenece al árbol sin revelar el resto. Consiste en la secuencia de nodos hermanos necesarios para reconstruir el camino desde la hoja hasta la raíz.
-
-Por ejemplo, para probar que `H(B)` pertenece al árbol anterior basta con proporcionar `[H(A), H(H(C)+H(D))]`: el verificador calcula `H(H(A)+H(B))` y luego `H(H(H(A)+H(B))+H(H(C)+H(D)))` y comprueba que coincide con la raíz conocida.
+La organización principal del trabajo es esta:
 
 ```text
-Queremos probar que H(B) pertenece al árbol:
-
-Prueba: [ H(A), H(H(C)+H(D)) ]
-
-Verificación:
-  paso 1: H( min(H(A),H(B)) ++ max(H(A),H(B)) )  →  nodo_AB
-  paso 2: H( min(nodo_AB, nodo_CD) ++ max(nodo_AB, nodo_CD) )  →  raíz calculada
-  ¿raíz calculada == raíz conocida? → prueba válida
+TP/9
+├── README.md
+├── api/
+│   ├── api.py
+│   ├── db/
+│   ├── listeners/
+│   ├── models/
+│   ├── requests/
+│   ├── services/
+│   ├── test/
+│   └── .env.example
+├── contracts/
+│   ├── contracts/
+│   │   ├── CFP.sol
+│   │   └── CFPFactory.sol
+│   ├── scripts/
+│   │   └── deploy.js
+│   ├── test/
+│   └── artifacts/
+└── img/
 ```
 
-La longitud de la prueba es logarítmica en el número de hojas: para un árbol con 1.000.000 de hojas, la prueba tiene solo 20 hashes. Esto hace que las pruebas de Merkle sean muy eficientes para verificar pertenencia.
+Resumen de cada carpeta:
 
-La función `MerkleProof.verify(proof, root, leaf)` de OpenZeppelin implementa exactamente esta verificación en Solidity.
+* `contracts/`: contiene el código Solidity, el script de despliegue, las pruebas y los artefactos generados por Hardhat.
+* `api/`: contiene la aplicación REST, la lógica de acceso a contratos, validaciones, persistencia local y pruebas.
+* `img/`: reúne imágenes usadas por la documentación.
 
-#### Variantes de construcción
+## Contratos
 
-Existen varias formas de construir árboles de Merkle, y es importante conocerlas porque no son intercambiables:
+### `CFP`
 
-* **Orden de hojas**: algunas implementaciones preservan el orden original de las hojas; otras las ordenan lexicográficamente. OpenZeppelin las ordena para evitar que el orden afecte la raíz.
-* **Función de hash del nodo interno**: la más común es `keccak256(a ++ b)`, pero OpenZeppelin usa `keccak256(min(a,b) ++ max(a,b))` para que la operación sea conmutativa. Usar una convención distinta produce raíces distintas para los mismos datos.
-* **Tratamiento de hojas impares**: si hay un número impar de nodos en un nivel, algunas implementaciones duplican el último nodo; otras lo "promueven" al nivel siguiente sin combinarlo. Estas diferencias afectan la raíz y hacen que las pruebas generadas por una implementación no sean válidas en otra.
-* **Doble hash en las hojas**: OpenZeppelin aplica `keccak256(keccak256(leaf))` para las hojas (en sus contratos de distribución de tokens), lo que evita ciertos ataques de preimagen en los que un nodo interno podría ser confundido con una hoja. En este práctico las hojas ya son hashes de 32 bytes y se usan directamente, en línea con el uso estándar de `MerkleProof.verify`.
+Representa un llamado a presentación de propuestas. Guarda el identificador del llamado, la dirección del creador, la fecha de cierre y las propuestas registradas.
 
-La conclusión práctica es que el generador de la prueba (el servidor de la API) y el verificador (el contrato u otro cliente) deben usar exactamente la misma variante de construcción. En este práctico esa variante es la de OpenZeppelin: hojas ordenadas lexicográficamente, nodos internos como `keccak256(min(a,b) ++ max(a,b))`.
+Lo más importante del contrato es lo siguiente:
 
----
+* Permite registrar propuestas antes del cierre.
+* Evita duplicados.
+* Emite `ProposalRegistered` cuando se registra una propuesta.
+* Expone funciones informativas para consultar propuesta, cantidad, creador, cierre y timestamp de registro.
 
-### RLP (*Recursive Length Prefix*)
+### `CFPFactory`
 
-RLP es el formato de serialización canónico de Ethereum. Se usa prácticamente en todas partes dentro del protocolo: para codificar transacciones, bloques, mensajes de la red, y también para generar identificadores deterministas a partir de datos estructurados. En este práctico se usa para calcular el `callId` de un llamado a partir de su título y su descripción.
+Es la factoría que crea instancias de `CFP` y administra quién está autorizado a crear llamados.
 
-#### Motivación
+Lo esencial del contrato es:
 
-El enfoque más simple para derivar el `callId` sería concatenar título y descripción y aplicarles `keccak256`. El problema es que la concatenación de strings es ambigua: `"ab" + "cd"` produce los mismos bytes que `"a" + "bcd"` y que `"abc" + "d"`. Dos llamados distintos podrían producir el mismo `callId`, lo que es una colisión inaceptable.
+* Gestiona registro, autorización y desautorización de creadores.
+* Emite eventos como `CreatorRegistered`, `CreatorAuthorized`, `CreatorUnauthorized` y `CFPCreated`.
+* Permite crear llamados directamente o en nombre de otra cuenta cuando lo hace el dueño.
+* Expone consultas sobre creador, pendientes, autorizados y llamados creados.
 
-La solución es serializar los datos de forma que la estructura quede codificada en los bytes resultantes: el decodificador (o verificador) puede determinar dónde termina un campo y dónde empieza el siguiente sin ambigüedad. RLP provee esta garantía con una especificación muy simple.
+## API y endpoints
 
-#### Cómo funciona
+La API conecta con el nodo local por HTTP, lee la dirección del factory desde el entorno y trabaja con una cuenta derivada de la mnemónica configurada. Además, escucha eventos para que la base de datos local refleje solo transacciones realmente confirmadas.
 
-RLP codifica dos tipos de valores: *cadenas de bytes* (incluyendo strings y números) y *listas* de valores RLP.
+Los endpoints se agrupan así:
 
-Las reglas de codificación son:
+* Creación y consulta de llamados: `/create`, `/calls/:call_id`, `/closing-time/:call_id`.
+* Registro de usuarios y autorizaciones: `/register`, `/registrations/:address`, `/authorized/:address`, `/admin/nonce`, `/authorize/:address`, `/unauthorize/:address`.
+* Registro y verificación de propuestas: `/register-proposal`, `/proposal-data/:call_id/:proposal`, `/verify-proof`.
+* Información del contrato: `/contract-address`, `/contract-owner`.
 
-* **Un solo byte** con valor `< 0x80`: se codifica tal cual.
-* **Cadena de 0–55 bytes**: `[0x80 + longitud] + bytes`.
-* **Cadena de más de 55 bytes**: `[0xb7 + longitud_de_longitud] + longitud_en_bytes + bytes`.
-* **Lista cuyo payload codificado tiene 0–55 bytes**: `[0xc0 + longitud_del_payload] + payload`.
-* **Lista con payload mayor a 55 bytes**: `[0xf7 + longitud_de_longitud] + longitud_en_bytes + payload`.
+En líneas generales, `/create` registra el llamado a nivel local, `/register-proposal` calcula y registra la propuesta anónima usando una raíz de Merkle, y los endpoints de autorización permiten administrar quién puede crear llamados.
 
-La codificación es determinista: dados los mismos datos, siempre se produce la misma secuencia de bytes, independientemente del lenguaje o la biblioteca usada.
+## Conclusiones
 
-#### Ejemplo
+El práctico completa la transición desde un sistema puramente on chain hacia una arquitectura híbrida. Los contratos siguen siendo la fuente de verdad para lo que debe ser verificable, mientras que la API resuelve la parte operativa: firmas, validaciones, persistencia local y exposición por REST.
 
-Para la lista `["hola", "mundo"]` en UTF-8:
-
-```text
-"hola"  → 4 bytes → 0x84 + 0x686f6c61
-"mundo" → 5 bytes → 0x85 + 0x6d756e646f
-payload = 0x84686f6c61 + 0x856d756e646f  (11 bytes en total)
-lista   = 0xcb + payload   (0xc0 + 11 = 0xcb)
-```
-
-El resultado `0xcb84686f6c61856d756e646f` es diferente de la concatenación directa `686f6c616d756e646f`, y no puede confundirse con ninguna otra lista de strings.
-
-#### Uso en este práctico
-
-Cuando un cliente envía `POST /create`, debe incluir el `callId` precalculado a partir del título y la descripción:
-
-```text
-callId = keccak256( rlp([ título_en_utf8, descripción_en_utf8 ]) )
-```
-
-El servidor recalcula el mismo valor y rechaza la solicitud si no coincide. Esto garantiza que el `callId` es siempre una función determinista del contenido: no se puede registrar un llamado con un identificador arbitrario desvinculado del título y la descripción reales.
-
-En Python:
-
-```python
-import rlp
-from rlp.sedes import binary, List as RLPList
-
-sedes = RLPList([binary, binary])
-encoded = rlp.encode([title.encode('utf-8'), description.encode('utf-8')], sedes)
-call_id = '0x' + Web3.keccak(encoded).hex()
-```
-
-En JavaScript con ethers v6:
-
-```javascript
-const callId = ethers.keccak256(ethers.encodeRlp([
-    ethers.toUtf8Bytes(title),
-    ethers.toUtf8Bytes(description),
-]));
-```
-
-Ambas expresiones producen exactamente el mismo hash para los mismos valores de `title` y `description`.
+La decisión de usar hashes, árboles de Merkle, eventos y SQLite permite bajar costos de almacenamiento, mantener trazabilidad y ofrecer una interfaz más simple para operar el sistema sin perder verificabilidad.
