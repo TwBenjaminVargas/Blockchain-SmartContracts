@@ -1,6 +1,9 @@
 from pydantic import BaseModel, field_validator, Field
-from pydantic_core import PydanticCustomError
-import messages as Messages
+from exceptions.ValidationExceptions import (
+    InvalidTitleException, 
+    TitleTooLongException, 
+    DescriptionTooLongException
+)
 
 class CallCreate(BaseModel):
     callId: str = Field(
@@ -29,28 +32,32 @@ class CallCreate(BaseModel):
     @field_validator("title", mode="before")
     @classmethod
     def clean_title(cls, value: str) -> str:
+        # Si no se envía un string o el campo está vacío al quitar espacios finales, es título inválido
         if not isinstance(value, str):
-            raise PydanticCustomError("value_error", Messages.INVALID_TITLE)
+            raise InvalidTitleException()
         
         cleaned_title = value.rstrip()
         
         if not cleaned_title:
-            raise PydanticCustomError("value_error", Messages.INVALID_TITLE)
+            raise InvalidTitleException()
             
+        # Validación de longitud estricta en bytes UTF-8
         if len(cleaned_title.encode("utf-8")) > 512:
-            raise PydanticCustomError("value_error", Messages.TITLE_TOO_LONG)
+            raise TitleTooLongException()
             
         return cleaned_title
 
     @field_validator("description", mode="before")
     @classmethod
     def clean_description(cls, value: str) -> str:
+        # Si no se envía una descripción de tipo string, la tratamos como vacía para quitar espacios
         if not isinstance(value, str):
-            raise PydanticCustomError("value_error", "El campo de descripción debe ser una cadena de texto.")
+            value = ""
             
         cleaned_description = value.rstrip()
         
+        # Validación de longitud estricta en bytes UTF-8
         if len(cleaned_description.encode("utf-8")) > 4096:
-            raise PydanticCustomError("value_error", Messages.DESCRIPTION_TOO_LONG)
+            raise DescriptionTooLongException()
             
         return cleaned_description

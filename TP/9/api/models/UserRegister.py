@@ -1,6 +1,5 @@
 from pydantic import BaseModel, Field, field_validator
-from pydantic_core import PydanticCustomError
-import messages as Messages
+from exceptions.ValidationExceptions import InvalidNameException, NameTooLongException
 
 class UserRegister(BaseModel):
     address: str = Field(
@@ -24,15 +23,18 @@ class UserRegister(BaseModel):
     @field_validator("name", mode="before")
     @classmethod
     def clean_name(cls, value: str) -> str:
+        # Si el valor ingresado ni siquiera es una cadena de texto
         if not isinstance(value, str):
-            raise PydanticCustomError("value_error", "El nombre debe ser una cadena de texto.")
+            raise InvalidNameException()
         
         cleaned_name = value.rstrip()
         
+        # Si el campo queda vacío tras remover los espacios finales en blanco
         if not cleaned_name:
-            raise PydanticCustomError("value_error", Messages.INVALID_NAME)
+            raise InvalidNameException()
             
+        # Validación estricta midiendo los bytes reales codificados en UTF-8
         if len(cleaned_name.encode("utf-8")) > 512:
-            raise PydanticCustomError("value_error", Messages.NAME_TOO_LONG)
+            raise NameTooLongException()
             
         return cleaned_name
