@@ -863,6 +863,7 @@ async def update_registration_name(
             )
 
         if user.nonce >= 0xFFFFFFFF:
+            logger.error(f"Nonce overflow detectado para el usuario {address_lower} con nonce actual {user.nonce}")
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 content={"message": Messages.NONCE_OVERFLOW}
@@ -879,6 +880,7 @@ async def update_registration_name(
             )
 
         if recovered_address.lower() != address_lower:
+            logger.warning(f"Intento de actualización de registro con firma no coincidente para {address_lower}. Recovered: {recovered_address}")
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 content={"message": Messages.INVALID_SIGNATURE}

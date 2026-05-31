@@ -25,7 +25,7 @@ class UserPatch(BaseModel):
         #print(f"CHARS: {len(value)}")
         #print(f"ULTIMOS 3 CHARS: {[hex(ord(c)) for c in value[-3:]]}")
 
-        cleaned_value = value.replace("\n", "").replace("\r", "")
+        cleaned_value = value.replace("\n", "").replace("\r", "").rstrip()
         if not cleaned_value.strip():
             raise InvalidNameException()
         if len(cleaned_value.encode("utf-8")) > 512:

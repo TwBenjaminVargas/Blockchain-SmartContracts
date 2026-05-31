@@ -189,12 +189,12 @@ class ContractManager:
         """
         prefix_bytes = b"registrationsPATCH" # 18 bytes
         
-        contract_address_bytes = Web3.to_bytes(hexstr=self.contract.address) # 20 bytes
+        contract_address_bytes = Web3.to_bytes(hexstr=self.contract.address.lower()) # 20 bytes
         
         if nonce > 0xFFFFFFFF:
             raise ValueError("Nonce overflow")
             
-        nonce_bytes = nonce.to_bytes(4, byteorder="big") # 32 bits / 4 bytes big-endian
+        nonce_bytes = nonce.to_bytes(32, byteorder="big") 
         name_bytes = new_name.encode("utf-8")
         
         raw_message = prefix_bytes + contract_address_bytes + nonce_bytes + name_bytes
