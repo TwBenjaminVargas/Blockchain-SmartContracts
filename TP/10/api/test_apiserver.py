@@ -17,7 +17,7 @@ from rlp.sedes import binary, List as RLPList
 from dateutil.parser import isoparse
 from dateutil.relativedelta import relativedelta
 from eth_account import Account
-from eth_account.messages import SignableMessage, encode_defunct
+from eth_account.messages import encode_typed_data
 from eth_account.signers.local import LocalAccount
 from jsonschema import validate
 from web3 import Web3
@@ -192,11 +192,31 @@ registration_status_schema = {
     "required": ["status"],
 }
 
-CREATE_PREFIX = b"createPOST"
-REGISTER_PREFIX = b"registerPOST"
-UPDATE_PREFIX = b"registrationsPATCH"
-AUTHORIZE_PREFIX = b"authorizePOST"
-UNAUTHORIZE_PREFIX = b"unauthorizePOST"
+EIP712_TYPES = {
+    "EIP712Domain": [
+        {"name": "name", "type": "string"},
+        {"name": "version", "type": "string"},
+        {"name": "chainId", "type": "uint256"},
+        {"name": "verifyingContract", "type": "address"}
+    ],
+    "CreateRequest": [
+        {"name": "operation", "type": "string"},
+        {"name": "contract", "type": "address"},
+        {"name": "callId", "type": "bytes32"}
+    ],
+    "RegisterRequest": [
+        {"name": "operation", "type": "string"},
+        {"name": "contract", "type": "address"},
+        {"name": "nonce", "type": "uint256"},
+        {"name": "name", "type": "string"}
+    ],
+    "AdminActionRequest": [
+        {"name": "operation", "type": "string"},
+        {"name": "contract", "type": "address"},
+        {"name": "nonce", "type": "uint256"},
+        {"name": "target", "type": "address"}
+    ]
+}
 
 # ABI mínima necesaria para la interacción directa con el contrato en los tests
 FACTORY_MINIMAL_ABI = [
@@ -271,6 +291,14 @@ def get_w3() -> Web3:
     """Retorna la instancia de web3 del módulo."""
     return w3
 
+def get_eip712_domain(contract_address: str) -> dict:
+    """Construye el dominio común EIP-712 para las firmas."""
+    return {
+        "name": "CFP API",
+        "version": "1",
+        "chainId": w3.eth.chain_id,
+        "verifyingContract": Web3.to_checksum_address(contract_address)
+    }
 
 def get_factory_contract():
     """Retorna el contrato de fábrica y la cuenta owner para interacción directa."""
@@ -444,37 +472,111 @@ def to_hex(value: bytes) -> str:
 
 
 def sign(message: str, account: LocalAccount) -> str:
-    """Firma un mensaje desde la cuenta especificada."""
-    signable_message: SignableMessage = encode_defunct(hexstr=message)
-    return to_hex(account.sign_message(signable_message).signature)
+    """
+    Mantiene compatibilidad con tests de formato (mimetype o campos faltantes).
+    Genera una firma EIP-712 válida sobre una estructura dummy.
+    """
+    factory_address = get_contract_address()
+    dummy_msg = {
+        "types": EIP712_TYPES,
+        "primaryType": "CreateRequest",
+        "domain": get_eip712_domain(factory_address),
+        "message": {
+            "operation": "create",
+            "contract": Web3.to_checksum_address(factory_address),
+            "callId": "0x" + "0" * 64
+        }
+    }
+    return sign_bytes(dummy_msg, account)
 
 
-def sign_bytes(message: bytes, account: LocalAccount) -> str:
-    """Firma un mensaje binario desde la cuenta especificada."""
-    signable_message: SignableMessage = encode_defunct(primitive=message)
-    return to_hex(account.sign_message(signable_message).signature)
-
-
-def make_register_message(contract_address: str, name: str) -> bytes:
-    """Construye el mensaje a firmar para /register (prefijo + dirección + nonce=0 + nombre)."""
-    return (
-        REGISTER_PREFIX
-        + bytes.fromhex(contract_address[2:])
-        + (0).to_bytes(32, "big")
-        + name.encode("utf-8")
+def sign_bytes(message_dict: dict, account: LocalAccount) -> str:
+    """Firma un mensaje estructurado EIP-712 desde la cuenta especificada."""
+    domain_data = message_dict["domain"]
+    message_data = message_dict["message"]
+    primary_type = message_dict["primaryType"]
+    
+    # Solo pasamos el tipo que corresponde a este mensaje (sin EIP712Domain ni los otros)
+    message_types = {primary_type: message_dict["types"][primary_type]}
+    
+    signable_message = encode_typed_data(
+        domain_data=domain_data,
+        message_types=message_types,
+        message_data=message_data,
     )
+    return Web3.to_hex(account.sign_message(signable_message).signature)
 
 
-def make_update_message(contract_address: str, nonce: int, name: str) -> bytes:
-    """Construye el mensaje a firmar para PATCH /registrations/:address."""
-    return (
-        UPDATE_PREFIX
-        + bytes.fromhex(contract_address[2:])
-        + nonce.to_bytes(32, "big")
-        + name.encode("utf-8")
-    )
+def make_register_message(contract_address: str, name: str, nonce: int = 0) -> dict:
+    """Construye el mensaje estructurado para POST /register."""
+    return {
+        "types": EIP712_TYPES,
+        "primaryType": "RegisterRequest",
+        "domain": get_eip712_domain(contract_address),
+        "message": {
+            "operation": "register",
+            "contract": Web3.to_checksum_address(contract_address),
+            "nonce": nonce,
+            "name": name
+        }
+    }
 
 
+def make_update_message(contract_address: str, nonce: int, name: str) -> dict:
+    """Construye el mensaje estructurado para PATCH /registrations/:address."""
+    return {
+        "types": EIP712_TYPES,
+        "primaryType": "RegisterRequest",
+        "domain": get_eip712_domain(contract_address),
+        "message": {
+            "operation": "update",
+            "contract": Web3.to_checksum_address(contract_address),
+            "nonce": nonce,
+            "name": name
+        }
+    }
+
+def make_authorize_message(contract_address: str, nonce: int, target_address: str) -> dict:
+    """Construye el mensaje estructurado para POST /authorize/:address."""
+    return {
+        "types": EIP712_TYPES,
+        "primaryType": "AdminActionRequest",
+        "domain": get_eip712_domain(contract_address),
+        "message": {
+            "operation": "authorize",
+            "contract": Web3.to_checksum_address(contract_address),
+            "nonce": nonce,
+            "target": Web3.to_checksum_address(target_address)
+        }
+    }
+
+def make_unauthorize_message(contract_address: str, nonce: int, target_address: str) -> dict:
+    """Construye el mensaje estructurado para POST /unauthorize/:address."""
+    return {
+        "types": EIP712_TYPES,
+        "primaryType": "AdminActionRequest",
+        "domain": get_eip712_domain(contract_address),
+        "message": {
+            "operation": "unauthorize",
+            "contract": Web3.to_checksum_address(contract_address),
+            "nonce": nonce,
+            "target": Web3.to_checksum_address(target_address)
+        }
+    }
+    
+def make_create_message(contract_address: str, call_id: str) -> dict:
+    """Construye el mensaje estructurado para POST /create."""
+    return {
+        "types": EIP712_TYPES,
+        "primaryType": "CreateRequest",
+        "domain": get_eip712_domain(contract_address),
+        "message": {
+            "operation": "create",
+            "contract": Web3.to_checksum_address(contract_address),
+            "callId": call_id
+        }
+    }
+    
 def get_admin_nonce() -> int:
     """Obtiene el nonce actual del administrador."""
     response = requests.get(url("admin/nonce"), timeout=3)
@@ -482,28 +584,8 @@ def get_admin_nonce() -> int:
     return response.json()["nonce"]
 
 
-def make_authorize_message(
-    contract_address: str, nonce: int, target_address: str
-) -> bytes:
-    """Construye el mensaje a firmar para POST /authorize/:address."""
-    return (
-        AUTHORIZE_PREFIX
-        + bytes.fromhex(contract_address[2:])
-        + nonce.to_bytes(32, "big")
-        + bytes.fromhex(target_address[2:])
-    )
 
 
-def make_unauthorize_message(
-    contract_address: str, nonce: int, target_address: str
-) -> bytes:
-    """Construye el mensaje a firmar para POST /unauthorize/:address."""
-    return (
-        UNAUTHORIZE_PREFIX
-        + bytes.fromhex(contract_address[2:])
-        + nonce.to_bytes(32, "big")
-        + bytes.fromhex(target_address[2:])
-    )
 
 
 def post_authorize(address: str, signature: str):
@@ -618,11 +700,6 @@ def verify_merkle_proof(proof: list, root: str, leaf_hex: str) -> bool:
     return "0x" + current.hex() == root
 
 
-def make_create_message(contract_address: str, call_id: str) -> bytes:
-    """Construye el mensaje a firmar para POST /create."""
-    return (
-        CREATE_PREFIX + bytes.fromhex(contract_address[2:]) + bytes.fromhex(call_id[2:])
-    )
 
 
 def post_create(account: LocalAccount, title: str, description: str):
@@ -2352,9 +2429,12 @@ def test_archived_reregister() -> None:
 
     # La cuenta vuelve a registrarse en el contrato
     send_register_tx(account)
+    
+    reg_response = get_registration(account.address)
+    current_nonce = reg_response.json().get("nonce", 0)
 
     # POST /register debe aceptar la cuenta archivada (la sobreescribe)
-    new_msg = make_register_message(contract_address, "Re-registered Name")
+    new_msg = make_register_message(contract_address, "Re-registered Name",current_nonce)
     response = post_register(account.address, sign_bytes(new_msg, account), "Re-registered Name")
     assert response.status_code == 200
     assert response.json()["status"] in ("pending", "registered")

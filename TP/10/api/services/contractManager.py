@@ -41,9 +41,11 @@ class ContractManager:
 
         # Instancia única de Web3
         self.w3 = Web3(HTTPProvider(self.provider_path))
+        self.chain_id = self.w3.eth.chain_id
         
         #Formateo seguro de la dirección del contrato (Checksum Address)
         self.contract_address = self.w3.to_checksum_address(settings.contract_address)
+        
         
         logger.debug("Inicializando ContractManager con proveedor: %s y contrato: %s", self.provider_path, self.contract_address)
         
@@ -68,6 +70,15 @@ class ContractManager:
         # Creación del objeto de contrato nativo de web3.py
         self.contract = self.w3.eth.contract(address=self.contract_address, abi=abi_data)
         logger.debug(f"Sistema enlazado con éxito al Smart Contract: {self.contract_address}")
+    
+    def get_eip712_domain(self) -> dict:
+        """Retorna el dominio EIP-712 unificado usando el chain_id de la instancia."""
+        return {
+            "name": "CFP API",
+            "version": "1",
+            "chainId": self.chain_id,
+            "verifyingContract": self.contract_address
+        }
     
     def generate_call_id(self, title: str, description: str) -> str:
         """
@@ -101,162 +112,96 @@ class ContractManager:
             logger.error(f"Fallo crítico en librerías criptográficas al generar CallId: {str(crypto_err)}", exc_info=True)
             raise cm_exceptions.CryptographicHashingException("No se pudo procesar la firma criptográfica de los datos.")
         
-    def generate_hex_str_create_message(self, call_id_hex: str) -> str:
+    def generate_eip712_create_message(self, call_id_hex: str) -> dict:
         """
-        Genera el mensaje base de 62 bytes en formato String Hex (con prefijo 0x).
-
-        Raises:
-            cm_exceptions.InvalidInputTypeException: Si call_id_hex no es una cadena de texto.
-            cm_exceptions.CryptographicHashingException: Si ocurre un error al procesar el formato hexadecimal.
+        Genera la estructura EIP-712 para la operación CreateRequest.
         """
         if not isinstance(call_id_hex, str):
-            logger.error(f"Tipo de dato inválido para call_id_hex: {type(call_id_hex)}")
             raise cm_exceptions.InvalidInputTypeException("El callId debe ser una cadena de texto válida.")
 
-        try:
-            # Prefijo fijo de la acción: "createPOST" (10 bytes ASCII)
-            prefix_bytes = b"createPOST"
+        types = {
+            "CreateRequest": [
+                {"name": "operation", "type": "string"},
+                {"name": "contract", "type": "address"},
+                {"name": "callId", "type": "bytes32"}
+            ]
+        }
 
-            # Dirección del contrato CFPFactory: string hex a 20 bytes puros
-            contract_clean = self.contract_address.lower().replace("0x", "")
-            contract_bytes = bytes.fromhex(contract_clean)
+        message = {
+            "operation": "create",
+            "contract": self.contract_address,
+            "callId": Web3.to_bytes(hexstr=call_id_hex)
+        }
 
-            # Identificador callId: string hex a 32 bytes puros
-            call_id_clean = call_id_hex.lower().replace("0x", "")
-            call_id_bytes = bytes.fromhex(call_id_clean)
+        return {
+            "domain": self.get_eip712_domain(),
+            "types": types,
+            "primaryType": "CreateRequest",
+            "message": message
+        }
 
-            # Concatenación binaria de los tres bloques (10 + 20 + 32 = 62 bytes)
-            message_bytes = prefix_bytes + contract_bytes + call_id_bytes
-            return f"0x{message_bytes.hex()}"
-
-        except ValueError as hex_err:
-            logger.error(f"Error de parseo hexadecimal en parámetros de mensaje create: {str(hex_err)}", exc_info=True)
-            raise cm_exceptions.CryptographicHashingException("Los datos estructurales no contienen un formato hexadecimal válido.")
-        except Exception as e:
-            logger.error(f"Error inesperado al estructurar el mensaje create: {str(e)}", exc_info=True)
-            raise cm_exceptions.CryptographicHashingException("No se pudo construir el mensaje binario para la firma.")
-    
-    def generate_hex_str_register_message(self, name: str) -> str:
+    def generate_eip712_register_message(self, nonce: int, name: str, is_update: bool = False) -> dict:
         """
-        Genera el mensaje base de registro en formato String Hex (con prefijo 0x).
-        Estructura: "registerPOST" (12B) + contract_address (20B) + 0 (32B big-endian) + name (UTF-8).
-
-        Raises:
-            cm_exceptions.InvalidInputTypeException: Si el nombre no es una cadena de texto.
-            cm_exceptions.TextEncodingException: Si el nombre falla al codificarse en UTF-8.
-            cm_exceptions.CryptographicHashingException: Si la dirección del contrato está malformada.
+        Genera la estructura EIP-712 para RegisterRequest (Registro inicial o Actualización).
         """
-        import struct
-
         if not isinstance(name, str):
-            logger.error(f"Tipo de dato inválido para el campo name: {type(name)}")
-            raise cm_exceptions.InvalidInputTypeException("El nombre del solicitante debe ser un string válido.")
+            raise cm_exceptions.InvalidInputTypeException("El nombre debe ser un string válido.")
+        if not isinstance(nonce, int) or nonce < 0:
+            raise cm_exceptions.InvalidInputTypeException("El nonce debe ser un entero no negativo.")
 
-        try:
-            # Prefijo fijo de la acción (12 bytes ASCII)
-            prefix_bytes = b"registerPOST"
+        types = {
+            "RegisterRequest": [
+                {"name": "operation", "type": "string"},
+                {"name": "contract", "type": "address"},
+                {"name": "nonce", "type": "uint256"},
+                {"name": "name", "type": "string"}
+            ]
+        }
 
-            # Dirección del contrato (20 bytes puros)
-            contract_clean = self.contract_address.lower().replace("0x", "")
-            contract_bytes = bytes.fromhex(contract_clean)
-        except ValueError as hex_err:
-            logger.error(f"Error al parsear la dirección del contrato a bytes: {str(hex_err)}")
-            raise cm_exceptions.CryptographicHashingException("La dirección del contrato no tiene un formato hexadecimal válido.")
+        message = {
+            "operation": "update" if is_update else "register",
+            "contract": self.contract_address,
+            "nonce": nonce,
+            "name": name
+        }
 
-        try:
-            # Valor 0 codificado como entero big-endian de 32 bytes (uint256 equivalente)
-            # '>Q' empaqueta en 8 bytes, rellenamos con 24 bytes de ceros a la izquierda para completar los 32 bytes
-            value_bytes = b"\x00" * 24 + struct.pack(">Q", 0)
+        return {
+            "domain": self.get_eip712_domain(),
+            "types": types,
+            "primaryType": "RegisterRequest",
+            "message": message
+        }
 
-            # Nombre del solicitante codificado en UTF-8
-            name_bytes = name.encode("utf-8")
-        except UnicodeEncodeError as text_err:
-            logger.error(f"Error de codificación UTF-8 en el nombre: {str(text_err)}")
-            raise cm_exceptions.TextEncodingException("El nombre contiene caracteres que no pueden ser procesados en UTF-8.")
-
-        try:
-            # Concatenación binaria final de todos los bloques
-            message_bytes = prefix_bytes + contract_bytes + value_bytes + name_bytes
-            
-            return f"0x{message_bytes.hex()}"
-        except Exception as e:
-            logger.error(f"Error inesperado al concatenar el mensaje de registro: {str(e)}", exc_info=True)
-            raise cm_exceptions.CryptographicHashingException("No se pudo construir la estructura binaria del mensaje.")
-
-    def generate_hex_str_user_patch(self, nonce: int, new_name: str) -> str:
+    def generate_eip712_admin_action_message(self, admin_nonce: int, target_address: str, is_authorize: bool = True) -> dict:
         """
-        Genera el string hexadecimal del mensaje de actualizacion para PATCH.
+        Genera la structure EIP-712 para AdminActionRequest (Authorize o Unauthorize).
         """
-        prefix_bytes = b"registrationsPATCH" # 18 bytes
-        
-        contract_address_bytes = Web3.to_bytes(hexstr=self.contract.address.lower()) # 20 bytes
-        
-        if nonce > 0xFFFFFFFF:
-            raise ValueError("Nonce overflow")
-            
-        nonce_bytes = nonce.to_bytes(32, byteorder="big") 
-        name_bytes = new_name.encode("utf-8")
-        
-        raw_message = prefix_bytes + contract_address_bytes + nonce_bytes + name_bytes
-        return raw_message.hex()
-
-    def generate_hex_str_authorize_address(self, admin_nonce: int, address_to_authorize: str) -> str:
-        """
-        Genera el mensaje binario crudo para la operación de autorización en formato hexadecimal.
-        Concatena: prefix (13B) + contract (20B) + nonce (32B) + target_address (20B).
-        """
-        # Validaciones de tipo y rango del Nonce
         if not isinstance(admin_nonce, int) or admin_nonce < 0:
             raise cm_exceptions.InvalidInputTypeException("El nonce del administrador debe ser un entero no negativo.")
-
-        if admin_nonce >= 2**32 - 1:
-            raise cm_exceptions.NonceOverflowException("El nonce del administrador excede el límite máximo de 32 bits.")
-
-        #Validación de formato de la dirección de destino
-        if not isinstance(address_to_authorize, str) or not is_hex(address_to_authorize):
-            raise cm_exceptions.InvalidInputTypeException("La dirección a autorizar no tiene un formato hexadecimal válido.")
         
-        try:
-            prefix_bytes = b"authorizePOST" # 13 bytes
-            contract_bytes = to_bytes(hexstr=self.contract_address) # 20 bytes
-            nonce_bytes = admin_nonce.to_bytes(32, byteorder="big") # 32 bytes
-            target_bytes = to_bytes(hexstr=address_to_authorize) # 20 bytes
+        types = {
+            "AdminActionRequest": [
+                {"name": "operation", "type": "string"},
+                {"name": "contract", "type": "address"},
+                {"name": "nonce", "type": "uint256"},
+                {"name": "target", "type": "address"}
+            ]
+        }
 
-            raw_message = prefix_bytes + contract_bytes + nonce_bytes + target_bytes
-            return raw_message.hex()
+        message = {
+            "operation": "authorize" if is_authorize else "unauthorize",
+            "contract": self.contract_address,
+            "nonce": admin_nonce,
+            "target": Web3.to_checksum_address(target_address)
+        }
 
-        except Exception as e:
-            logger.error(f"Error packing authorize message structure: {str(e)}", exc_info=True)
-            raise cm_exceptions.CryptographicHashingException("No se pudo construir la estructura binaria del mensaje debido a un fallo de codificación.")
-        
-    def generate_hex_str_unauthorize_address(self, admin_nonce: int, address_to_unauthorize: str) -> str:
-        """
-        Genera el mensaje binario crudo para la operación de desautorización en formato hexadecimal.
-        Concatena: prefix (13B) + contract (20B) + nonce (32B) + target_address (20B).
-        """
-        # Validaciones de tipo y rango del Nonce
-        if not isinstance(admin_nonce, int) or admin_nonce < 0:
-            raise cm_exceptions.InvalidInputTypeException("El nonce del administrador debe ser un entero no negativo.")
+        return {
+            "domain": self.get_eip712_domain(),
+            "types": types,
+            "primaryType": "AdminActionRequest",
+            "message": message
+        }
 
-        if admin_nonce >= 2**32 - 1:
-            raise cm_exceptions.NonceOverflowException("El nonce del administrador excede el límite máximo de 32 bits.")
-
-        #Validación de formato de la dirección de destino
-        if not isinstance(address_to_unauthorize, str) or not is_hex(address_to_unauthorize):
-            raise cm_exceptions.InvalidInputTypeException("La dirección a desautorizar no tiene un formato hexadecimal válido.")
-        
-        try:
-            prefix_bytes = b"unauthorizePOST" # 13 bytes
-            contract_bytes = to_bytes(hexstr=self.contract_address) # 20 bytes
-            nonce_bytes = admin_nonce.to_bytes(32, byteorder="big") # 32 bytes
-            target_bytes = to_bytes(hexstr=address_to_unauthorize) # 20 bytes
-
-            raw_message = prefix_bytes + contract_bytes + nonce_bytes + target_bytes
-            return raw_message.hex()
-
-        except Exception as e:
-            logger.error(f"Error packing unauthorize message structure: {str(e)}", exc_info=True)
-            raise cm_exceptions.CryptographicHashingException("No se pudo construir la estructura binaria del mensaje debido a un fallo de codificación.")
 
     def create_cfp_for(self, from_address: str,creator_address: str, call_id_hex: str, unix_timestamp: int) -> dict:
         try:

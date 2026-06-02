@@ -190,14 +190,14 @@ async def create(
             logger.error(f"Error de conexión con la base de datos local: {str(sc_err)}")
             return JSONResponse(status_code=500, content={"message": Messages.INTERNAL_ERROR})
         try:
-            plain_message_hex = manager.generate_hex_str_create_message(call_id_hex=payload.callId)
+            message = manager.generate_eip712_create_message(call_id_hex=payload.callId)
         except contract_exceptions.CryptographicHashingException as e:
             logger.error(f"Error estructurando mensaje binario: {str(e)}")
             return JSONResponse(status_code=500, content={"message": Messages.INTERNAL_ERROR})
 
         try:
             emisor_address = signer.get_signer_address(
-                message_hexstr=plain_message_hex,
+                eip712_structured_data=message,
                 signature_hex=payload.signature
             )
         except signer_exceptions.InvalidSignatureException as ise:
@@ -247,10 +247,16 @@ async def register(
     Si la cuenta ya fue registrada pero se encuentra desautorizada, el registro previo se sobrescribe.
     """
     try:
+        local_user = db_manager.getUser(payload.address)
+        nonce = 0
+        if local_user:
+            if local_user.state != UserState.ARCHIVED:
+                return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content={"message": Messages.ALREADY_IN_SYSTEM})
+            nonce = local_user.nonce
         #Reconstrucción Criptográfica del Mensaje y Recuperación de la Firma
         try:
-            message_hex = contract_manager.generate_hex_str_register_message(payload.name)
-            recovered_signer = signer.get_signer_address(message_hex, payload.signature)
+            message = contract_manager.generate_eip712_register_message(nonce = nonce, name = payload.name)
+            recovered_signer = signer.get_signer_address(message, payload.signature)
             
             if recovered_signer.lower() != payload.address.lower():
                 return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"message": Messages.INVALID_SIGNATURE})
@@ -261,11 +267,7 @@ async def register(
             return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"message": Messages.INVALID_SIGNATURE})
         
         # Control de Reglas de Negocio / Verificación de estados en Blockchain y Base de Datos Local
-        local_user = db_manager.getUser(payload.address)
-        if local_user:
-            if local_user.state != UserState.ARCHIVED:
-                return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content={"message": Messages.ALREADY_IN_SYSTEM})
-            
+        if local_user: 
             local_user.name = payload.name
             local_user.signature = payload.signature
             local_user.state = UserState.REGISTERED
@@ -870,8 +872,8 @@ async def update_registration_name(
             )
 
         try:
-            message_hex = contract_manager.generate_hex_str_user_patch(user.nonce, payload.name)
-            recovered_address = signer.get_signer_address(message_hex, payload.signature)
+            message = contract_manager.generate_eip712_register_message(user.nonce, payload.name,is_update=True)
+            recovered_address = signer.get_signer_address(message, payload.signature)
         except Exception as e:
             logger.error(f"Error al verificar la firma para actualización de registro de {address_lower}: {str(e)}")
             return JSONResponse(
@@ -969,7 +971,7 @@ async def authorize_address(
                 content={"message": Messages.NONCE_OVERFLOW}
             )
         #Reconstruir el mensaje binario esperado y verificar la firma criptográfica
-        raw_msg = contract_manager.generate_hex_str_authorize_address(current_admin_nonce, target_address)
+        raw_msg = contract_manager.generate_eip712_admin_action_message(current_admin_nonce, target_address,is_authorize=True)
         is_valid_signature = signer.check_admin_sign(raw_msg, payload.signature)
         
         if not is_valid_signature:
@@ -1057,7 +1059,7 @@ async def unauthorize_address(
             )
 
         #Reconstruir el mensaje binario esperado y verificar la firma criptográfica
-        raw_msg = contract_manager.generate_hex_str_unauthorize_address(current_admin_nonce, target_address)
+        raw_msg = contract_manager.generate_eip712_admin_action_message(current_admin_nonce, target_address,is_authorize=False)
         is_valid_signature = signer.check_admin_sign(raw_msg, payload.signature)
         
         if not is_valid_signature:

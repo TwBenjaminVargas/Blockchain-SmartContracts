@@ -3,7 +3,7 @@ from functools import lru_cache
 from fastapi import Depends
 import logging
 from eth_account import Account
-from eth_account.messages import encode_defunct
+from eth_account.messages import encode_typed_data
 from web3 import Web3
 import exceptions.SignerExceptions as signer_exceptions
 
@@ -33,58 +33,32 @@ class Signer:
         logger.debug("Sistema inicializado con la dirección de wallet owner: %s", self.address)
         self.private_key = self._account.key
         
-        
-    def get_signer_address(self, message_hexstr: str, signature_hex: str) -> str:
-        """
-        Recupera y valida la dirección de Ethereum asociada a una firma criptográfica.
-
-        Raises:
-            signer_exceptions.InvalidInputException: Si los parámetros de entrada no son válidos.
-            signer_exceptions.InvalidSignatureException: Si la firma está corrupta o falla el recover.
-        """
-        if not isinstance(message_hexstr, str) or not isinstance(signature_hex, str):
-            logger.error(f"Tipos de datos inválidos en get_signer_address. Message: {type(message_hexstr)}, Signature: {type(signature_hex)}")
-            raise signer_exceptions.InvalidInputException("El mensaje y la firma deben ser cadenas de texto.")
+    def get_signer_address(self, eip712_structured_data: dict, signature_hex: str) -> str:
+        """Recupera la dirección firmante a partir de los datos estructurados EIP-712."""
+        if not isinstance(eip712_structured_data, dict) or not isinstance(signature_hex, str):
+            raise signer_exceptions.InvalidInputException("Parámetros de entrada inválidos.")
 
         try:
-            # Aplica el prefijo estándar \x19Ethereum Signed Message:\n
-            signable_message = encode_defunct(hexstr=message_hexstr)
-            
-            # Recupera la dirección asociada a la firma
-            recovered_address = Account.recover_message(
-                signable_message, 
-                signature=signature_hex
+            # Reconstruye el formato binario estandarizado EIP-712 de forma segura
+            signable_message = encode_typed_data(
+                domain_data=eip712_structured_data["domain"],
+                message_types=eip712_structured_data["types"],
+                message_data=eip712_structured_data["message"]
             )
             
-            if not recovered_address:
-                raise ValueError("La dirección recuperada está vacía.")
-            
+            recovered_address = Account.recover_message(signable_message, signature=signature_hex)
             return Web3.to_checksum_address(recovered_address)
             
-        except (ValueError, TypeError) as crypto_err:
-            # Captura longitudes incorrectas, formatos hex inválidos o parámetros mal formados de la firma
-            logger.error(f"Firma criptográfica inválida o corrupta: {str(crypto_err)}", exc_info=True)
-            raise signer_exceptions.InvalidSignatureException("La firma provista no coincide o su formato es inválido.")
-            
         except Exception as e:
-            logger.error(f"Fallo inesperado al recuperar el firmante: {str(e)}", exc_info=True)
-            raise signer_exceptions.InvalidSignatureException("No se pudo procesar la firma de Ethereum enviada.")  
-        
-    def check_admin_sign(self, raw_message: str, signature_hex: str) -> bool:
-        """
-        Verifica si la firma provista corresponde a la clave privada del administrador del sistema.
-        Aplica internamente el prefijo estándar de firma de Ethereum.
-        """
+            logger.error(f"Error procesando firma estructurada EIP-712: {str(e)}", exc_info=True)
+            raise signer_exceptions.InvalidSignatureException("La firma EIP-712 provista es inválida.")
+
+    def check_admin_sign(self, eip712_structured_data: dict, signature_hex: str) -> bool:
+        """Verifica si la firma EIP-712 pertenece al administrador."""
         try:
-            # Aplica el prefijo \x19Ethereum Signed Message:\n e incluye la longitud automáticamente
-            signable_message = encode_defunct(hexstr=raw_message)
-            
-            # Recupera la dirección pública que generó la firma
-            recovered_address = Account.recover_message(signable_message, signature=signature_hex)
-            
-            return recovered_address.lower() == self.admin_address.lower()
-        except Exception as e:
-            logger.warning(f"Signature recovery failed: {str(e)}")
+            recovered = self.get_signer_address(eip712_structured_data, signature_hex)
+            return recovered.lower() == self.admin_address.lower()
+        except Exception:
             return False
     
     def sign_transaction(self, transaction_dict: dict) -> bytes:
