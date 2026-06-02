@@ -615,11 +615,15 @@ def get_registration(address: str):
     return requests.get(url("registrations", address), timeout=3)
 
 
-def patch_registration(address: str, name: str, signature: str):
-    """Actualiza el nombre de una dirección registrada."""
+def patch_registration(address: str, name: str, signature: str, description=None):
+    """Actualiza el nombre y/o la descripción de una dirección registrada."""
+    payload = {"name": name, "signature": signature}
+    if description is not None:
+        payload["description"] = description
+        
     return requests.patch(
         url("registrations", address),
-        json={"name": name, "signature": signature},
+        json=payload,
         timeout=10,
     )
 
@@ -758,11 +762,15 @@ def wait_for_call_status(call_id: str, expected_status: str, timeout: int = 15) 
     return False
 
 
-def post_register(address, signature, name="Test User"):
-    """Registra una dirección."""
+def post_register(address, signature, name="Test User", description=None):
+    """Registra una dirección con una descripción opcional."""
+    payload = {"address": address, "signature": signature, "name": name}
+    if description is not None:
+        payload["description"] = description
+        
     return requests.post(
         url("register"),
-        json={"address": address, "signature": signature, "name": name},
+        json=payload,
         timeout=10,
     )
 
@@ -2551,3 +2559,59 @@ def test_get_creators_integration() -> None:
     assert found_creator["name"] == "Creador Integracion"
     assert found_creator["state"] == "authorized"
     assert "description" in found_creator
+    
+    
+    
+def test_register_with_description() -> None:
+    """Prueba que un usuario nuevo pueda registrarse enviando una descripción opcional."""
+    contract_address = get_contract_address()
+    account = Account().create()
+    name = "Creador Con Descripcion"
+    description = "Soy un artista digital enfocado en Web3"
+    
+    msg = make_register_message(contract_address, name)
+    signature = sign_bytes(msg, account)
+    
+    # Enviamos la petición POST /register con el campo nuevo
+    response = post_register(account.address, signature, name, description)
+    assert response.status_code == 200
+    assert response.json()["status"] == "pending"
+    
+    # Consultamos a la base de datos para ver si se guardó correctamente
+    reg = get_registration(account.address)
+    assert reg.status_code == 200
+    assert reg.json()["name"] == name
+    assert reg.json().get("description") == description
+
+
+def test_update_registration_description(authorized_accounts) -> None:
+    """Prueba que se pueda modificar el nombre y la descripción de un usuario existente."""
+    contract_address = get_contract_address()
+    
+    # Tomamos una de las cuentas que ya fue autorizada por el fixture del setup
+    account = authorized_accounts[0]
+    
+    reg = get_registration(account.address)
+    assert reg.status_code == 200
+    current_nonce = reg.json()["nonce"]
+    
+    # Preparamos el Payload para la modificación
+    new_name = "Nombre Actualizado v2"
+    new_description = "Nueva biografía actualizada desde el Test"
+    
+    # Firmamos la orden de actualización usando el nonce que nos devolvió la API
+    msg = make_update_message(contract_address, current_nonce, new_name)
+    signature = sign_bytes(msg, account)
+    
+    # Mandamos el PATCH
+    patch_resp = patch_registration(account.address, new_name, signature, new_description)
+    assert patch_resp.status_code == 200
+    
+    # 3. Validamos que los cambios se hayan guardado y el nonce haya incrementado
+    updated_reg = get_registration(account.address)
+    assert updated_reg.status_code == 200
+    
+    data = updated_reg.json()
+    assert data["name"] == new_name
+    assert data.get("description") == new_description
+    assert data["nonce"] == current_nonce + 1

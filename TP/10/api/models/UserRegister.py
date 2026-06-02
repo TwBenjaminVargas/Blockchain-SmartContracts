@@ -19,6 +19,13 @@ class UserRegister(BaseModel):
         pattern=r"^0x[a-fA-F0-9]{130}$",
         examples=["0xd72c1655fde0f5179687dbf4b6e3c25d45f24d819d2b93bdf5d34ab86967c387015b863608371d925cd1d3c9796cad0b486e38a9938bd38820e0e24ad70f567b1b"]
     )
+    
+    description: str | None = Field(
+        default=None,
+        description="Descripción corta opcional del usuario creador.",
+        examples=["Desarrollador Web3 independiente"]
+    )
+    
 
     @field_validator("name", mode="before")
     @classmethod

@@ -14,7 +14,10 @@ class UserPatch(BaseModel):
         examples=["0xd72c1655fde0f5179687dbf4b6e3c25d45f24d819d2b93bdf5d34ab86967c387015b863608371d925cd1d3c9796cad0b486e38a9938bd38820e0e24ad70f567b1b"]
     )
     
-    #! Problema de 513 bytes recibidos con test test_update_registration_name_limit
+    description: str | None = Field(
+        default=None,
+        description="Nueva descripción corta opcional del usuario creador."
+    )
     @field_validator("name", mode="before")
     @classmethod
     def validate_and_clean_name(cls, value: str) -> str:

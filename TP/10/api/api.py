@@ -229,7 +229,7 @@ async def create(
         logger.error(f"Fallo no controlado en el flujo del endpoint: {str(e)}")
         return JSONResponse(status_code=500, content={"message": Messages.INTERNAL_ERROR})
                             
-#TODO Añadir campo descripcion                            
+
 @app.post(
     "/register",
     status_code=status.HTTP_200_OK,
@@ -269,6 +269,7 @@ async def register(
         # Control de Reglas de Negocio / Verificación de estados en Blockchain y Base de Datos Local
         if local_user: 
             local_user.name = payload.name
+            local_user.description = payload.description
             local_user.signature = payload.signature
             local_user.state = UserState.REGISTERED
             db_manager.updateExistingUser(local_user)
@@ -289,7 +290,7 @@ async def register(
             determined_status = UserState.PENDING
             
         
-        db_manager.createUser(address=payload.address, name=payload.name, signature=payload.signature, state=determined_status)
+        db_manager.createUser(address=payload.address, name=payload.name, description=payload.description, signature=payload.signature, state=determined_status)
 
         return JSONResponse(
             status_code=status.HTTP_200_OK,
@@ -788,6 +789,7 @@ async def get_registration_status(
                     content={
                         "status": local_user.state.value,
                         "name": local_user.name,
+                        "description": local_user.description,
                         "nonce": local_user.nonce
                     }
                 )
@@ -890,6 +892,7 @@ async def update_registration_name(
 
         try:
             user.name = payload.name
+            user.description = payload.description
             user.nonce += 1
             db_manager.updateExistingUser(user)
         except db_exceptions.DatabaseWriteException:

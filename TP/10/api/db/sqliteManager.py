@@ -179,30 +179,7 @@ class DBManager:
             logger.debug(f"Registrando usuario admin local con la wallet: {cleaned_address}")
             return self._add(nuevo_usuario)
     
-    def createPendingUser(self, address: str, name: str, signature: str) -> User:
-        """
-        Instancia y guarda un usuario con estado 'pending'
-        """
-        inputs = {"address": address, "name": name, "signature": signature}
-        for field_name, value in inputs.items():
-            if not isinstance(value, str) or not value.strip():
-                logger.error(f"Parámetro inválido o vacío en createPendingUser: {field_name}={type(value)}")
-                raise db_exceptions.InvalidInputTypeException(f"El campo '{field_name}' debe ser una cadena de texto válida.")
-
-        cleaned_address = address.strip()
-
-        nuevo_usuario = User(
-            address=cleaned_address,
-            name=name.strip(),
-            signature=signature.strip(),
-            state=UserState.PENDING,
-            nonce=0
-        )
-
-        logger.debug(f"Registrando nuevo usuario local PENDING para la wallet: {cleaned_address}")
-        return self._add(nuevo_usuario)
-    
-    def createUser(self, address: str, name: str, signature: str, state: UserState = UserState.PENDING) -> User:
+    def createUser(self, address: str, name: str, signature: str,description: str | None = None, state: UserState = UserState.PENDING) -> User:
         """
         Instancia y guarda un usuario con estado 'pending'
         """
@@ -217,6 +194,7 @@ class DBManager:
         nuevo_usuario = User(
             address=cleaned_address,
             name=name.strip(),
+            description= description.strip() if description else None,
             signature=signature.strip(),
             state=state,
             nonce=1
