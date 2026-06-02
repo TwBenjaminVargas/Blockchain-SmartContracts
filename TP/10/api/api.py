@@ -229,7 +229,7 @@ async def create(
         logger.error(f"Fallo no controlado en el flujo del endpoint: {str(e)}")
         return JSONResponse(status_code=500, content={"message": Messages.INTERNAL_ERROR})
                             
-                            
+#TODO Añadir campo descripcion                            
 @app.post(
     "/register",
     status_code=status.HTTP_200_OK,
@@ -1179,4 +1179,86 @@ async def get_contract_owner(
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"message": "Internal Server Error"}
+        )
+        
+@app.get(
+    "/admin/address",
+    status_code=status.HTTP_200_OK,
+    summary="Obtiene la dirección del administrador del sistema",
+    description="Retorna un objeto JSON con el campo 'address' que contiene la dirección del administrador."
+)
+async def get_admin_address(
+    signer: Signer = Depends(get_signer)
+):
+    try:
+        admin_address = signer.admin_address
+            
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={"address": admin_address.lower()}
+        )
+        
+    except Exception as e:
+        logger.error(f"Error no manejado en GET /admin/address: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"message": Messages.INTERNAL_ERROR}
+        )
+        
+@app.get(
+    "/creators",
+    status_code=status.HTTP_200_OK,
+    summary="Obtiene y clasifica los creadores del contrato",
+    description="Lee las direcciones de creadores desde la Blockchain y las contrasta con la Base de Datos local para devolver detalles de los usuarios registrados y las direcciones faltantes."
+)
+async def get_creators_endpoint(
+    contract_manager: ContractManager = Depends(get_contract_manager),
+    db_manager: DBManager = Depends(get_db_manager)
+):
+    try:
+
+        blockchain_creators = contract_manager.get_cfp_creators()
+
+        missing_addresses, existing_users = db_manager.get_creators(blockchain_creators)
+
+        registered_creators_data = [
+            {
+                "address": user.address.lower(),
+                "name": user.name,
+                "state": user.state,
+                "description": user.description,
+                "nonce": user.nonce
+            }
+            for user in existing_users
+        ]
+        
+        logger.debug(f"GET /creators - registered: {registered_creators_data}, external: {missing_addresses}")
+
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "registered_creators": registered_creators_data,
+                "external_creators": missing_addresses
+            }
+        )
+
+    except contract_exceptions.BlockchainReadException as ce:
+        logger.error(f"Error de blockchain en GET /creators: {str(ce)}")
+        return JSONResponse(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            content={"message": str(ce)}
+        )
+        
+    except db_exceptions.DatabaseReadException as de:
+        logger.error(f"Error de base de datos en GET /creators: {str(de)}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"message": str(de)}
+        )
+        
+    except Exception as e:
+        logger.error(f"Error inesperado en GET /creators: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"message": Messages.INTERNAL_ERROR}
         )

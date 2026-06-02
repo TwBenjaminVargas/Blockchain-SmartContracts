@@ -226,6 +226,12 @@ contract CFPFactory {
 
     }
 
+    // Devuelve la lista de todas las cuentas que han creado llamados.
+    // Util para pocos elementos, para mayor escalabildad se debería implementar una función que devuelva un rango de elementos.
+    function getCreators() public view returns (address[] memory) {
+        return creators;
+    }
+
 
 
 

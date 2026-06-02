@@ -14,6 +14,8 @@ class User(SQLModel, table=True):
     name: str = SQLField(description="Nombre limpio del solicitante persistido")
     signature: str = SQLField(description="Firma criptográfica registrada")
     
+    description: str | None = SQLField(default=None, description="Descripción corta o del usuario creador")
+    
     state: UserState = SQLField(
         default=UserState.PENDING,
         description="Estado de registro del solicitante sincronizado con la blockchain"

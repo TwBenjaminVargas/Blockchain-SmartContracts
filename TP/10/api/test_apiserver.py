@@ -407,7 +407,7 @@ def wait_for_registration_status(
         if resp.status_code == 200 and resp.json().get("status") == expected_status:
             get_w3().provider.make_request(RPCEndpoint("evm_mine"), [])
             return True
-        time.sleep(0.5)
+        time.sleep(0.5) 
     return False
 
 
@@ -463,6 +463,14 @@ def get_contract_owner() -> str:
     assert response.status_code == 200
     validate(instance=response.json(), schema=address_schema)
     return response.json()["address"]
+
+def get_admin_address_api() -> requests.Response:
+    """Obtiene la dirección del administrador del sistema desde la API."""
+    return requests.get(url("admin/address"), timeout=3)
+
+def get_creators_api() -> requests.Response:
+    """Obtiene la lista de creadores desde la API."""
+    return requests.get(url("creators"), timeout=5)
 
 
 def to_hex(value: bytes) -> str:
@@ -2445,3 +2453,101 @@ def test_archived_reregister() -> None:
     assert reg.json()["name"] == "Re-registered Name"
     assert reg.json()["nonce"] == 1
     assert reg.json()["status"] != "archived"
+
+
+def test_get_admin_address_endpoint() -> None:
+    """
+    Prueba que el endpoint /admin/address retorne correctamente la dirección 
+    del administrador y que coincida exactamente con la cuenta del admin del sistema.
+    """
+    response = get_admin_address_api()
+    
+    assert APPLICATION_JSON in response.headers["Content-type"]
+    assert response.status_code == 200
+    
+    data = response.json()
+    assert "address" in data, "Falta el campo 'address' en la respuesta JSON"
+    
+    api_admin_address = data["address"]
+    
+
+    real_admin_account = get_admin_account()
+    
+    assert api_admin_address == real_admin_account.address.lower(), (
+        f"La dirección devuelta por la API ({api_admin_address}) "
+        f"no coincide con la del administrador real ({real_admin_account.address.lower()})"
+    )
+    
+def test_get_creators_integration() -> None:
+    """
+    Prueba de integración real:
+    Registra una cuenta, el admin la autoriza, EL CREADOR CREA UN LLAMADO,
+    y luego consulta /creators para verificar que figure en la lista de registrados.
+    """
+    contract_address = get_contract_address()
+    admin = get_admin_account()
+    
+    # Crear nueva cuenta y fondearla
+    account = Account().create()
+    fund_account(account.address)
+    
+    #Registro On-Chain y Vía API
+    send_register_tx(account)
+    msg = make_register_message(contract_address, "Creador Integracion")
+    signature = sign_bytes(msg, account)
+    
+    reg_response = post_register(account.address, signature, "Creador Integracion")
+    assert reg_response.status_code == 200
+    
+    #El Admin autoriza la cuenta
+    nonce = get_admin_nonce()
+    auth_msg = make_authorize_message(contract_address, nonce, account.address)
+    auth_response = post_authorize(account.address, sign_bytes(auth_msg, admin))
+    assert auth_response.status_code == 200
+    
+    # Esperamos a que el listener actualice el estado a "authorized"
+    assert wait_for_registration_status(
+        account.address, "authorized"
+    ), "La cuenta no llegó a estado 'authorized' a tiempo"
+    
+    # Para aparecer en el getCreators() del contrato, debemos crear un llamado.
+    title = f"Llamado Integracion {account.address[:6]}"
+    description = "Descripción de prueba para el test de integración"
+    closing_time = get_closing_time()
+    
+    # Registrar el llamado en la API
+    create_response = post_create(account, title, description)
+    assert create_response.status_code == 201
+    
+    # Computar el ID y enviarlo a la Blockchain
+    call_id = make_call_id(title, description)
+    send_create_tx(account, call_id, closing_time)
+    
+    # Esperar a que el listener procese el evento de creación del llamado
+    assert wait_for_call_status(
+        call_id, "created"
+    ), f"El llamado {call_id} no alcanzó estado 'created' a tiempo"
+     
+
+    #Consultamos a la API por la lista de creadores
+    found_creator = None
+    creators_response = get_creators_api()
+    assert creators_response.status_code == 200
+    
+    data = creators_response.json()
+    registered = data.get("registered_creators", [])
+    
+    registered_addresses = [c["address"].lower() for c in registered]
+    
+    if account.address.lower() in registered_addresses:
+        idx = registered_addresses.index(account.address.lower())
+        found_creator = registered[idx]
+        
+    # Validaciones finales obligatorias del caso de uso
+    assert found_creator is not None, (
+        f"El creador autorizado no figura en 'registered_creators'. "
+        f"Se esperaba encontrar: {account.address.lower()}"
+    )
+    assert found_creator["name"] == "Creador Integracion"
+    assert found_creator["state"] == "authorized"
+    assert "description" in found_creator

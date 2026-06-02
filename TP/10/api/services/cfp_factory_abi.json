@@ -1,4 +1,4 @@
-[
+ [
     {
       "inputs": [],
       "stateMutability": "nonpayable",
@@ -236,6 +236,19 @@
     {
       "inputs": [],
       "name": "getAllPending",
+      "outputs": [
+        {
+          "internalType": "address[]",
+          "name": "",
+          "type": "address[]"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "getCreators",
       "outputs": [
         {
           "internalType": "address[]",

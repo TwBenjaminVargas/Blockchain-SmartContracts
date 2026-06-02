@@ -489,7 +489,40 @@ class DBManager:
         except SQLAlchemyError as db_err:
             logger.error(f"Fallo crítico al guardar el llamado '{call.callId}': {str(db_err)}")
             raise db_exceptions.DatabaseWriteException("El almacenamiento local no está disponible para actualizar el llamado.")
+    
+    def get_creators(self,contract_creators: list[str]) -> tuple[list[str], list[UserState]]:
+        """
+        Compara una lista de creadores de Blockchain contra la Base de Datos.
+
+        Retorna:
+            - Una tupla: (list[str], list[UserState])
+            - El primer elemento son las direcciones que FALTAN (en minúsculas).
+            - El segundo elemento son los OBJETOS completos de la BD que SÍ ESTÁN.
+        """
         
+        creators_lower = [addr.lower() for addr in contract_creators]
+        try:
+            with Session(self.engine) as session:
+                # Buscamos los usuarios que SÍ están en el arreglo
+                statement = select(User).where(
+                    func.lower(User.address).in_(creators_lower)
+                )
+                existing_users_models = session.exec(statement).all()
+
+                existing_addresses_set = {user.address.lower() for user in existing_users_models}
+                
+                missing_creators = list(set(creators_lower) - existing_addresses_set)
+                
+                logger.debug(f"Comparación de creadores: {len(creators_lower)} en contrato, {len(existing_users_models)} encontrados en BD, {len(missing_creators)} faltantes.")
+
+                return missing_creators, existing_users_models
+
+        except Exception as e:
+            logger.error(f"Error crítico al verificar estado de creadores en la BD: {str(e)}", exc_info=True)
+            raise db_exceptions.DatabaseReadException(
+                "Error al consultar el estado de los creadores en la base de datos local."
+            )
+      
 @lru_cache()
 def get_db_manager() -> DBManager:
     """

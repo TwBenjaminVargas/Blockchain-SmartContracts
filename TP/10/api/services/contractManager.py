@@ -911,6 +911,18 @@ class ContractManager:
             logger.error(f"Fallo crítico durante la verificación de la prueba Merkle: {str(e)}")
             raise cm_exceptions.CryptographicHashingException("No se pudo procesar la verificación criptográfica de la prueba.")
 
+    def get_cfp_creators(self) -> list[str]:
+        """
+        Obtiene el listado completo de direcciones de creadores desde el contrato.
+        """
+        try:
+            creators = self.contract.functions.getCreators().call()
+            logger.debug(f"Listado de creadores recuperado del contrato: {creators}")
+            return creators
+        except Exception as e:
+            logger.error(f"Error al leer el listado de creadores en el contrato: {str(e)}")
+            raise cm_exceptions.BlockchainReadException("No se pudo recuperar el listado de creadores")
+
 @lru_cache()
 def get_contract_manager() -> ContractManager:
     """
