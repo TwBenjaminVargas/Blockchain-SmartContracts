@@ -25,6 +25,7 @@ import asyncio
 import exceptions.contractManagerExceptions as contract_exceptions
 import exceptions.SignerExceptions as signer_exceptions
 import exceptions.databaseManagerExceptions as db_exceptions
+from fastapi.middleware.cors import CORSMiddleware
 
 
 logging.basicConfig(
@@ -75,6 +76,20 @@ async def lifespan(app: FastAPI):
         logger.warning("El Worker tardó demasiado en cerrarse y fue forzado.")
 
 app = FastAPI(title="API de Convocatoria de Propuestas (CFP) - TP 8",lifespan=lifespan)
+
+origins = [
+    "http://localhost",
+    "http://localhost:5173" #* vue
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,       # Dominios permitidos
+    allow_credentials=True,      # Permite cookies/credenciales
+    allow_methods=["*"],         # Permite todos los métodos (GET, POST, PATCH, etc.)
+    allow_headers=["*"],         # Permite todos los headers
+)
+
 
 #formato de respuesta personalizada para errores HTTP y validación de datos
 @app.exception_handler(HTTPException)
