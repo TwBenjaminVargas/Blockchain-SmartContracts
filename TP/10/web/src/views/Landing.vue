@@ -52,7 +52,7 @@
               <template #prepend>
                 <v-icon icon="md:sharp-person" size="22" class="me-2"></v-icon>
               </template>
-              ENTRAR COMO INVITADO
+              ENTRAR A VISTA PÚBLICA
             </v-btn>
 
           </div>
@@ -91,7 +91,7 @@ async function handleMetaMaskConnection() {
 
 function handleGuestLogin() {
   walletStore.loginAsGuest()
-  router.push({ name: 'creators-list' })
+  router.push({ name: 'public' })
 }
 </script>
 

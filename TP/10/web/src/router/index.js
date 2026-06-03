@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useWalletStore } from '../stores/wallet'
 import Landing from '../views/Landing.vue'
+import Public from '../views/Public.vue'
 
 // TODO Reemplazar por los views correspondiente
 const AdminDashboard = { template: '<v-container><h1>Admin Dashboard</h1></v-container>' }
@@ -11,7 +12,7 @@ const routes = [
   { path: '/', name: 'landing', component: Landing },
   { path: '/admin', name: 'admin', component: AdminDashboard, meta: { requiresRole: 'admin' } },
   { path: '/creator', name: 'creator', component: CreatorDashboard, meta: { requiresRole: 'creator' } },
-  { path: '/creators-list', name: 'creators-list', component: CreatorsList, meta: { requiresRole: 'guest' } }
+  { path: '/public', name: 'public', component: Public, meta: { requiresRole: 'guest' } }
 ]
 
 const router = createRouter({

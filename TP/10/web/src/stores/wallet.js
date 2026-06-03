@@ -45,15 +45,32 @@ export const useWalletStore = defineStore('wallet', {
       this.error = null
     },
 
-    //TODO update to check role from API
-    checkUserRole(address) {
-      // Hardcodeamos una dirección de ejemplo para pruebas en Hardhat
-      const mockAdminAddress = '0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266'
-      
-      if (address.toLowerCase() === mockAdminAddress.toLowerCase()) {
-        this.userRole = 'admin'
-      } else {
-        this.userRole = 'creator'
+    async checkUserRole(address) {
+      try {
+        this.isLoading = true
+    
+        const adminAddress = await getAdminAddress()
+        
+        if (address.toLowerCase() === adminAddress.toLowerCase()) {
+          this.userRole = 'admin'
+          return
+        }
+        
+        const registration = await getRegistrationStatus(address)
+        
+        // Condición: solo si el estado devuelto es exactamente 'authorized' se considera 'creator'
+        if (registration && registration.status === 'authorized') {
+          this.userRole = 'creator'
+        } else {
+          this.userRole = 'guest' // Si está pending, registered o no existe, queda como invitado/guest
+        }
+        
+      } catch (err) {
+        console.error('Error al verificar el rol:', err)
+        this.error = 'Error al verificar el rol con el servidor.'
+        this.userRole = 'guest' // Fallback seguro a guest ante una falla de red o API
+      } finally {
+        this.isLoading = false
       }
     },
 
