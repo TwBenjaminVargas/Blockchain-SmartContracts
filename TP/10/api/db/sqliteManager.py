@@ -179,6 +179,24 @@ class DBManager:
             logger.debug(f"Registrando usuario admin local con la wallet: {cleaned_address}")
             return self._add(nuevo_usuario)
     
+    def get_all_users(self) -> list[User]:
+        """
+        Recupera todos los usuarios registrados en el sistema usando SQLModel.
+
+        Raises:
+            db_exceptions.DatabaseReadException: Si ocurre un fallo crítico al consultar.
+        """
+        try:
+            with Session(self.engine) as session:
+                statement = select(User)
+                # .all() devuelve una lista de objetos User
+                users = session.exec(statement).all()
+                return list(users)
+
+        except SQLAlchemyError as db_err:
+            logger.error(f"Fallo crítico al recuperar todos los usuarios: {str(db_err)}", exc_info=True)
+            raise db_exceptions.DatabaseConnectionException("Error interno al leer los usuarios del almacenamiento local.")
+    
     def createUser(self, address: str, name: str, signature: str,description: str | None = None, state: UserState = UserState.PENDING) -> User:
         """
         Instancia y guarda un usuario con estado 'pending'

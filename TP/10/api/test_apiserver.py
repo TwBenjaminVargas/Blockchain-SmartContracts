@@ -455,6 +455,11 @@ def get_contract_address() -> str:
     validate(instance=response.json(), schema=address_schema)
     return response.json()["address"]
 
+def get_users():
+    """Obtiene todos los usuarios registrados en el sistema."""
+    response = requests.get(url("users"), timeout=5)
+    assert APPLICATION_JSON in response.headers["Content-type"]
+    return response
 
 def get_contract_owner() -> str:
     """Obtiene la dirección del dueño del contrato."""
@@ -2615,3 +2620,34 @@ def test_update_registration_description(authorized_accounts) -> None:
     assert data["name"] == new_name
     assert data.get("description") == new_description
     assert data["nonce"] == current_nonce + 1
+    
+    
+def test_get_all_users() -> None:
+    """
+    Prueba que el endpoint GET /users devuelva la lista completa
+    de usuarios almacenados en la base de datos local.
+    """
+    contract_address = get_contract_address()
+    account = Account().create()
+    unique_name = f"Test User {randrange(100000)}"
+    msg = make_register_message(contract_address, unique_name)
+    signature = sign_bytes(msg, account)
+    post_resp = post_register(account.address, signature, unique_name)
+    assert post_resp.status_code == 200, "Fallo al registrar usuario para el test"
+    response = get_users()
+    assert response.status_code == 200
+    data = response.json()
+    assert "users" in data, "Falta la clave 'users' en la respuesta"
+    assert "total" in data, "Falta la clave 'total' en la respuesta"
+    assert isinstance(data["users"], list), "'users' debe ser una lista"
+    assert len(data["users"]) >= 1, "La lista de usuarios no debería estar vacía"
+    # 5. Verificamos que el usuario que acabamos de inyectar aparezca en el listado
+    # Buscamos en la lista filtrando por la dirección (ignorando mayúsculas/minúsculas)
+    found_user = next(
+        (u for u in data["users"] if u["address"].lower() == account.address.lower()), 
+        None
+    )
+    assert found_user is not None, f"El usuario {account.address} no se encontró en el listado."
+    assert found_user["name"] == unique_name
+    assert found_user["state"] == "pending"
+    assert "nonce" in found_user

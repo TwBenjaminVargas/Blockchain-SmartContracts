@@ -244,7 +244,6 @@ async def create(
         logger.error(f"Fallo no controlado en el flujo del endpoint: {str(e)}")
         return JSONResponse(status_code=500, content={"message": Messages.INTERNAL_ERROR})
                             
-
 @app.post(
     "/register",
     status_code=status.HTTP_200_OK,
@@ -559,7 +558,7 @@ async def get_call(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
             content={"message": Messages.INTERNAL_ERROR}
         )
-    
+
 @app.get(
     "/closing-time/{call_id}",
     status_code=status.HTTP_200_OK,
@@ -1223,6 +1222,7 @@ async def get_admin_address(
             content={"message": Messages.INTERNAL_ERROR}
         )
         
+#TODO segurizar con firma del admin estos enpoints
 @app.get(
     "/creators",
     status_code=status.HTTP_200_OK,
@@ -1276,6 +1276,53 @@ async def get_creators_endpoint(
         
     except Exception as e:
         logger.error(f"Error inesperado en GET /creators: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"message": Messages.INTERNAL_ERROR}
+        )
+
+@app.get(
+    "/users",
+    status_code=status.HTTP_200_OK,
+    summary="Obtiene todos los usuarios del sistema",
+    description="Lee y devuelve la información detallada de todos los usuarios registrados en la Base de Datos local, sin importar su estado en la blockchain."
+)
+async def get_all_users_endpoint(
+    db_manager: DBManager = Depends(get_db_manager)
+):
+    try:
+        all_users = db_manager.get_all_users()
+
+        users_data = [
+            {
+                "address": user.address.lower(),
+                "name": user.name,
+                "state": user.state.value,
+                "description": user.description,
+                "nonce": user.nonce
+            }
+            for user in all_users
+        ]
+        
+        logger.debug(f"GET /users - Total encontrados: {len(users_data)}")
+
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "users": users_data,
+                "total": len(users_data)
+            }
+        )
+        
+    except db_exceptions.DatabaseConnectionException as de:
+        logger.error(f"Error de base de datos en GET /users: {str(de)}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"message": str(de)}
+        )
+        
+    except Exception as e:
+        logger.error(f"Error inesperado en GET /users: {str(e)}", exc_info=True)
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"message": Messages.INTERNAL_ERROR}
