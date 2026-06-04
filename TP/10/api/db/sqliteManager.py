@@ -232,7 +232,25 @@ class DBManager:
         except SQLAlchemyError as db_err:
             logger.error(f"Error de infraestructura al recuperar el usuario {address}: {str(db_err)}")
             raise db_exceptions.DatabaseConnectionException("Error al consultar el almacenamiento local.")
-        
+    
+    def get_pending_and_registered_users(self) -> list[User]:
+        """
+        Recupera todos los usuarios cuyo estado local sea PENDING o REGISTERED.
+        Representan las solicitudes de autorización pendientes para el sistema.
+        """
+        try:
+            with Session(self.engine) as session:
+                # Usamos .in_() para filtrar por múltiples estados
+                statement = select(User).where(
+                    User.state.in_([UserState.PENDING, UserState.REGISTERED])
+                )
+                users = session.exec(statement).all()
+                return list(users)
+
+        except SQLAlchemyError as db_err:
+            logger.error(f"Fallo crítico al recuperar solicitudes pendientes/registradas: {str(db_err)}", exc_info=True)
+            raise db_exceptions.DatabaseConnectionException("Error interno al leer usuarios de la base de datos.")
+    
     def updateExistingUser(self, user: User) -> User:
         """
         Actualiza un usuario existente de forma segura en la base de datos local.

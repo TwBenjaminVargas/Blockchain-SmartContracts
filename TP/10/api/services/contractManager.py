@@ -608,6 +608,29 @@ class ContractManager:
             logger.error(f"No se pudo simular el revert para {tx_hash_hex}: {str(e)}")
             return "Execution reverted without reason"
 
+    def get_pending_registrations(self,owner_address: str) -> list[str]:
+        """
+        Lee el listado completo de registraciones pendientes desde el contrato inteligente.
+        Requiere ejecutarse desde la dirección del owner
+        """
+        try:
+            # onlyOwner()
+            call_options = {'from': owner_address} 
+            
+            count = self.contract.functions.pendingCount().call(call_options)
+            
+            pending_addresses = []
+            
+            # uno por uno según su índice
+            for i in range(count):
+                address = self.contract.functions.getPending(i).call(call_options)
+                pending_addresses.append(address)
+                
+            return pending_addresses
+            
+        except Exception as e:
+            logger.error(f"Error al leer pendingList del contrato: {str(e)}", exc_info=True)
+            raise cm_exceptions.BlockchainReadException("No se pudo obtener el listado de pendientes on-chain.")
 
     def get_created_by_count(self, creator_address: str) -> int:
         """

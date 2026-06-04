@@ -446,6 +446,11 @@ def get_closing_time(past: bool = False) -> datetime:
         days=days, hour=hour, minute=0, second=0, microsecond=0
     )
 
+def get_authorization_requests():
+    """Obtiene las solicitudes de autorización del sistema."""
+    response = requests.get(url("authorization-requests"), timeout=5)
+    assert APPLICATION_JSON in response.headers["Content-type"]
+    return response
 
 def get_contract_address() -> str:
     """Obtiene la dirección del contrato."""
@@ -2651,3 +2656,71 @@ def test_get_all_users() -> None:
     assert found_user["name"] == unique_name
     assert found_user["state"] == "pending"
     assert "nonce" in found_user
+    
+    
+def test_get_authorization_requests() -> None:
+    """
+    Prueba que el endpoint GET /authorization-requests clasifique correctamente:
+    - Usuarios locales en estado 'registered' (on-chain + db local).
+    - Usuarios locales en estado 'pending' (solo db local).
+    - Evite duplicarlos en la lista de solicitudes externas.
+    """
+    contract_address = get_contract_address()
+    
+    # CASO 1: USUARIO CON ESTADO 'REGISTERED'
+    account_registered = Account().create()
+    name_registered = f"Reg User {randrange(100000)}"
+    
+    # Registramos en API
+    msg_reg = make_register_message(contract_address, name_registered)
+    post_resp_reg = post_register(account_registered.address, sign_bytes(msg_reg, account_registered), name_registered)
+    assert post_resp_reg.status_code == 200
+    
+    # Impactamos on-chain para que el listener pase su estado a 'registered'
+    fund_account(account_registered.address)
+    send_register_tx(account_registered)
+    assert wait_for_registration_status(account_registered.address, "registered"), \
+        "El usuario no alcanzó el estado 'registered' en el tiempo esperado"
+
+    # CASO 2: USUARIO CON ESTADO 'PENDING'
+    account_pending = Account().create()
+    name_pending = f"Pend User {randrange(100000)}"
+    
+    # Registramos ÚNICAMENTE en la API local (NO enviamos a la blockchain, se queda en 'pending')
+    msg_pending = make_register_message(contract_address, name_pending)
+    post_resp_pending = post_register(account_pending.address, sign_bytes(msg_pending, account_pending), name_pending)
+    assert post_resp_pending.status_code == 200
+
+    # --- EJECUCIÓN DE LA CONSULTA GET ---
+    response = get_authorization_requests()
+    assert response.status_code == 200
+    
+    data = response.json()
+    
+    # Verificamos la estructura general
+    assert "external_requests" in data
+    assert "local_requests" in data
+    assert isinstance(data["external_requests"], list)
+    assert isinstance(data["local_requests"], list)
+
+    # --- VALIDACIÓN DE REGLAS DE NEGOCIO ---
+    
+    # El usuario 'registered' DEBE estar en local_requests
+    found_reg = next(
+        (u for u in data["local_requests"] if u["address"].lower() == account_registered.address.lower()), 
+        None
+    )
+    assert found_reg is not None, f"El usuario {account_registered.address} (registered) no se agrupó en 'local_requests'."
+    assert found_reg["name"] == name_registered
+    assert found_reg["state"] == "registered"
+    assert account_registered.address.lower() not in data["external_requests"], \
+        "Usuario registrado doblemente clasificado en external_requests."
+
+    # El usuario 'pending' también DEBE estar en local_requests
+    found_pend = next(
+        (u for u in data["local_requests"] if u["address"].lower() == account_pending.address.lower()), 
+        None
+    )
+    assert found_pend is not None, f"El usuario {account_pending.address} (pending) no apareció en 'local_requests'."
+    assert found_pend["name"] == name_pending
+    assert found_pend["state"] == "pending"

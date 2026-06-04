@@ -1327,3 +1327,71 @@ async def get_all_users_endpoint(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"message": Messages.INTERNAL_ERROR}
         )
+@app.get(
+    "/authorization-requests",
+    status_code=status.HTTP_200_OK,
+    summary="Obtiene las solicitudes de autorización",
+    description="Devuelve dos listas: solicitudes externas (solo blockchain) y solicitudes locales (usuarios en estado pending o registered en la API)."
+)
+async def get_authorization_requests_endpoint(
+    contract_manager: ContractManager = Depends(get_contract_manager),
+    db_manager: DBManager = Depends(get_db_manager),
+    signer: Signer = Depends(get_signer)
+):
+    try:
+        owner_address = signer.address
+
+        #Obtenemos la lista pendingList de la Blockchain
+        blockchain_pending_addresses = contract_manager.get_pending_registrations(owner_address)
+        
+        # Obtenemos los usuarios PENDING y REGISTERED de la BD local
+        db_users = db_manager.get_pending_and_registered_users()
+        
+        # Set rápido con las direcciones locales en minúsculas
+        db_addresses_set = {user.address.lower() for user in db_users}
+        
+        external_requests = []
+        local_requests = []
+        
+        #Poblamos la lista EXTERNAL: En blockchain pero NO en nuestra base de datos local
+        for addr in blockchain_pending_addresses:
+            addr_lower = addr.lower()
+            if addr_lower not in db_addresses_set:
+                external_requests.append(addr_lower)
+                
+        #Poblamos la lista LOCAL: Todos los de la Base de Datos (estado pending o registered)
+        for user in db_users:
+            local_requests.append({
+                "address": user.address.lower(),
+                "name": user.name,
+                "state": user.state.value,
+                "description": user.description,
+                "nonce": user.nonce
+            })
+                
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "external_requests": external_requests,
+                "local_requests": local_requests,
+                "total_external": len(external_requests),
+                "total_local": len(local_requests)
+            }
+        )
+
+    except contract_exceptions.BlockchainReadException as ce:
+        return JSONResponse(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            content={"message": str(ce)}
+        )
+    except (db_exceptions.DatabaseConnectionException, db_exceptions.DatabaseReadException) as de:
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"message": str(de)}
+        )
+    except Exception as e:
+        logger.error(f"Error en GET /authorization-requests: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"message": Messages.INTERNAL_ERROR}
+        )
