@@ -7,7 +7,7 @@
         
         <v-card class="main-panel pa-6 rounded-xl mx-auto" elevation="4">
           
-          <div class="d-flex justify-center mb-6 overflow-x-auto">
+          <div class="d-flex justify-center mb-6 toggle-wrapper">
             <v-btn-toggle
               v-model="currentTab"
               mandatory
@@ -248,7 +248,6 @@ const snackbar = ref({
   message: ''
 })
 
-// Estados
 const registeredCreators = ref([])
 const externalCreators = ref([])
 const allUsers = ref([])
@@ -305,7 +304,6 @@ async function handleAction(actionType, targetAddress) {
       throw new Error('Operación abortada: No puedes desautorizar tu propia cuenta de administrador.')
     }
 
-    // Validación extra en el script para prevenir firmas en archivados
     const targetUser = allUsers.value.find(u => u.address.toLowerCase() === targetAddress.toLowerCase())
     if (targetUser && targetUser.state === 'archived') {
       throw new Error('Operación abortada: No se pueden realizar acciones sobre usuarios archivados.')
@@ -436,17 +434,36 @@ onMounted(() => {
   padding-right: 8px;
 }
 
+.toggle-wrapper {
+  overflow-x: auto;
+  width: 100%;
+  flex-shrink: 0;
+  padding-bottom: 4px;
+}
+
+.toggle-wrapper::-webkit-scrollbar {
+  height: 0px;
+  background: transparent;
+}
+
 .custom-toggle {
   border: 1px solid #e2e8f0;
   background-color: rgba(255, 255, 255, 0.7);
   border-radius: 99px !important;
   padding: 4px;
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  height: auto !important;
 }
 
 .custom-toggle :deep(.v-btn) {
   border-radius: 99px !important;
   text-transform: none;
   letter-spacing: 0;
+  flex-shrink: 0 !important;
+  min-width: max-content !important;
+  white-space: nowrap !important;
+  height: 40px !important;
 }
 
 .text-slate-dark {
