@@ -1,44 +1,81 @@
-/**
- * Despliega CFPFactory en un nodo local (hardhat node u otro nodo compatible).
- *
- * Uso:
- *   node scripts/deploy.js [rpc_url]
- *
- * Por defecto conecta a http://127.0.0.1:8545 con la cuenta 0 derivada de la
- * frase mnemónica estándar de hardhat node. Para usar otra cuenta o nodo,
- * pasar la URL como primer argumento y definir CFP_MNEMONIC en el entorno.
- */
-
 import { ethers } from "ethers";
 import { readFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-
 const RPC_URL = process.argv[2] ?? "http://127.0.0.1:8545";
-const MNEMONIC =
-  process.env.CFP_MNEMONIC ??
-  "test test test test test test test test test test test junk";
 
-const { abi, bytecode } = JSON.parse(
-  readFileSync(
-    join(__dirname, "../artifacts/contracts/CFPFactory.sol/CFPFactory.json"),
-    "utf8"
-  )
-);
+// Mnemónico por defecto de la red local para proveer fondos iniciales
+const HARDHAT_FUNDING_MNEMONIC = "test test test test test test test test test test test junk";
 
-const provider = new ethers.JsonRpcProvider(RPC_URL);
-const deployer = ethers.HDNodeWallet.fromPhrase(MNEMONIC).connect(provider);
+async function main() {
+    const provider = new ethers.JsonRpcProvider(RPC_URL);
 
-console.log(`Deploying CFPFactory from ${deployer.address} on ${RPC_URL}...`);
+    // Cuenta pre-financiada de la red local
+    const fundingWallet = ethers.HDNodeWallet.fromPhrase(HARDHAT_FUNDING_MNEMONIC).connect(provider);
 
-const factory = new ethers.ContractFactory(abi, bytecode, deployer);
-const contract = await factory.deploy();
-await contract.waitForDeployment();
-const address = await contract.getAddress();
+    // 1. Generar la billetera raíz (Mnemónico aleatorio para la sesión de pruebas)
+    const masterNode = ethers.HDNodeWallet.createRandom();
+    const mnemonicPhrase = masterNode.mnemonic.phrase;
 
-console.log(`CFPFactory deployed at: ${address}`);
-console.log(`\nExport para el TP8:`);
-console.log(`  export CFP_FACTORY_ADDRESS=${address}`);
-console.log(`  export CFP_MNEMONIC="${MNEMONIC}"`);
+    // 2. Derivar las 3 cuentas requeridas por la suite de pruebas de Python
+    const ownerWallet = ethers.HDNodeWallet.fromPhrase(mnemonicPhrase, null, "m/44'/60'/0'/0/0").connect(provider);
+    const funderWallet = ethers.HDNodeWallet.fromPhrase(mnemonicPhrase, null, "m/44'/60'/0'/0/1").connect(provider);
+    const adminWallet = ethers.HDNodeWallet.fromPhrase(mnemonicPhrase, null, "m/44'/60'/0'/0/2").connect(provider);
+
+    // Obtención del nonce inicial para evitar colisiones con automining
+    let currentNonce = await provider.getTransactionCount(fundingWallet.address);
+
+    console.log("Financiando cuentas del ecosistema...");
+
+    // Fondear Owner (Index 0)
+    const tx0 = await fundingWallet.sendTransaction({
+        to: ownerWallet.address,
+        value: ethers.parseEther("10.0"),
+        nonce: currentNonce++
+    });
+    await tx0.wait();
+
+    // Fondear Funder (Index 1)
+    const tx1 = await fundingWallet.sendTransaction({
+        to: funderWallet.address,
+        value: ethers.parseEther("10.0"),
+        nonce: currentNonce++
+    });
+    await tx1.wait();
+
+    // Fondear Admin (Index 2)
+    const tx2 = await fundingWallet.sendTransaction({
+        to: adminWallet.address,
+        value: ethers.parseEther("10.0"),
+        nonce: currentNonce++
+    });
+    await tx2.wait();
+
+    // Lectura del artefacto e instalación del contrato usando el Owner (Index 0)
+    const { abi, bytecode } = JSON.parse(
+        readFileSync(
+            join(__dirname, "../artifacts/contracts/CFPFactory.sol/CFPFactory.json"),
+            "utf8"
+        )
+    );
+
+    const factory = new ethers.ContractFactory(abi, bytecode, ownerWallet);
+    const contract = await factory.deploy();
+    await contract.waitForDeployment();
+
+    const contractAddress = await contract.getAddress();
+
+    // Impresión formateada de las variables de entorno requeridas
+    console.log("\n================ CONFIGURACIÓN ENTORNO ================");
+    console.log(`CFP_FACTORY_ADDRESS=${contractAddress}`);
+    console.log(`CFP_MNEMONIC="${mnemonicPhrase}"`);
+    console.log(`CFP_ADMIN_ADDRESS=${adminWallet.address}`);
+    console.log("=======================================================\n");
+}
+
+main().catch((error) => {
+    console.error("Error en el proceso de despliegue:", error);
+    process.exit(1);
+});
