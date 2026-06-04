@@ -42,3 +42,23 @@ export const getRegistrationStatus = async (address) => {
     throw error
   }
 }
+
+export const registerUser = async (payload) => {
+  try {
+    const response = await api.post(URL.registerUser, payload)
+    return response.data
+  } catch (error) {
+    console.error('Error al registrar el usuario:', error)
+    throw error
+  }
+}
+
+export const getContractAddress = async () => {
+  try {
+    const response = await api.get(URL.contract_address)
+    return response.data.address
+  } catch (error) {
+    console.error('Error al obtener la dirección del contrato factoría:', error)
+    throw error
+  }
+}

@@ -76,13 +76,15 @@ import { ASSETS } from '../config/constants'
 const walletStore = useWalletStore()
 const router = useRouter()
 
-const backgroundImageRight = ASSETS.landingBgRight
+const backgroundImageRight = ASSETS.landingBg
 
 async function handleMetaMaskConnection() {
   const success = await walletStore.connectMetaMask()
   if (success) {
     if (walletStore.userRole === 'admin') {
       router.push({ name: 'admin' })
+    }else if (walletStore.userRole === 'pending') {
+      router.push({ name: 'register' })
     } else if (walletStore.userRole === 'creator') {
       router.push({ name: 'creator' })
     }

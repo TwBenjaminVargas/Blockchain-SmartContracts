@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ethers } from 'ethers'
+import {getAdminAddress, getRegistrationStatus} from '../services/api'
 
 export const useWalletStore = defineStore('wallet', {
   state: () => ({
@@ -28,7 +29,7 @@ export const useWalletStore = defineStore('wallet', {
         
         // Simulación de asignación de roles según la dirección (Wallet)
         // Aquí interactuarías con tu API o Smart Contract en el futuro
-        this.checkUserRole(this.account)
+        await this.checkUserRole(this.account)
         
         return true
       } catch (err) {
@@ -58,11 +59,16 @@ export const useWalletStore = defineStore('wallet', {
         
         const registration = await getRegistrationStatus(address)
         
-        // Condición: solo si el estado devuelto es exactamente 'authorized' se considera 'creator'
         if (registration && registration.status === 'authorized') {
           this.userRole = 'creator'
-        } else {
-          this.userRole = 'guest' // Si está pending, registered o no existe, queda como invitado/guest
+        } 
+        // Si el estado es pending, asignamos el rol 'pending' para redirigir a su interfaz
+        else if (registration && registration.status === 'pending' || registration.status === 'registered') {
+          this.userRole = 'pending'
+        }
+        // TODO: Manejar el caso de archived, por ahora se trata igual que guest
+        else {
+          this.userRole = 'guest' // Si está registered o no existe, queda como invitado/guest
         }
         
       } catch (err) {

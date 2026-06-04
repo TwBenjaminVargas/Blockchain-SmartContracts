@@ -78,6 +78,7 @@ async function handleConnectFromBar() {
   const success = await walletStore.connectMetaMask()
   if (success) {
     if (walletStore.userRole === 'admin') router.push({ name: 'admin' })
+    else if (walletStore.userRole === 'pending') router.push({ name: 'register' })
     else if (walletStore.userRole === 'creator') router.push({ name: 'creator' })
   }
 }
