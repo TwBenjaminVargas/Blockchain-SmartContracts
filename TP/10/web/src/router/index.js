@@ -3,15 +3,15 @@ import { useWalletStore } from '../stores/wallet'
 import Landing from '../views/Landing.vue'
 import Public from '../views/Public.vue'
 import Register from '../views/Register.vue'
+import Admin from '../views/Admin.vue'
 
 // TODO Reemplazar por los views correspondiente
-const AdminDashboard = { template: '<v-container><h1>Admin Dashboard</h1></v-container>' }
 const CreatorDashboard = { template: '<v-container><h1>Creator Dashboard</h1></v-container>' }
 const CreatorsList = { template: '<v-container><h1>Listado de Creadores (Invitado)</h1></v-container>' }
 
 const routes = [
   { path: '/', name: 'landing', component: Landing },
-  { path: '/admin', name: 'admin', component: AdminDashboard, meta: { requiresRole: 'admin' } },
+  { path: '/admin', name: 'admin', component: Admin, meta: { requiresRole: 'admin' } },
   { path: '/creator', name: 'creator', component: CreatorDashboard, meta: { requiresRole: 'creator' } },
   { path: '/public', name: 'public', component: Public, meta: { requiresRole: 'guest' } },
   { path: '/register', name: 'register', component: Register }

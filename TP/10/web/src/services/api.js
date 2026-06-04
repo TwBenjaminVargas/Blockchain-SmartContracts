@@ -62,3 +62,34 @@ export const getContractAddress = async () => {
     throw error
   }
 }
+
+export const getAdminNonce = async () => {
+  try {
+    const response = await api.get(URL.admin_nonce)
+    return response.data.nonce
+  } catch (error) {
+    console.error('Error al obtener la dirección del contrato factoría:', error)
+    throw error
+  }
+}
+
+
+export const authorizeUser = async (address, payload) => {
+  const response = await api.post(URL.authorizeUser.replace(':address', address), payload)
+  return response.data
+}
+
+export const unauthorizeUser = async (address, payload) => {
+  const response = await api.post(URL.unauthorizeUser.replace(':address', address), payload)
+  return response.data
+}
+
+export const getUsers = async () => {
+  const response = await api.get(URL.users)
+  return response.data
+}
+
+export const getAuthorizationRequests = async () => {
+  const response = await api.get(URL.authorization_requests)
+  return response.data
+}
