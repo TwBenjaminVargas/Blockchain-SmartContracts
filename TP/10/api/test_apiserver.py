@@ -2365,13 +2365,13 @@ def test_api_unauthorize_archived() -> None:
     assert response.json()["message"] == messages.OK
     assert get_admin_nonce() == nonce + 1
 
-    # Con llamados → estado archived, datos preservados
+    # Con llamados → estado pending, datos preservados
     assert wait_for_registration_status(
-        account.address, "archived"
-    ), "El estado no llegó a 'archived'"
+        account.address, "pending"
+    ), "El estado no llegó a 'pending'"
     reg = get_registration(account.address)
     assert reg.status_code == 200
-    assert reg.json()["status"] == "archived"
+    assert reg.json()["status"] == "pending"
     assert reg.json()["name"] == "Archived Creator"
     assert "nonce" in reg.json()
 
@@ -2410,8 +2410,8 @@ def test_api_authorize_archived() -> None:
         account.address,
         sign_bytes(make_unauthorize_message(contract_address, nonce, account.address), admin)
     ).status_code == 200
-    assert wait_for_registration_status(account.address, "archived"), \
-        "El estado no llegó a 'archived'"
+    assert wait_for_registration_status(account.address, "pending"), \
+        "El estado no llegó a 'pending'"
 
     # Intentar autorizar una cuenta archivada → 404, nonce no cambia
     nonce2 = get_admin_nonce()
@@ -2450,8 +2450,8 @@ def test_archived_reregister() -> None:
         account.address,
         sign_bytes(make_unauthorize_message(contract_address, nonce, account.address), admin)
     ).status_code == 200
-    assert wait_for_registration_status(account.address, "archived"), \
-        "El estado no llegó a 'archived'"
+    assert wait_for_registration_status(account.address, "pending"), \
+        "El estado no llegó a 'pending'"
 
     # La cuenta vuelve a registrarse en el contrato
     send_register_tx(account)
@@ -2470,7 +2470,7 @@ def test_archived_reregister() -> None:
     assert reg.status_code == 200
     assert reg.json()["name"] == "Re-registered Name"
     assert reg.json()["nonce"] == 1
-    assert reg.json()["status"] != "archived"
+    assert reg.json()["status"] != "pending"
 
 
 def test_get_admin_address_endpoint() -> None:

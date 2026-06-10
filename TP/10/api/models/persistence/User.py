@@ -5,8 +5,6 @@ class UserState(str, Enum):
     PENDING = "pending"
     REGISTERED = "registered"
     AUTHORIZED = "authorized"
-    ARCHIVED = "archived"
-
 class User(SQLModel, table=True):
     __tablename__ = "users"
 

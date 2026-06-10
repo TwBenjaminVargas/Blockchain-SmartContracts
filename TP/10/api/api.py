@@ -264,7 +264,7 @@ async def register(
         local_user = db_manager.getUser(payload.address)
         nonce = 0
         if local_user:
-            if local_user.state != UserState.ARCHIVED:
+            if local_user.state != UserState.PENDING:
                 return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content={"message": Messages.ALREADY_IN_SYSTEM})
             nonce = local_user.nonce
         #Reconstrucción Criptográfica del Mensaje y Recuperación de la Firma
@@ -280,19 +280,7 @@ async def register(
                 contract_exceptions.CryptographicHashingException):
             return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"message": Messages.INVALID_SIGNATURE})
         
-        # Control de Reglas de Negocio / Verificación de estados en Blockchain y Base de Datos Local
-        if local_user: 
-            local_user.name = payload.name
-            local_user.description = payload.description
-            local_user.signature = payload.signature
-            local_user.state = UserState.REGISTERED
-            db_manager.updateExistingUser(local_user)
-            # Retorno Exitoso
-            return JSONResponse(
-                status_code=status.HTTP_200_OK,
-                content={"status": UserState.REGISTERED.value}
-            )
-            
+        
         is_onchain_authorized = contract_manager.is_address_authorized(payload.address)
         is_onchain_registered = contract_manager.is_address_registered(payload.address)
 
@@ -303,6 +291,19 @@ async def register(
         else:
             determined_status = UserState.PENDING
             
+            
+        if local_user: 
+            local_user.name = payload.name
+            local_user.description = payload.description
+            local_user.signature = payload.signature
+            local_user.state = determined_status
+            db_manager.updateExistingUser(local_user)
+            # Retorno Exitoso
+            return JSONResponse(
+                status_code=status.HTTP_200_OK,
+                content={"status": determined_status.value}
+            )
+        
         
         db_manager.createUser(address=payload.address, name=payload.name, description=payload.description, signature=payload.signature, state=determined_status)
 
@@ -999,7 +1000,7 @@ async def authorize_address(
 
         # Verificar existencia del usuario objetivo en la base de datos local
         target_user = db_manager.getUser(target_address)
-        if not target_user or target_user.state == UserState.ARCHIVED:
+        if not target_user or target_user.state == UserState.PENDING:
             return JSONResponse(
                 status_code=status.HTTP_404_NOT_FOUND,
                 content={"message": Messages.NOT_REGISTERED}
@@ -1086,7 +1087,7 @@ async def unauthorize_address(
             )
         # Verificar existencia del usuario objetivo en la base de datos local
         target_user = db_manager.getUser(target_address)
-        if not target_user or target_user.state == UserState.ARCHIVED:
+        if not target_user or target_user.state == UserState.PENDING:
             return JSONResponse(
                 status_code=status.HTTP_404_NOT_FOUND,
                 content={"message": Messages.NOT_REGISTERED}

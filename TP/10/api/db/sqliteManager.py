@@ -453,7 +453,7 @@ class DBManager:
                 logger.error(f"Fallo al eliminar el usuario {cleaned_address} sin llamados: {str(e)}")
                 raise db_exceptions.DatabaseWriteException("Error interno al intentar eliminar el registro local.")
         
-        user.state = UserState.ARCHIVED
+        user.state = UserState.PENDING
         return self.updateExistingUser(user)
     
     def get_or_create_last_block(self, fallback_block: int) -> int:
