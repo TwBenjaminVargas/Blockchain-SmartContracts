@@ -261,6 +261,8 @@ async def register(
     Si la cuenta ya fue registrada pero se encuentra desautorizada, el registro previo se sobrescribe.
     """
     try:
+        if signer.is_admin_address(payload.address):
+            return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"message": Messages.INVALID_ADDRESS})
         local_user = db_manager.getUser(payload.address)
         nonce = 0
         if local_user:
@@ -860,7 +862,7 @@ async def update_registration_name(
     signer: Signer = Depends(get_signer)
 ):
     try:
-        if not re.match(r"^0x[a-fA-F0-9]{40}$", address):
+        if not re.match(r"^0x[a-fA-F0-9]{40}$", address) or signer.is_admin_address(address):
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 content={"message": Messages.INVALID_ADDRESS}
@@ -974,7 +976,7 @@ async def authorize_address(
     try:
         # Validar formato hexadecimal de la dirección del parámetro de ruta
         target_address = address.strip()
-        if not re.match(r"^(0x)?[0-9a-fA-F]{40}$", target_address):
+        if not re.match(r"^(0x)?[0-9a-fA-F]{40}$", target_address) or signer.is_admin_address(target_address):
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 content={"message": Messages.INVALID_ADDRESS}
@@ -1060,7 +1062,7 @@ async def unauthorize_address(
     try:
         # Validar formato hexadecimal de la dirección del parámetro de ruta
         target_address = address.strip()
-        if not re.match(r"^(0x)?[0-9a-fA-F]{40}$", target_address):
+        if not re.match(r"^(0x)?[0-9a-fA-F]{40}$", target_address) or signer.is_admin_address(target_address):
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 content={"message": Messages.INVALID_ADDRESS}

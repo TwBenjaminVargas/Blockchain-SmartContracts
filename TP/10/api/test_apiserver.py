@@ -2724,3 +2724,78 @@ def test_get_authorization_requests() -> None:
     assert found_pend is not None, f"El usuario {account_pending.address} (pending) no apareció en 'local_requests'."
     assert found_pend["name"] == name_pending
     assert found_pend["state"] == "pending"
+    
+    
+def test_admin_cannot_register_admin_address() -> None:
+    """Prueba que el sistema rechace el uso de la admin_address en el endpoint POST /register."""
+    contract_address = get_contract_address()
+    admin = get_admin_account()
+    
+    # Generar el mensaje estructurado utilizando la dirección del administrador
+    msg = make_register_message(contract_address, "Admin User")
+    signature = sign_bytes(msg, admin)
+    
+    # Intentar registrar la dirección del administrador
+    response = post_register(admin.address, signature, "Admin User")
+    
+    # El endpoint debe rechazarlo con un código 400 Bad Request
+    assert response.status_code == 400
+    assert APPLICATION_JSON in response.headers["Content-type"]
+    validate(instance=response.json(), schema=message_schema)
+    assert response.json()["message"] == messages.INVALID_ADDRESS
+
+
+def test_admin_cannot_authorize_admin_address() -> None:
+    """Prueba que el sistema rechace el uso de la admin_address en el endpoint POST /authorize/{address}."""
+    contract_address = get_contract_address()
+    admin = get_admin_account()
+    nonce = get_admin_nonce()
+    
+    # Crear mensaje de autorización apuntando a sí mismo como objetivo (target)
+    auth_msg = make_authorize_message(contract_address, nonce, admin.address)
+    signature = sign_bytes(auth_msg, admin)
+    
+    # Intentar autorizar la dirección del administrador mandándola en la ruta del endpoint
+    response = post_authorize(admin.address, signature)
+    
+    # Se espera una respuesta de error 400 debido a la restricción perimetral
+    assert response.status_code == 400
+    assert APPLICATION_JSON in response.headers["Content-type"]
+    validate(instance=response.json(), schema=message_schema)
+
+
+def test_admin_cannot_unauthorize_admin_address() -> None:
+    """Prueba que el sistema rechace el uso de la admin_address en el endpoint POST /unauthorize/{address}."""
+    contract_address = get_contract_address()
+    admin = get_admin_account()
+    nonce = get_admin_nonce()
+    
+    # Crear mensaje de desautorización apuntando al administrador
+    unauth_msg = make_unauthorize_message(contract_address, nonce, admin.address)
+    signature = sign_bytes(unauth_msg, admin)
+    
+    # Intentar desautorizar la dirección del administrador pasándola en la ruta
+    response = post_unauthorize(admin.address, signature)
+    
+    # Debe retornar 400 Bad Request al intentar mutar/revisar su propia dirección
+    assert response.status_code == 400
+    assert APPLICATION_JSON in response.headers["Content-type"]
+    validate(instance=response.json(), schema=message_schema)
+
+
+def test_admin_cannot_update_registration_for_admin_address() -> None:
+    """Prueba que el sistema rechace modificaciones de nombre a la admin_address en PATCH /registrations/{address}."""
+    contract_address = get_contract_address()
+    admin = get_admin_account()
+    
+    # Generar mensaje estructurado de actualización
+    msg = make_update_message(contract_address, nonce=1, name="Nuevo Admin Name")
+    signature = sign_bytes(msg, admin)
+    
+    # Intentar hacer PATCH a la ruta con la propia dirección de administración
+    response = patch_registration(admin.address, name="Nuevo Admin Name", signature=signature)
+    
+    # Debe ser interceptado por la validación del backend bloqueando la ejecución
+    assert response.status_code == 400
+    assert APPLICATION_JSON in response.headers["Content-type"]
+    validate(instance=response.json(), schema=message_schema)

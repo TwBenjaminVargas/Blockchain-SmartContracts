@@ -52,7 +52,19 @@ class Signer:
         except Exception as e:
             logger.error(f"Error procesando firma estructurada EIP-712: {str(e)}", exc_info=True)
             raise signer_exceptions.InvalidSignatureException("La firma EIP-712 provista es inválida.")
-
+    
+    def is_admin_address(self, address: str) -> bool:
+        """Verifica si una dirección de Ethereum provista corresponde a la del administrador."""
+        if not address or not isinstance(address, str):
+            return False
+        try:
+            return Web3.to_checksum_address(address) == Web3.to_checksum_address(self.admin_address)
+        except ValueError:
+            # Captura direcciones que no cumplan con el formato hexadecimal de Ethereum
+            logger.warning(f"Se intentó validar una dirección con formato inválido: {address}")
+            return False
+        
+        
     def check_admin_sign(self, eip712_structured_data: dict, signature_hex: str) -> bool:
         """Verifica si la firma EIP-712 pertenece al administrador."""
         try:
