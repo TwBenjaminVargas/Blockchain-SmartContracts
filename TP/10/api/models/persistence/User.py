@@ -15,10 +15,8 @@ class User(SQLModel, table=True):
     description: str | None = SQLField(default=None, description="Descripción corta o del usuario creador")
     
     state: UserState = SQLField(
-        default=UserState.PENDING,
         description="Estado de registro del solicitante sincronizado con la blockchain"
     )
     nonce: int = SQLField(
-        default=1,
         description="Valor numérico único de un solo uso para prevenir ataques de replicación, inicia en 1"
     )
