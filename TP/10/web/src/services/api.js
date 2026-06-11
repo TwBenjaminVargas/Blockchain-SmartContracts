@@ -98,3 +98,23 @@ export const updateRegistration = async (address, payload) => {
   const response = await api.patch(URL.updateRegistration.replace(':address',address), payload)
   return response.data
 }
+
+export const getUserCalls = async (address) => {
+  try {
+    const response = await api.get(URL.getUserCalls.replace(':address', address))
+    return response.data
+  } catch (error) {
+    console.error(`Error al obtener los llamados para la dirección ${address}:`, error)
+    throw error
+  }
+}
+
+export const createCall = async (payload) => {
+  try {
+    const response = await api.post(URL.createCall, payload)
+    return response.data
+  } catch (error) {
+    console.error('Error al registrar la convocatoria en la base de datos:', error)
+    throw error
+  }
+}

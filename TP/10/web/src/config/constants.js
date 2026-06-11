@@ -33,4 +33,6 @@ export const URL = {
     unauthorizeUser: '/unauthorize/:address',
     users: '/users',
     updateRegistration: `/registrations/:address`,
+    getUserCalls: '/calls-by/:address',
+    createCall: '/create'
 }
