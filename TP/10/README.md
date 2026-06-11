@@ -1,4 +1,4 @@
-# Trabajo Práctico 10 (ETAPA 1) — Resumen y puesta en marcha
+# Trabajo Práctico 10 (ETAPA 1 y 2) — Resumen y puesta en marcha
 
 Este repositorio reúne los tres componentes del TP10:
 
@@ -50,7 +50,7 @@ npx hardhat node
 ```bash
 cd contracts
 npx hardhat compile
-node scripts/deploy.js
+npx run scripts/deploy.js
 
 ```
 

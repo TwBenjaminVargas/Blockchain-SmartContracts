@@ -1,8 +1,9 @@
-# API TP10 (ETAPA 1)
+# API TP10 (ETAPA 1 y 2)
 
 Este directorio contiene la implementación de la API REST que interactúa con los contratos `CFP` y `CFPFactory`, además de la persistencia off-chain necesaria para la etapa 1.
 
-## Resumen de cambios principales (etapa 1)
+# Resumen de cambios principales 
+## ETAPA 1
 
 * **Migración del esquema de firma:** Se actualizó la lógica de firma de EIP-191 a EIP-712. Los tests y funciones auxiliares fueron adaptados para utilizar `eth_account.messages.encode_structured_data` y tipos EIP-712. Esto minimiza las modificaciones en las pruebas debido a que las funciones ayudantes (*helpers*) conservan sus nombres y parámetros originales.
 * **Nuevos endpoints añadidos / expuestos para la interfaz de administración:** `GET /admin/address`, `GET /creators`, `GET /users`, `GET /users/pending`.
@@ -25,6 +26,42 @@ El archivo `test_apiserver.py` se actualizó para incorporar `encode_structured_
 * `GET /users`: Lista los usuarios registrados en la base de datos.
 * `GET /authorization-requests`: Lista los usuarios que se encuentran esperando la autorización por parte del administrador.
 
+## Nuevos Casos de Prueba Añadidos (`test_apiserver.py`)
+
+Se incorporó una serie de pruebas unitarias e de integración con el fin de validar el comportamiento de los nuevos endpoints expuestos y asegurar la robustez de las restricciones aplicadas a la cuenta del administrador:
+
+### Validaciones de Endpoints e Integración de Creadores
+
+* `test_get_admin_address_endpoint()`: Verifica que el endpoint retorne de manera correcta la dirección del administrador configurada en el entorno del servidor.
+* `test_get_creators_integration()`: Valida que el listado completo de creadores integrados en el ecosistema sea recuperado sin inconsistencias.
+
+### Registro y Actualización con Descripciones
+
+* `test_update_registration_description(authorized_accounts)`: Evalúa la capacidad del sistema para actualizar la descripción asociada al registro de un usuario previamente autorizado.
+* `test_register_with_description()`: Comprueba el flujo de registro inicial de un usuario que proporciona datos descriptivos adicionales.
+
+### Gestión de Usuarios y Peticiones Administrativas
+
+* `test_get_all_users()`: Garantiza que el endpoint retorne de forma fidedigna la lista global de usuarios registrados.
+* `test_get_authorization_requests()`: Inspecciona el correcto filtrado y devolución de aquellos usuarios cuyas peticiones de acceso se encuentran en estado pendiente de aprobación.
+
+### Restricciones Críticas sobre la Dirección del Administrador
+
+* `test_admin_cannot_register_admin_address()`: Asegura que el sistema bloquee cualquier intento de registro de la propia dirección del administrador como usuario convencional.
+* `test_admin_cannot_authorize_admin_address()`: Valida la imposibilidad de ejecutar autorizaciones orientadas a la dirección del administrador.
+* `test_admin_cannot_unauthorize_admin_address()`: Confirma que no se puedan remover privilegios ni modificar estados de autorización sobre la cuenta raíz administrativa.
+* `test_admin_cannot_update_registration_for_admin_address()`: Verifica el rechazo de solicitudes destinadas a alterar los datos de registro vinculados a la dirección del administrador.
+
+## ETAPA 2
+
+## Endpoints añadidos
+
+ * `GET /calls-by/address`: Devuelve dos listas: solicitudes externas (solo blockchain) y solicitudes locales (usuarios en estado pending o registered en la API).
+ * `GET /calls-by/address`: Devuelve dos listas: solicitudes externas (solo blockchain) y solicitudes locales (usuarios en estado pending o registered en la API).
+## Nuevos Casos de Prueba Añadidos (`test_apiserver.py`)
+* `def test_get_global_calls_catalog_structure()`: Prueba que el endpoint unificado GET /calls devuelva correctamente la estructura del catálogo global, segmentando convocatorias internas y externas.
+* `def test_get_calls_by_address_structure()`: Prueba que el endpoint GET /calls/{address} devuelva la estructura de listas esperada.
+* `def test_admin_cannot_execute_create_endpoint()`: Prueba que un administrador no tenga permitido ejecutar el endpoint /create, retornando un código de error 400 (Bad Request) con el mensaje de dirección inválida.
 ---
 
 ## Variables de entorno requeridas
@@ -77,35 +114,6 @@ El diseño del modelo entidad-relación correspondiente a la persistencia *off-c
 * La entidad `PROPOSALS` mantiene una relación de clave foránea mediante el campo `callId` hacia la tabla de llamados (`CALLS`).
 * El campo `address` actúa como clave primaria en la entidad `USERS`, la cual almacena los estados correspondientes a los flujos de registro, autorización y validación del `nonce`.
 
----
-
-## Nuevos Casos de Prueba Añadidos (`test_apiserver.py`)
-
-Se incorporó una serie de pruebas unitarias e de integración con el fin de validar el comportamiento de los nuevos endpoints expuestos y asegurar la robustez de las restricciones aplicadas a la cuenta del administrador:
-
-### Validaciones de Endpoints e Integración de Creadores
-
-* `test_get_admin_address_endpoint()`: Verifica que el endpoint retorne de manera correcta la dirección del administrador configurada en el entorno del servidor.
-* `test_get_creators_integration()`: Valida que el listado completo de creadores integrados en el ecosistema sea recuperado sin inconsistencias.
-
-### Registro y Actualización con Descripciones
-
-* `test_update_registration_description(authorized_accounts)`: Evalúa la capacidad del sistema para actualizar la descripción asociada al registro de un usuario previamente autorizado.
-* `test_register_with_description()`: Comprueba el flujo de registro inicial de un usuario que proporciona datos descriptivos adicionales.
-
-### Gestión de Usuarios y Peticiones Administrativas
-
-* `test_get_all_users()`: Garantiza que el endpoint retorne de forma fidedigna la lista global de usuarios registrados.
-* `test_get_authorization_requests()`: Inspecciona el correcto filtrado y devolución de aquellos usuarios cuyas peticiones de acceso se encuentran en estado pendiente de aprobación.
-
-### Restricciones Críticas sobre la Dirección del Administrador
-
-* `test_admin_cannot_register_admin_address()`: Asegura que el sistema bloquee cualquier intento de registro de la propia dirección del administrador como usuario convencional.
-* `test_admin_cannot_authorize_admin_address()`: Valida la imposibilidad de ejecutar autorizaciones orientadas a la dirección del administrador.
-* `test_admin_cannot_unauthorize_admin_address()`: Confirma que no se puedan remover privilegios ni modificar estados de autorización sobre la cuenta raíz administrativa.
-* `test_admin_cannot_update_registration_for_admin_address()`: Verifica el rechazo de solicitudes destinadas a alterar los datos de registro vinculados a la dirección del administrador.
-
----
 
 ## Estructura de directorios (resumen)
 

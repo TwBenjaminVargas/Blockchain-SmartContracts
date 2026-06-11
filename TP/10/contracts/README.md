@@ -1,11 +1,13 @@
-### SMART CONTRACTS (TP10) - ETAPA 1
+# SMART CONTRACTS TP10 (ETAPA 1 y 2)
 
 Este directorio contiene los contratos `CFP` y `CFPFactory` junto con los artefactos de compilación generados por Hardhat.
 
-**Cambios introducidos en este práctico (resumen)**
-
+## Cambios introducidos en cada etapa
+### ETAPA 1:
 * Nuevo método público en la factoría: `getCreators()` que devuelve la lista completa de creadores conocidos en el ecosistema.
-
+### ETAPA 2:
+* Nueva estructura de datos `bytes32[] public globalCallIds` la cual registra todos los callId que llegan al sistema.
+* Nuevo método público en la factoría: `getGlobalCalls()` que devuelve la lista de callId conocidos en el sistema.
 ---
 
 ## Despliegue y compilación
