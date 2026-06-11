@@ -31,7 +31,7 @@
 
           <v-card variant="flat" class="bg-slate-light pa-4 rounded-lg mb-4 search-box">
             <v-row dense align="center">
-              <v-col cols="12" :md="currentTab === 'calls' ? '4' : '12'">
+              <v-col cols="12" :sm="currentTab === 'calls' ? '6' : '12'" :md="currentTab === 'calls' ? '3' : '12'">
                 <v-text-field
                   v-model="searchQuery"
                   clearable
@@ -41,12 +41,25 @@
                   color="indigo-darken-1"
                   hide-details
                   prepend-inner-icon="mdi-magnify"
-                  :label="currentTab === 'calls' ? 'Buscar por título o dirección...' : 'Buscar por nombre o dirección (0x...)'"
+                  :label="currentTab === 'calls' ? 'Buscar por título o ID...' : 'Buscar por nombre o dirección (0x...)'"
                 ></v-text-field>
               </v-col>
 
               <template v-if="currentTab === 'calls'">
-                <v-col cols="12" sm="6" md="4">
+                <v-col cols="12" sm="6" md="3">
+                  <v-text-field
+                    v-model="searchCreator"
+                    clearable
+                    density="compact"
+                    variant="outlined"
+                    bg-color="white"
+                    color="indigo-darken-1"
+                    hide-details
+                    prepend-inner-icon="mdi-account-search-outline"
+                    label="Dirección del creador (0x...)"
+                  ></v-text-field>
+                </v-col>
+                <v-col cols="12" sm="6" md="3">
                   <v-select
                     v-model="filterState"
                     :items="stateOptions"
@@ -59,7 +72,7 @@
                     clearable
                   ></v-select>
                 </v-col>
-                <v-col cols="12" sm="6" md="4">
+                <v-col cols="12" sm="6" md="3">
                   <v-select
                     v-model="filterTimeline"
                     :items="timelineOptions"
@@ -75,7 +88,6 @@
               </template>
             </v-row>
           </v-card>
-
           <div v-if="currentTab === 'creators'" class="scrollable-containerpe">
             <div v-if="filteredCreators.registered.length === 0 && filteredCreators.external.length === 0" class="text-center py-10 text-grey-darken-1">
               <v-img :src="question_svg" max-width="80" class="mx-auto mb-4" opacity="0.6"></v-img>
@@ -387,6 +399,7 @@ const snackbar = ref({
 
 // Variables de Búsqueda y Filtrado Extendido
 const searchQuery = ref('')
+const searchCreator = ref('')
 const filterState = ref(null)
 const filterTimeline = ref(null)
 
@@ -425,6 +438,7 @@ const panelTitle = computed(() => {
 // Al cambiar de pestaña limpiamos la barra de filtros para mantener coherencia
 watch(currentTab, () => {
   searchQuery.value = ''
+  searchCreator.value = ''
   filterState.value = null
   filterTimeline.value = null
   loadAllData()
@@ -481,19 +495,26 @@ const searchedGlobalCalls = computed(() => {
   const externals = externalGlobalCalls.value.map(c => ({ ...c, isInternal: false }))
   let unified = [...internals, ...externals]
 
-  //Filtrar por barra de texto (Título, Creador, Dirección del contrato, CallID)
+  // 1. Filtrar por barra de texto (Título, Dirección del contrato, CallID)
   const query = searchQuery.value?.toLowerCase().trim() || ''
   if (query) {
     unified = unified.filter(call => {
       const titleMatch = call.title?.toLowerCase().includes(query) || false
-      const creatorMatch = call.creator?.toLowerCase().includes(query) || false
       const idMatch = call.callId?.toLowerCase().includes(query) || false
       const addressMatch = (call.contractAddress || call.address)?.toLowerCase().includes(query) || false
-      return titleMatch || creatorMatch || idMatch || addressMatch
+      return titleMatch || idMatch || addressMatch
     })
   }
 
-  // Filtrar por Estado (Sincronizado, Blockchain Pura o estados de ciclo de vida local)
+  // 2. Filtrar específicamente por Dirección de Creador (Wallet)
+  const creatorQuery = searchCreator.value?.toLowerCase().trim() || ''
+  if (creatorQuery) {
+    unified = unified.filter(call => 
+      call.creator?.toLowerCase().includes(creatorQuery) || false
+    )
+  }
+
+  // 3. Filtrar por Estado (Sincronizado, Blockchain Pura o estados de ciclo de vida local)
   if (filterState.value) {
     if (filterState.value === 'internal') {
       unified = unified.filter(c => c.isInternal)
@@ -504,7 +525,7 @@ const searchedGlobalCalls = computed(() => {
     }
   }
 
-  // Filtrar por línea de tiempo (Vigentes vs Expirados)
+  // 4. Filtrar por línea de tiempo (Vigentes vs Expirados)
   if (filterTimeline.value) {
     const isExpiredTarget = filterTimeline.value === 'expired'
     unified = unified.filter(c => isCallExpired(c.closingTime) === isExpiredTarget)
