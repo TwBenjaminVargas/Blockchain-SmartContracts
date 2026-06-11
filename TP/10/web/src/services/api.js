@@ -95,6 +95,6 @@ export const getAuthorizationRequests = async () => {
 }
 
 export const updateRegistration = async (address, payload) => {
-  const response = await api.patch(`/registrations/${address}`, payload)
+  const response = await api.patch(URL.updateRegistration.replace(':address',address), payload)
   return response.data
 }
