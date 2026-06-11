@@ -602,8 +602,10 @@ def get_admin_nonce() -> int:
     return response.json()["nonce"]
 
 
-
-
+def get_calls_by_address(address: str) -> requests.Response:
+    """Obtiene el listado de llamadas internas y externas asociadas a una dirección."""
+    # Forzamos a que todo sea un único String de ruta antes de que entre a requests
+    return requests.get(url("calls-by", address), timeout=10)
 
 
 def post_authorize(address: str, signature: str):
@@ -2799,3 +2801,50 @@ def test_admin_cannot_update_registration_for_admin_address() -> None:
     assert response.status_code == 400
     assert APPLICATION_JSON in response.headers["Content-type"]
     validate(instance=response.json(), schema=message_schema)
+    
+def test_get_calls_by_address_structure() -> None:
+    """Prueba que el endpoint GET /calls/{address} devuelva la estructura de listas esperada."""
+    account = Account().create()
+
+    # Realizamos la petición usando el helper estructurado
+    response = get_calls_by_address(account.address)
+    
+    # Validaciones de protocolo y formato
+    assert response.status_code == 200
+    assert APPLICATION_JSON in response.headers["Content-type"]
+    
+    data = response.json()
+    
+    # Verificamos la existencia de las claves obligatorias del flujo híbrido
+    assert "local_calls" in data
+    assert "external_calls" in data
+    
+    # Validamos que correspondan a arreglos/listas de datos
+    assert isinstance(data["local_calls"], list)
+    assert isinstance(data["external_calls"], list)
+
+
+def test_admin_cannot_execute_create_endpoint() -> None:
+    """Prueba que un administrador no tenga permitido ejecutar el endpoint /create,
+
+    retornando un código de error 400 (Bad Request) con el mensaje de dirección inválida.
+    """
+    admin = get_admin_account()
+    
+    # Intentamos crear el llamado simulando la acción a través del helper nativo 'post_create'
+    # pasando al administrador (quien no es un 'creator' registrado ni autorizado en el sistema)
+    response = post_create(
+        account=admin,
+        title="Convocatoria Prohibida para Admin",
+        description="Este llamado debería fallar ya que el administrador no cuenta con rol de creador."
+    )
+    
+    # Validamos que el backend intercepte la solicitud con un Bad Request (400)
+    assert response.status_code == 400
+    assert APPLICATION_JSON in response.headers["Content-type"]
+    
+    data = response.json()
+    assert "message" in data
+    
+    # Validamos que el mensaje coincida de forma estricta con la constante del sistema
+    assert data["message"] == messages.INVALID_ADDRESS

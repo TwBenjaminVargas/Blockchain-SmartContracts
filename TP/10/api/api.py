@@ -47,8 +47,14 @@ async def lifespan(app: FastAPI):
             logger.info(f"Sembrando cuenta de administrador en base de datos: {admin_address}")
             db_manager.createAdminUser(admin_address)
             logger.info("Administrador verificado e insertado con éxito.")
+        
+        if not signer.is_admin_address(admin_user.address):
+            logger.info(f"Actualizando admin address")
+            admin_user.address = signer.admin_address
+            db_manager.updateExistingUser(admin_user)
         else:
-            logger.info(f"El administrador ya se encuentra registrado. Nonce actual: {admin_user.nonce}")
+            logger.info(f"El administrador ya se encuentra registrado address: {admin_user.address}.\n Nonce actual: {admin_user.nonce}")
+            
     except Exception as e:
         logger.critical(
             f"FALLO CRÍTICO AL INICIALIZAR DATOS DEL SISTEMA: {str(e)}. "
@@ -215,6 +221,8 @@ async def create(
                 eip712_structured_data=message,
                 signature_hex=payload.signature
             )
+            if signer.is_admin_address(emisor_address):
+                return JSONResponse(status_code=400, content={"message": Messages.INVALID_ADDRESS})
         except signer_exceptions.InvalidSignatureException as ise:
             return JSONResponse(status_code=400, content={"message": Messages.INVALID_SIGNATURE})
 
@@ -1394,6 +1402,79 @@ async def get_authorization_requests_endpoint(
         )
     except Exception as e:
         logger.error(f"Error en GET /authorization-requests: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"message": Messages.INTERNAL_ERROR}
+        )
+        
+@app.get(
+    "/calls-by/{address}",
+    status_code=status.HTTP_200_OK,
+    summary="Obtiene las convocatorias (CFPs) creadas por un address específico"
+)
+async def get_user_calls(
+    address: str = Path(..., description="Dirección Ethereum del creador (0x...)"),
+    db_manager: DBManager = Depends(get_db_manager),
+    contract_manager: ContractManager = Depends(get_contract_manager),
+    signer: Signer = Depends(get_signer)
+):
+    target_address = address.strip()
+    if not re.match(r"^(0x)?[0-9a-fA-F]{40}$", target_address) or signer.is_admin_address(target_address):
+        return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"message": Messages.INVALID_ADDRESS}
+            )
+        
+    try:
+        #Recuperar llamados locales de la Base de Datos
+        db_calls = db_manager.get_calls_by_creator(address)
+        # Diccionario para rápida búsqueda por su Hash (callId) en lowercase
+        local_calls_dict = {call.callId.lower(): call for call in db_calls}
+        
+        #Recuperar la lista de Call IDs creados por el address directamente desde la Blockchain
+        onchain_call_ids = contract_manager.get_creator_call_ids(address)
+        
+        #Filtrar aquellos Call IDs On-Chain que NO tenemos registrados localmente
+        external_call_ids = [cid for cid in onchain_call_ids if cid not in local_calls_dict]
+        
+        # Enriquecer los datos de los llamados externos llamando a la blockchain
+        external_calls = []
+        if external_call_ids:
+            external_calls = contract_manager.get_cfp_details_batch(external_call_ids)
+            
+        # Formatear la lista de llamados locales
+        local_calls_formatted = []
+        for call in db_calls:
+            local_calls_formatted.append({
+                "callId": call.callId,
+                "title": call.title,
+                "description": call.description,
+                "creator": call.creator,
+                "state": call.state.value,
+                "contractAddress": call.contractAddress,
+                "closingTime": call.closingTime
+            })
+            
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "local_calls": local_calls_formatted,
+                "external_calls": external_calls
+            }
+        )
+
+    except contract_exceptions.BlockchainReadException as ce:
+        return JSONResponse(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            content={"message": str(ce)}
+        )
+    except (db_exceptions.DatabaseConnectionException, db_exceptions.DatabaseReadException) as de:
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"message": str(de)}
+        )
+    except Exception as e:
+        logger.error(f"Fallo no manejado en GET /calls/{address}: {str(e)}", exc_info=True)
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"message": Messages.INTERNAL_ERROR}

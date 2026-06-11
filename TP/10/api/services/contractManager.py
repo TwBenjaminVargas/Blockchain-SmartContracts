@@ -946,6 +946,54 @@ class ContractManager:
             logger.error(f"Error al leer el listado de creadores en el contrato: {str(e)}")
             raise cm_exceptions.BlockchainReadException("No se pudo recuperar el listado de creadores")
 
+    def get_creator_call_ids(self, creator_address: str) -> list[bytes]:
+        """
+        Obtiene iterativamente la lista de callIds (bytes32) creados por un usuario.
+        """
+        try:
+            # Aseguramos el formato Checksum para Web3
+            addr = Web3.to_checksum_address(creator_address)
+            
+            # Consultamos la cantidad de llamados del creador
+            count = self.contract.functions.createdByCount(addr).call()
+            
+            call_ids = []
+            for i in range(count):
+                call_id = self.contract.functions.createdBy(addr, i).call()
+                call_ids.append(to_hex(call_id).lower())
+                
+            return call_ids
+        except Exception as e:
+            logger.error(f"Error al leer llamados creados por {creator_address}: {str(e)}")
+            raise cm_exceptions.BlockchainReadException("No se pudieron obtener los llamados del creador desde la red.")
+
+    def get_cfp_details_batch(self, call_ids: list[str]) -> list[dict]:
+        """
+        Consulta el mapping 'calls' para un listado de call_ids y recupera
+        los detalles (contractAddress y closingTime) desde el contrato CFP instanciado.
+        """
+        
+        details = []
+        try:
+            for call_id in call_ids:
+                # calls(callId) retorna una tupla (address creator, address cfp)
+                creator_address, cfp_address = self.contract.functions.calls(to_bytes(hexstr=call_id)).call()
+                
+                # Verificamos que el contrato CFP se haya instanciado realmente
+                if cfp_address != "0x0000000000000000000000000000000000000000":
+                    cfp_contract = self.contract.w3.eth.contract(address=cfp_address, abi=self.cfp_abi_data)
+                    closing_time = cfp_contract.functions.closingTime().call()
+                    
+                    details.append({
+                        "callId": call_id.lower(),
+                        "contractAddress": cfp_address,
+                        "closingTime": closing_time
+                    })
+                    
+            return details
+        except Exception as e:
+            logger.error(f"Error al obtener los detalles batch de los CFPs: {str(e)}")
+            raise cm_exceptions.BlockchainReadException("No se pudieron consultar los detalles de los CFPs externos.")
 @lru_cache()
 def get_contract_manager() -> ContractManager:
     """

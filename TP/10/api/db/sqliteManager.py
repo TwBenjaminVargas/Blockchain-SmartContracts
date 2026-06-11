@@ -536,7 +536,21 @@ class DBManager:
             raise db_exceptions.DatabaseReadException(
                 "Error al consultar el estado de los creadores en la base de datos local."
             )
-      
+            
+    def get_calls_by_creator(self, creator_address: str) -> list[Call]:
+        """
+        Recupera de la base de datos local todos los llamados creados por un usuario.
+        """
+        try:
+            with Session(self.engine) as session:
+                statement = select(Call).where(
+                    func.lower(Call.creator) == creator_address.lower()
+                )
+                results = session.exec(statement).all()
+                return results
+        except Exception as e:
+            logger.error(f"Error consultando BD por llamados del creador {creator_address}: {str(e)}")
+            raise db_exceptions.DatabaseReadException("Error al consultar los llamados locales del usuario.")
 @lru_cache()
 def get_db_manager() -> DBManager:
     """
