@@ -13,7 +13,12 @@ async function main() {
     const provider = new ethers.JsonRpcProvider(RPC_URL);
 
     // Cuenta pre-financiada de la red local
-    const fundingWallet = ethers.HDNodeWallet.fromPhrase(HARDHAT_FUNDING_MNEMONIC).connect(provider);
+    const hardhatSecondDerivationPath = "m/44'/60'/0'/0/1";
+    const fundingWallet = ethers.HDNodeWallet.fromPhrase(
+        HARDHAT_FUNDING_MNEMONIC, 
+        null, 
+        hardhatSecondDerivationPath
+    ).connect(provider);
 
     // 1. Generar la billetera raíz para la suite de TEST (Python)
     const testMasterNode = ethers.HDNodeWallet.createRandom();
@@ -39,7 +44,7 @@ async function main() {
     // Fondear Owner (Test Index 0)
     const tx0 = await fundingWallet.sendTransaction({
         to: ownerWallet.address,
-        value: ethers.parseEther("10.0"),
+        value: ethers.parseEther("1000.0"),
         nonce: currentNonce++
     });
     await tx0.wait();
@@ -47,7 +52,7 @@ async function main() {
     // Fondear Funder (Test Index 1)
     const tx1 = await fundingWallet.sendTransaction({
         to: funderWallet.address,
-        value: ethers.parseEther("10.0"),
+        value: ethers.parseEther("1000.0"),
         nonce: currentNonce++
     });
     await tx1.wait();
@@ -55,7 +60,7 @@ async function main() {
     // Fondear Admin de Tests (Test Index 2)
     const tx2 = await fundingWallet.sendTransaction({
         to: adminWalletTest.address,
-        value: ethers.parseEther("10.0"),
+        value: ethers.parseEther("1000.0"),
         nonce: currentNonce++
     });
     await tx2.wait();

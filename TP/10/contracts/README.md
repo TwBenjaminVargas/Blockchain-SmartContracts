@@ -1,69 +1,95 @@
-# Smart contracts (TP10)
+### SMART CONTRACTS (TP10) - ETAPA 1
 
-Este directorio contiene los contratos `CFP` y `CFPFactory` y los artefactos generados por Hardhat.
+Este directorio contiene los contratos `CFP` y `CFPFactory` junto con los artefactos de compilación generados por Hardhat.
 
 **Cambios introducidos en este práctico (resumen)**
 
-- Nuevo método público en la factoría: `getCreators()` que devuelve la lista completa de creadores conocidos.
+* Nuevo método público en la factoría: `getCreators()` que devuelve la lista completa de creadores conocidos en el ecosistema.
 
-Despliegue y compilación
+---
 
-1. Compilar los contratos con Hardhat:
+## Despliegue y compilación
 
-```
+### 1. Compilación de los contratos con Hardhat:
+
+```bash
 npx hardhat compile
-```
-
-2. Ejecutar un nodo local (Hardhat node) para desarrollo:
 
 ```
+
+### 2. Ejecución de un nodo local (Hardhat node) para desarrollo:
+
+```bash
 npx hardhat node
-```
-
-3. Desplegar los contratos usando el script incluido:
 
 ```
-npx run scripts/deploy.js
-```
 
- El script `scripts/deploy.js` genera una frase mnemónica de prueba, financia las cuentas derivadas en la red local y despliega `CFPFactory` usando la cuenta `owner` (derivada del mnemónico). Al completar imprime variables de entorno útiles:
+### 3. Despliegue de los contratos usando el script incluido:
 
-- `CFP_FACTORY_ADDRESS`: dirección del contrato desplegado.
-- `CFP_MNEMONIC`: frase mnemónica generada para la sesión de pruebas.
-- `CFP_ADMIN_ADDRESS`: dirección derivada del índice 2 (administrador).
-
-Descripción breve de `scripts/deploy.js`
-
-- Conecta al RPC indicado (por defecto `http://127.0.0.1:8545`).
-- Deriva una raíz HD aleatoria y obtiene tres cuentas: `owner` (index 0), `funder` (index 1) y `admin` (index 2).
-- Usa una cuenta pre-financiada local (mnemonic por defecto Hardhat) para transferir ETH a las cuentas derivadas.
-- Lee el artefacto `artifacts/contracts/CFPFactory.sol/CFPFactory.json` y despliega el contrato con `owner`.
-- Imprime las variables de entorno necesarias para ejecutar la API y los tests.
-
-Ejecución de tests (contratos)
-
-- Para ejecutar los tests de JavaScript/Hardhat:
+```bash
+node scripts/deploy.js
 
 ```
+
+---
+
+## Descripción detallada de `scripts/deploy.js`
+
+El script de despliegue automatiza la configuración de dos entornos en paralelo (billeteras de testing automatizado y billeteras de interacción manual mediante MetaMask) realizando las siguientes acciones:
+
+* **Conexión RPC:** El sistema se conecta al nodo local (por defecto `http://127.0.0.1:8545` o el valor pasado por argumento).
+* **Generación del Entorno de Tests (API):** Se genera una raíz HD aleatoria y se derivan las 3 cuentas requeridas por la suite de Python: `Owner` (Index 0), `Funder` (Index 1) y `Admin` (Index 2).
+* **Generación del Entorno MetaMask:** Se crea un **segundo mnemónico completamente nuevo** y se deriva su primera dirección (`Index 0`) para actuar como la cuenta del Administrador web.
+* **Financiación Inicial:** Se utiliza el mnemónico por defecto de Hardhat para transferir **1000.0 ETH** a cada una de las cuentas involucradas (Owner, Funder, Admin de Test).
+* **Despliegue:** Se procesa el artefacto de `CFPFactory.json` y se realiza el despliegue en la red utilizando la cuenta del `Owner` (Test Index 0).
+
+Al completar el proceso, el script imprime bloques formateados listos para ser copiados en la configuración de la API (`api/.env`) y para la importación directa de la frase semilla en MetaMask.
+
+---
+
+## Scripts Adicionales: Fondeo Masivo (`scripts/fund_accounts.js`)
+
+Para escenarios de pruebas manuales exhaustivas en el frontend donde se requiera operar con múltiples cuentas concurrentes en MetaMask, se provee un script de fondeo masivo.
+
+Este script toma fondos de la cuenta maestra de Hardhat y distribuye **1000 ETH** a cada una de las **primeras 10 direcciones derivadas** de la frase mnemónica que se le pase por parámetro.
+
+**Forma de uso:**
+
+```bash
+node scripts/fund_accounts.js "tu mnemónico objetivo de doce palabras aquí listado"
+
+```
+
+---
+
+## Ejecución de tests (contratos)
+
+Para ejecutar los tests unitarios de JavaScript propios de Hardhat, se deben utilizar los siguientes comandos:
+
+```bash
 npm install
 npx hardhat test
-```
-
-Estructura de archivos (resumen)
 
 ```
+
+## Estructura de archivos (resumen)
+
+```text
 contracts/
 ├─ contracts/
 │  ├─ CFP.sol
 │  └─ CFPFactory.sol
 ├─ scripts/
-│  └─ deploy.js
+│  ├─ deploy.js
+│  └─ fund_accounts.js
 ├─ artifacts/
 │  └─ (artefactos de compilación)
 └─ test/
+
 ```
 
-Notas adicionales
+---
 
-- Asegúrate de lanzar `npx hardhat node` antes de ejecutar `node scripts/deploy.js` para que las transacciones puedan confirmarse en la red local.
-- El script crea y muestra un mnemónico de sesión: si usas las direcciones que imprime, ajústalas en la API (`.env`) para que el servidor firme y pruebe flujos locales.
+## Notas adicionales
+
+⚠️ **Requisito crítico:** Se debe verificar que el nodo local (`npx hardhat node`) esté ejecutándose en una terminal en segundo plano antes de iniciar cualquiera de los scripts (`deploy.js` o `fund_accounts.js`), permitiendo así que las transacciones de transferencia y despliegue puedan procesarse y confirmarse.
