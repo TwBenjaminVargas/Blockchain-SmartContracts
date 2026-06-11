@@ -34,5 +34,6 @@ export const URL = {
     users: '/users',
     updateRegistration: `/registrations/:address`,
     getUserCalls: '/calls-by/:address',
-    createCall: '/create'
+    createCall: '/create',
+    global_calls: '/global-calls'
 }

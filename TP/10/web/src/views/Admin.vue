@@ -25,18 +25,65 @@
             </v-btn-toggle>
           </div>
 
-          <h2 class="text-h4 font-weight-bold text-center text-slate-dark mb-6">
+          <h2 class="text-h4 font-weight-bold text-center text-slate-dark mb-4">
             {{ panelTitle }}
           </h2>
 
+          <v-card variant="flat" class="bg-slate-light pa-4 rounded-lg mb-4 search-box">
+            <v-row dense align="center">
+              <v-col cols="12" :md="currentTab === 'calls' ? '4' : '12'">
+                <v-text-field
+                  v-model="searchQuery"
+                  clearable
+                  density="compact"
+                  variant="outlined"
+                  bg-color="white"
+                  color="indigo-darken-1"
+                  hide-details
+                  prepend-inner-icon="mdi-magnify"
+                  :label="currentTab === 'calls' ? 'Buscar por título o dirección...' : 'Buscar por nombre o dirección (0x...)'"
+                ></v-text-field>
+              </v-col>
+
+              <template v-if="currentTab === 'calls'">
+                <v-col cols="12" sm="6" md="4">
+                  <v-select
+                    v-model="filterState"
+                    :items="stateOptions"
+                    label="Filtrar por Estado"
+                    density="compact"
+                    variant="outlined"
+                    bg-color="white"
+                    color="indigo-darken-1"
+                    hide-details
+                    clearable
+                  ></v-select>
+                </v-col>
+                <v-col cols="12" sm="6" md="4">
+                  <v-select
+                    v-model="filterTimeline"
+                    :items="timelineOptions"
+                    label="Fecha de Cierre"
+                    density="compact"
+                    variant="outlined"
+                    bg-color="white"
+                    color="indigo-darken-1"
+                    hide-details
+                    clearable
+                  ></v-select>
+                </v-col>
+              </template>
+            </v-row>
+          </v-card>
+
           <div v-if="currentTab === 'creators'" class="scrollable-containerpe">
-            <div v-if="registeredCreators.length === 0 && externalCreators.length === 0" class="text-center py-10 text-grey-darken-1">
+            <div v-if="filteredCreators.registered.length === 0 && filteredCreators.external.length === 0" class="text-center py-10 text-grey-darken-1">
               <v-img :src="question_svg" max-width="80" class="mx-auto mb-4" opacity="0.6"></v-img>
-              <p class="text-subtitle-1 font-weight-medium">No se encontraron creadores registrados</p>
+              <p class="text-subtitle-1 font-weight-medium">No se encontraron creadores que coincidan con la búsqueda</p>
             </div>
 
             <v-expansion-panels v-else variant="accordion" class="custom-panels">
-              <v-expansion-panel v-for="(creator, index) in registeredCreators" :key="creator.address" class="creator-row mb-3 rounded-lg overflow-hidden" elevation="1">
+              <v-expansion-panel v-for="(creator, index) in filteredCreators.registered" :key="creator.address" class="creator-row mb-3 rounded-lg overflow-hidden" elevation="1">
                 <v-expansion-panel-title class="py-4">
                   <v-avatar :color="getRandomColor(index)" size="48" class="me-4 shadow-sm text-white font-weight-bold">
                     {{ creator.name.charAt(0).toUpperCase() }}
@@ -68,7 +115,7 @@
                 </v-expansion-panel-text>
               </v-expansion-panel>
 
-              <v-expansion-panel v-for="address in externalCreators" :key="address" class="creator-row external-row mb-3 rounded-lg overflow-hidden" elevation="1">
+              <v-expansion-panel v-for="address in filteredCreators.external" :key="address" class="creator-row external-row mb-3 rounded-lg overflow-hidden" elevation="1">
                 <v-expansion-panel-title class="py-4">
                   <v-avatar color="grey-lighten-2" size="48" class="me-4 border-dashed text-grey-darken-2">
                     <v-icon icon="mdi-help-outline" size="24"></v-icon>
@@ -102,14 +149,14 @@
           </div>
 
           <div v-else-if="currentTab === 'users'" class="scrollable-containerpe">
-            <div v-if="filteredUsers.length === 0" class="text-center py-10 text-grey-darken-1">
+            <div v-if="searchedUsers.length === 0" class="text-center py-10 text-grey-darken-1">
               <v-img :src="question_svg" max-width="80" class="mx-auto mb-4" opacity="0.6"></v-img>
-              <p class="text-subtitle-1 font-weight-medium">No hay usuarios activos o archivados para mostrar.</p>
+              <p class="text-subtitle-1 font-weight-medium">No hay usuarios activos o archivados que coincidan.</p>
             </div>
 
             <v-expansion-panels v-else variant="accordion" class="custom-panels">
               <v-expansion-panel
-                v-for="(user, index) in filteredUsers"
+                v-for="(user, index) in searchedUsers"
                 :key="user.address"
                 :class="['creator-row mb-3 rounded-lg overflow-hidden', user.state === 'archived' ? 'archived-row' : '']"
                 elevation="1"
@@ -162,13 +209,13 @@
           </div>
 
           <div v-else-if="currentTab === 'requests'" class="scrollable-containerpe">
-            <div v-if="localRequests.length === 0 && externalRequests.length === 0" class="text-center py-10 text-grey-darken-1">
+            <div v-if="filteredRequests.local.length === 0 && filteredRequests.external.length === 0" class="text-center py-10 text-grey-darken-1">
               <v-img :src="question_svg" max-width="80" class="mx-auto mb-4" opacity="0.6"></v-img>
-              <p class="text-subtitle-1 font-weight-medium">No hay solicitudes de autorización pendientes.</p>
+              <p class="text-subtitle-1 font-weight-medium">No hay solicitudes de autorización que coincidan.</p>
             </div>
 
             <v-expansion-panels v-else variant="accordion" class="custom-panels">
-              <v-expansion-panel v-for="(req, index) in localRequests" :key="req.address" class="creator-row mb-3 rounded-lg overflow-hidden" elevation="1">
+              <v-expansion-panel v-for="(req, index) in filteredRequests.local" :key="req.address" class="creator-row mb-3 rounded-lg overflow-hidden" elevation="1">
                 <v-expansion-panel-title class="py-4">
                   <v-avatar :color="getRandomColor(index)" size="48" class="me-4 text-white font-weight-bold">
                     {{ req.name.charAt(0).toUpperCase() }}
@@ -187,7 +234,7 @@
                 </v-expansion-panel-text>
               </v-expansion-panel>
 
-               <v-expansion-panel v-for="address in externalRequests" :key="address" class="creator-row external-row mb-3 rounded-lg overflow-hidden" elevation="1">
+               <v-expansion-panel v-for="address in filteredRequests.external" :key="address" class="creator-row external-row mb-3 rounded-lg overflow-hidden" elevation="1">
                 <v-expansion-panel-title class="py-4">
                   <v-avatar color="grey-lighten-2" size="48" class="me-4 border-dashed text-grey-darken-2">
                     <v-icon icon="mdi-help-network-outline" size="24"></v-icon>
@@ -208,16 +255,104 @@
             </v-expansion-panels>
           </div>
 
-          <div v-else class="text-center py-8 text-grey-darken-1">
-            <v-img :src="question_svg" max-width="80" class="mx-auto mb-4" opacity="0.6"></v-img>
-            <p>Sección de llamados en desarrollo. Próximamente disponible.</p>
+          <div v-else class="scrollable-containerpe">
+            <div v-if="loadingCalls" class="d-flex flex-column align-center justify-center py-12">
+              <v-progress-circular indeterminate color="indigo-darken-1" size="50" width="4" class="mb-4"></v-progress-circular>
+              <p class="text-body-1 text-grey-darken-1 font-weight-medium">Sincronizando catálogo de llamados globales...</p>
+            </div>
+
+            <div v-else-if="searchedGlobalCalls.length === 0" class="text-center py-10 text-grey-darken-1">
+              <v-img :src="question_svg" max-width="80" class="mx-auto mb-4" opacity="0.6"></v-img>
+              <p class="text-subtitle-1 font-weight-medium">No se encontraron llamados que coincidan con los filtros aplicados</p>
+            </div>
+
+            <v-expansion-panels v-else variant="accordion" class="custom-panels">
+              <v-expansion-panel v-for="call in searchedGlobalCalls" :key="call.callId" :class="['creator-row mb-3 rounded-lg overflow-hidden', !call.isInternal ? 'external-row' : '']" elevation="1">
+                <v-expansion-panel-title class="py-4">
+                  <v-row no-gutters class="align-center w-100 min-w-0">
+                    <v-col cols="12" md="7" class="d-flex flex-column text-left min-w-0 pr-4">
+                      <div class="d-flex align-center flex-wrap gap-2 mb-2">
+                        <span class="text-mono text-body-2 font-weight-bold text-indigo-darken-1 bg-indigo-lighten-5 px-2 py-0.5 rounded">
+                          {{ call.callId.substring(0, 10) }}...{{ call.callId.substring(call.callId.length - 4) }}
+                        </span>
+                        
+                        <v-chip v-if="call.isInternal" size="small" color="success" variant="flat" class="font-weight-bold text-caption">
+                          Sincronizado
+                        </v-chip>
+                        <v-chip v-else size="small" color="amber-darken-2" variant="flat" class="font-weight-bold text-caption">
+                          Blockchain Pura
+                        </v-chip>
+
+                        <v-chip v-if="call.isInternal && call.state" size="small" color="indigo-lighten-1" variant="outlined" class="font-weight-bold text-caption">
+                          {{ call.state }}
+                        </v-chip>
+                      </div>
+
+                      <div class="text-subtitle-1 font-weight-bold text-slate-dark text-truncate w-100">
+                        {{ call.title || 'Convocatoria Externa (Sin metadatos)' }}
+                      </div>
+                    </v-col>
+
+                    <v-col cols="12" md="5" class="text-md-right mt-2 mt-md-0 text-body-2">
+                      <template v-if="isCallExpired(call.closingTime)">
+                        <span class="text-error font-weight-bold">
+                          <v-icon icon="mdi-clock-alert-outline" size="16" class="me-1 text-error"></v-icon>
+                          Cerró el: {{ formatUnixTimestamp(call.closingTime) }}
+                        </span>
+                      </template>
+                      <template v-else>
+                        <span class="text-success font-weight-medium">
+                          <v-icon icon="mdi-clock-outline" size="16" class="me-1 text-success"></v-icon>
+                          Cierra el: <strong class="text-slate-dark">{{ formatUnixTimestamp(call.closingTime) }}</strong>
+                        </span>
+                      </template>
+                    </v-col>
+                  </v-row>
+                </v-expansion-panel-title>
+
+                <v-expansion-panel-text class="text-left pt-2 text-slate-medium">
+                  <h4 class="text-subtitle-1 font-weight-bold text-slate-dark mb-1">
+                    {{ call.title || 'Convocatoria Externa' }}
+                  </h4>
+                  <p class="text-body-2 text-slate-medium mb-3">
+                    {{ call.description || 'Este llamado reside únicamente en los nodos de la Blockchain y no cuenta con metadatos extendidos guardados en la base de datos de la API.' }}
+                  </p>
+                  
+                  <v-divider class="mb-3"></v-divider>
+
+                  <div class="d-flex flex-column gap-1 text-caption text-grey-darken-2 mb-2">
+                    <div>
+                      <v-icon icon="mdi-file-sign" size="14" class="me-1"></v-icon>
+                      <strong>Address: </strong>  
+                      <span class="text-mono ms-1 select-all">{{ call.contractAddress || call.address || 'No desplegado / 0x00...' }}</span>
+                    </div>
+                    <div>
+                      <v-icon icon="mdi-account-circle" size="14" class="me-1"></v-icon>
+                      <strong>Creador (Wallet):</strong>  
+                      <span class="text-mono ms-1">{{ call.creator }}</span>
+                    </div>
+                    <div>
+                      <v-icon icon="mdi-identifier" size="14" class="me-1"></v-icon>
+                      <strong>Call ID: </strong>  
+                      <span class="text-mono ms-1 select-all">{{ call.callId }}</span>
+                    </div>
+                  </div>
+                </v-expansion-panel-text>
+              </v-expansion-panel>
+            </v-expansion-panels>
           </div>
 
         </v-card>
       </v-col>
     </v-row>
-    
-    </v-container>
+
+    <v-snackbar v-model="snackbar.show" color="error" elevation="4" location="top right" :timeout="4000">
+      <div class="d-flex align-center">
+        <v-icon icon="mdi-alert-circle-outline" class="me-3" size="22"></v-icon>
+        <span class="font-weight-medium text-body-2">{{ snackbar.message }}</span>
+      </div>
+    </v-snackbar>
+  </v-container>
 </template>
 
 <script setup>
@@ -232,7 +367,8 @@ import {
   authorizeUser, 
   unauthorizeUser, 
   getContractAddress, 
-  getAdminNonce 
+  getAdminNonce,
+  getGlobalCalls
 } from '../services/api' 
 
 const walletStore = useWalletStore()
@@ -240,6 +376,7 @@ const walletStore = useWalletStore()
 const backgroundImage = ASSETS.adminBg
 const currentTab = ref('creators')
 const isActionLoading = ref(null)
+const loadingCalls = ref(false)
 
 const question_svg = ASSETS.questionIcon
 
@@ -248,11 +385,33 @@ const snackbar = ref({
   message: ''
 })
 
+// Variables de Búsqueda y Filtrado Extendido
+const searchQuery = ref('')
+const filterState = ref(null)
+const filterTimeline = ref(null)
+
+const stateOptions = [
+  { title: 'Todos los estados', value: null },
+  { title: 'Sincronizados (Base Local)', value: 'internal' },
+  { title: 'Blockchain Pura', value: 'external' },
+  { title: 'Estado: CREATED', value: 'CREATED' },
+  { title: 'Estado: PENDING', value: 'PENDING' }
+]
+
+const timelineOptions = [
+  { title: 'Cualquier fecha', value: null },
+  { title: 'Vigentes / Abiertos', value: 'open' },
+  { title: 'Expirados / Cerrados', value: 'expired' }
+]
+
 const registeredCreators = ref([])
 const externalCreators = ref([])
 const allUsers = ref([])
 const localRequests = ref([])
 const externalRequests = ref([])
+
+const internalGlobalCalls = ref([])
+const externalGlobalCalls = ref([])
 
 const totalRequests = computed(() => localRequests.value.length + externalRequests.value.length)
 
@@ -260,11 +419,98 @@ const panelTitle = computed(() => {
   if (currentTab.value === 'creators') return 'Listado de Creadores'
   if (currentTab.value === 'users') return 'Gestión de Usuarios'
   if (currentTab.value === 'requests') return 'Solicitudes de Autorización'
-  return 'Llamados'
+  return 'Catálogo Global de Convocatorias'
 })
 
-const filteredUsers = computed(() => {
-  return allUsers.value.filter(u => u.state !== 'pending' && u.state !== 'registered')
+// Al cambiar de pestaña limpiamos la barra de filtros para mantener coherencia
+watch(currentTab, () => {
+  searchQuery.value = ''
+  filterState.value = null
+  filterTimeline.value = null
+  loadAllData()
+})
+
+// Evaluar expiración del Unix Timestamp (en segundos) comparado al tiempo local real
+function isCallExpired(closingTime) {
+  if (!closingTime) return false
+  const currentUnixTime = Math.floor(Date.now() / 1000)
+  return Number(closingTime) < currentUnixTime
+}
+
+// FILTRADO DINÁMICO: PESTAÑA CREADORES
+const filteredCreators = computed(() => {
+  const query = searchQuery.value?.toLowerCase().trim() || ''
+  
+  const regFiltered = registeredCreators.value.filter(c => 
+    c.name.toLowerCase().includes(query) || c.address.toLowerCase().includes(query)
+  )
+  const extFiltered = externalCreators.value.filter(addr => 
+    addr.toLowerCase().includes(query)
+  )
+
+  return { registered: regFiltered, external: extFiltered }
+})
+
+// FILTRADO DINÁMICO: PESTAÑA USUARIOS
+const searchedUsers = computed(() => {
+  const query = searchQuery.value?.toLowerCase().trim() || ''
+  const activeAndArchived = allUsers.value.filter(u => u.state !== 'pending' && u.state !== 'registered')
+  
+  return activeAndArchived.filter(u => 
+    u.name.toLowerCase().includes(query) || u.address.toLowerCase().includes(query)
+  )
+})
+
+// FILTRADO DINÁMICO: PESTAÑA SOLICITUDES
+const filteredRequests = computed(() => {
+  const query = searchQuery.value?.toLowerCase().trim() || ''
+
+  const localFiltered = localRequests.value.filter(r => 
+    r.name.toLowerCase().includes(query) || r.address.toLowerCase().includes(query)
+  )
+  const extFiltered = externalRequests.value.filter(addr => 
+    addr.toLowerCase().includes(query)
+  )
+
+  return { local: localFiltered, external: extFiltered }
+})
+
+// UNIFICADOR REACTIVO Y MULTI-FILTRO: PESTAÑA LLAMADOS
+const searchedGlobalCalls = computed(() => {
+  const internals = internalGlobalCalls.value.map(c => ({ ...c, isInternal: true }))
+  const externals = externalGlobalCalls.value.map(c => ({ ...c, isInternal: false }))
+  let unified = [...internals, ...externals]
+
+  //Filtrar por barra de texto (Título, Creador, Dirección del contrato, CallID)
+  const query = searchQuery.value?.toLowerCase().trim() || ''
+  if (query) {
+    unified = unified.filter(call => {
+      const titleMatch = call.title?.toLowerCase().includes(query) || false
+      const creatorMatch = call.creator?.toLowerCase().includes(query) || false
+      const idMatch = call.callId?.toLowerCase().includes(query) || false
+      const addressMatch = (call.contractAddress || call.address)?.toLowerCase().includes(query) || false
+      return titleMatch || creatorMatch || idMatch || addressMatch
+    })
+  }
+
+  // Filtrar por Estado (Sincronizado, Blockchain Pura o estados de ciclo de vida local)
+  if (filterState.value) {
+    if (filterState.value === 'internal') {
+      unified = unified.filter(c => c.isInternal)
+    } else if (filterState.value === 'external') {
+      unified = unified.filter(c => !c.isInternal)
+    } else {
+      unified = unified.filter(c => c.state === filterState.value)
+    }
+  }
+
+  // Filtrar por línea de tiempo (Vigentes vs Expirados)
+  if (filterTimeline.value) {
+    const isExpiredTarget = filterTimeline.value === 'expired'
+    unified = unified.filter(c => isCallExpired(c.closingTime) === isExpiredTarget)
+  }
+
+  return unified
 })
 
 function isCurrentUser(targetAddress) {
@@ -272,17 +518,34 @@ function isCurrentUser(targetAddress) {
   return walletStore.account.toLowerCase() === targetAddress.toLowerCase()
 }
 
+function getRandomColor(index) {
+  return avatarColors[index % avatarColors.length]
+}
+
 const avatarColors = [
   '#4f46e5', '#06b6d4', '#10b981', '#f59e0b', 
   '#ec4899', '#8b5cf6', '#3b82f6', '#f43f5e'
 ]
 
-function getRandomColor(index) {
-  return avatarColors[index % avatarColors.length]
+function formatUnixTimestamp(timestamp) {
+  if (!timestamp) return 'No definido'
+  const date = new Date(Number(timestamp) * 1000)
+  return date.toLocaleString(navigator.language, {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
 }
 
 async function loadAllData() {
   try {
+    if (currentTab.value === 'calls') {
+      await loadGlobalCallsData()
+      return
+    }
+
     const creatorsData = await getCreators()
     registeredCreators.value = creatorsData.registered_creators || []
     externalCreators.value = creatorsData.external_creators || []
@@ -295,6 +558,25 @@ async function loadAllData() {
     externalRequests.value = requestsData.external_requests || []
   } catch (error) {
     console.error("Error al cargar los datos del panel:", error)
+  }
+}
+
+async function loadGlobalCallsData() {
+  try {
+    loadingCalls.value = true
+    const callsCatalog = await getGlobalCalls()
+    if (callsCatalog) {
+      internalGlobalCalls.value = callsCatalog.internal || []
+      externalGlobalCalls.value = callsCatalog.external || []
+    }
+  } catch (error) {
+    console.error("Error al recuperar llamados globales:", error)
+    snackbar.value = {
+      show: true,
+      message: "No se pudo sincronizar el catálogo global con la Blockchain."
+    }
+  } finally {
+    loadingCalls.value = false
   }
 }
 
@@ -353,8 +635,6 @@ async function handleAction(actionType, targetAddress) {
       target: checksumTargetAddress
     }
 
-    console.log(`%c[Admin] Firmando orden de ${operationString}...`, "color: #eab308; font-weight: bold;", message)
-
     const signature = await signer.signTypedData(domain, types, message)
     const payload = { signature }
 
@@ -368,28 +648,12 @@ async function handleAction(actionType, targetAddress) {
 
   } catch (error) {
     console.error(`Error al ejecutar la acción ${actionType} para ${targetAddress}:`, error)
-    
-    let alertMsg = `Ocurrió un error al procesar la acción para ${targetAddress}.`
-    if (error.response && error.response.data && error.response.data.message) {
-      alertMsg = `Error: ${error.response.data.message}`
-    } else if (error.code === 'ACTION_REJECTED') {
-      alertMsg = 'Firma rechazada en MetaMask.'
-    } else {
-      alertMsg = error.message || alertMsg
-    }
-    
-    snackbar.value = {
-      show: true,
-      message: alertMsg
-    }
+    let alertMsg = error.message || 'Error al procesar la firma.'
+    snackbar.value = { show: true, message: alertMsg }
   } finally {
     isActionLoading.value = null
   }
 }
-
-watch(currentTab, () => {
-  loadAllData()
-})
 
 onMounted(() => {
   loadAllData()
@@ -432,6 +696,15 @@ onMounted(() => {
   overflow-y: auto;
   flex-grow: 1;
   padding-right: 8px;
+}
+
+.bg-slate-light {
+  background-color: #f1f5f9 !important;
+  border: 1px solid #e2e8f0;
+}
+
+.search-box {
+  flex-shrink: 0;
 }
 
 .toggle-wrapper {
@@ -494,7 +767,8 @@ onMounted(() => {
 }
 
 .external-row {
-  border: 1px dashed #cbd5e1 !important;
+  border: 1px dashed #d97706 !important;
+  background-color: rgba(255, 251, 235, 0.3) !important;
 }
 
 .archived-row {
@@ -510,8 +784,16 @@ onMounted(() => {
   font-style: italic;
 }
 
+.gap-1 {
+  gap: 4px;
+}
+
 .gap-2 {
   gap: 8px;
+}
+
+.select-all {
+  user-select: all;
 }
 
 .scrollable-containerpe::-webkit-scrollbar {

@@ -118,3 +118,12 @@ export const createCall = async (payload) => {
     throw error
   }
 }
+export const getGlobalCalls = async () => {
+  try {
+    const response = await api.get(URL.global_calls)
+    return response.data
+  } catch (error) {
+    console.error('Error al obtener el catálogo de llamados globales:', error)
+    throw error
+  }
+}
