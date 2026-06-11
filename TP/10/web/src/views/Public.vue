@@ -3,7 +3,7 @@
     <div class="blur-background" :style="{ backgroundImage: `url(${backgroundImage})` }"></div>
 
     <v-row class="fill-height ma-0 align-center justify-center position-relative z-index-1" no-gutters>
-      <v-col cols="12" sm="10" md="8" lg="6" class="pa-4">
+      <v-col cols="12" sm="11" md="10" lg="8" class="pa-4">
         
         <v-card class="main-panel pa-6 rounded-xl mx-auto" elevation="4">
           
@@ -20,24 +20,82 @@
             </v-btn-toggle>
           </div>
 
-          <h2 class="text-h4 font-weight-bold text-center text-slate-dark mb-6">
-            Listado de creadores
+          <h2 class="text-h4 font-weight-bold text-center text-slate-dark mb-4">
+            {{ panelTitle }}
           </h2>
 
+          <v-card variant="flat" class="bg-slate-light pa-4 rounded-lg mb-4 search-box">
+            <v-row dense align="center">
+              <v-col cols="12" :sm="currentTab === 'calls' ? '6' : '12'" :md="currentTab === 'calls' ? '3' : '12'">
+                <v-text-field
+                  v-model="searchQuery"
+                  clearable
+                  density="compact"
+                  variant="outlined"
+                  bg-color="white"
+                  color="indigo-darken-1"
+                  hide-details
+                  prepend-inner-icon="mdi-magnify"
+                  :label="currentTab === 'calls' ? 'Buscar por título o ID...' : 'Buscar por nombre o dirección (0x...)'"
+                ></v-text-field>
+              </v-col>
+
+              <template v-if="currentTab === 'calls'">
+                <v-col cols="12" sm="6" md="3">
+                  <v-text-field
+                    v-model="searchCreator"
+                    clearable
+                    density="compact"
+                    variant="outlined"
+                    bg-color="white"
+                    color="indigo-darken-1"
+                    hide-details
+                    prepend-inner-icon="mdi-account-search-outline"
+                    label="Dirección del creador (0x...)"
+                  ></v-text-field>
+                </v-col>
+                <v-col cols="12" sm="6" md="3">
+                  <v-select
+                    v-model="filterState"
+                    :items="stateOptions"
+                    label="Filtrar por Estado"
+                    density="compact"
+                    variant="outlined"
+                    bg-color="white"
+                    color="indigo-darken-1"
+                    hide-details
+                    clearable
+                  ></v-select>
+                </v-col>
+                <v-col cols="12" sm="6" md="3">
+                  <v-select
+                    v-model="filterTimeline"
+                    :items="timelineOptions"
+                    label="Fecha de Cierre"
+                    density="compact"
+                    variant="outlined"
+                    bg-color="white"
+                    color="indigo-darken-1"
+                    hide-details
+                    clearable
+                  ></v-select>
+                </v-col>
+              </template>
+            </v-row>
+          </v-card>
+
           <div v-if="currentTab === 'creators'" class="scrollable-containerpe">
-            
             <div 
-              v-if="registeredCreators.length === 0 && externalCreators.length === 0" 
+              v-if="filteredCreators.registered.length === 0 && filteredCreators.external.length === 0" 
               class="text-center py-10 text-grey-darken-1"
             >
-              <v-icon icon="mdi-account-off-outline" size="64" class="mb-3 text-grey-lighten-1"></v-icon>
-              <p class="text-subtitle-1 font-weight-medium">No se encontraron creadores registrados</p>
+              <v-img :src="question_svg" max-width="80" class="mx-auto mb-4" opacity="0.6"></v-img>
+              <p class="text-subtitle-1 font-weight-medium">No se encontraron creadores que coincidan con la búsqueda</p>
             </div>
 
             <v-expansion-panels v-else variant="accordion" class="custom-panels">
-              
               <v-expansion-panel
-                v-for="(creator, index) in registeredCreators"
+                v-for="(creator, index) in filteredCreators.registered"
                 :key="creator.address"
                 class="creator-row mb-3 rounded-lg overflow-hidden"
                 elevation="1"
@@ -53,19 +111,13 @@
                 </v-expansion-panel-title>
 
                 <v-expansion-panel-text class="text-left pt-2 text-slate-medium">
-                  <div class="mb-2">
-                    <strong class="text-slate-dark">Descripción:</strong> 
-                    {{ creator.description || 'Sin descripcion provista' }}
-                  </div>
-                  <div>
-                    <strong class="text-slate-dark">Nonce: </strong> 
-                    <span class="text-mono">{{ creator.nonce }}</span>
-                  </div>
+                  <div class="mb-2"><strong class="text-slate-dark">Descripción:</strong> {{ creator.description || 'Sin descripcion provista' }}</div>
+                  <div><strong class="text-slate-dark">Nonce: </strong> <span class="text-mono">{{ creator.nonce }}</span></div>
                 </v-expansion-panel-text>
               </v-expansion-panel>
 
               <v-expansion-panel
-                v-for="address in externalCreators"
+                v-for="address in filteredCreators.external"
                 :key="address"
                 class="creator-row external-row mb-3 rounded-lg overflow-hidden"
                 elevation="1"
@@ -84,54 +136,265 @@
                   Este creador se ha registrado por otros medios y no se posee información al respecto
                 </v-expansion-panel-text>
               </v-expansion-panel>
-
             </v-expansion-panels>
           </div>
 
-          <div v-else class="text-center py-8 text-grey-darken-1">
-            <v-icon icon="mdi-hourglass-empty" size="48" class="mb-2 text-grey-lighten-1"></v-icon>
-            <p>Sección de llamados en desarrollo. Próximamente disponible.</p>
+          <div v-else class="scrollable-containerpe">
+            <div v-if="loadingCalls" class="d-flex flex-column align-center justify-center py-12">
+              <v-progress-circular indeterminate color="indigo-darken-1" size="50" width="4" class="mb-4"></v-progress-circular>
+              <p class="text-body-1 text-grey-darken-1 font-weight-medium">Sincronizando catálogo de llamados globales...</p>
+            </div>
+
+            <div v-else-if="searchedGlobalCalls.length === 0" class="text-center py-10 text-grey-darken-1">
+              <v-img :src="question_svg" max-width="80" class="mx-auto mb-4" opacity="0.6"></v-img>
+              <p class="text-subtitle-1 font-weight-medium">No se encontraron llamados que coincidan con los filtros aplicados</p>
+            </div>
+
+            <v-expansion-panels v-else variant="accordion" class="custom-panels">
+              <v-expansion-panel 
+                v-for="call in searchedGlobalCalls" 
+                :key="call.callId" 
+                :class="['creator-row mb-3 rounded-lg overflow-hidden', !call.isInternal ? 'external-row' : '']" 
+                elevation="1"
+              >
+                <v-expansion-panel-title class="py-4">
+                  <v-row no-gutters class="align-center w-100 min-w-0">
+                    <v-col cols="12" md="7" class="d-flex flex-column text-left min-w-0 pr-4">
+                      <div class="d-flex align-center flex-wrap gap-2 mb-2">
+                        <span class="text-mono text-body-2 font-weight-bold text-indigo-darken-1 bg-indigo-lighten-5 px-2 py-0.5 rounded">
+                          {{ call.callId.substring(0, 10) }}...{{ call.callId.substring(call.callId.length - 4) }}
+                        </span>
+                        
+                        <v-chip v-if="call.isInternal" size="small" color="success" variant="flat" class="font-weight-bold text-caption">
+                          Sincronizado
+                        </v-chip>
+                        <v-chip v-else size="small" color="amber-darken-2" variant="flat" class="font-weight-bold text-caption">
+                          Blockchain Pura
+                        </v-chip>
+
+                        <v-chip v-if="call.isInternal && call.state" size="small" color="indigo-lighten-1" variant="outlined" class="font-weight-bold text-caption">
+                          {{ call.state }}
+                        </v-chip>
+                      </div>
+
+                      <div class="text-subtitle-1 font-weight-bold text-slate-dark text-truncate w-100">
+                        {{ call.title || 'Convocatoria Externa (Sin metadatos)' }}
+                      </div>
+                    </v-col>
+
+                    <v-col cols="12" md="5" class="text-md-right mt-2 mt-md-0 text-body-2">
+                      <template v-if="isCallExpired(call.closingTime)">
+                        <span class="text-error font-weight-bold">
+                          <v-icon icon="mdi-clock-alert-outline" size="16" class="me-1 text-error"></v-icon>
+                          Cerró el: {{ formatUnixTimestamp(call.closingTime) }}
+                        </span>
+                      </template>
+                      <template v-else>
+                        <span class="text-success font-weight-medium">
+                          <v-icon icon="mdi-clock-outline" size="16" class="me-1 text-success"></v-icon>
+                          Cierra el: <strong class="text-slate-dark">{{ formatUnixTimestamp(call.closingTime) }}</strong>
+                        </span>
+                      </template>
+                    </v-col>
+                  </v-row>
+                </v-expansion-panel-title>
+
+                <v-expansion-panel-text class="text-left pt-2 text-slate-medium">
+                  <h4 class="text-subtitle-1 font-weight-bold text-slate-dark mb-1">
+                    {{ call.title || 'Convocatoria Externa' }}
+                  </h4>
+                  <p class="text-body-2 text-slate-medium mb-3">
+                    {{ call.description || 'Este llamado reside únicamente en los nodos de la Blockchain y no cuenta con metadatos extendidos guardados en la base de datos de la API.' }}
+                  </p>
+                  
+                  <v-divider class="mb-3"></v-divider>
+
+                  <div class="d-flex flex-column gap-1 text-caption text-grey-darken-2 mb-2">
+                    <div>
+                      <v-icon icon="mdi-file-sign" size="14" class="me-1"></v-icon>
+                      <strong>Address: </strong>  
+                      <span class="text-mono ms-1 select-all">{{ call.contractAddress || call.address || 'No desplegado / 0x00...' }}</span>
+                    </div>
+                    <div>
+                      <v-icon icon="mdi-account-circle" size="14" class="me-1"></v-icon>
+                      <strong>Creador (Wallet):</strong>  
+                      <span class="text-mono ms-1 select-all">{{ call.creator }}</span>
+                    </div>
+                    <div>
+                      <v-icon icon="mdi-identifier" size="14" class="me-1"></v-icon>
+                      <strong>Call ID: </strong>  
+                      <span class="text-mono ms-1 select-all">{{ call.callId }}</span>
+                    </div>
+                  </div>
+                </v-expansion-panel-text>
+              </v-expansion-panel>
+            </v-expansion-panels>
           </div>
 
         </v-card>
-
       </v-col>
     </v-row>
   </v-container>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { ASSETS } from '../config/constants'
-import { getCreators } from '../services/api'
+import { getCreators, getGlobalCalls } from '../services/api'
 
 const backgroundImage = ASSETS.genericBg
 const currentTab = ref('creators')
+const loadingCalls = ref(false)
+const question_svg = ASSETS.questionIcon
+
+// Variables Reactivas de Búsqueda y Filtrado
+const searchQuery = ref('')
+const searchCreator = ref('')
+const filterState = ref(null)
+const filterTimeline = ref(null)
 
 const registeredCreators = ref([])
 const externalCreators = ref([])
+const internalGlobalCalls = ref([])
+const externalGlobalCalls = ref([])
+
+const stateOptions = [
+  { title: 'Todos los estados', value: null },
+  { title: 'Sincronizados (Base Local)', value: 'internal' },
+  { title: 'Blockchain Pura', value: 'external' },
+  { title: 'Estado: CREATED', value: 'CREATED' },
+  { title: 'Estado: PENDING', value: 'PENDING' }
+]
+
+const timelineOptions = [
+  { title: 'Cualquier fecha', value: null },
+  { title: 'Vigentes / Abiertos', value: 'open' },
+  { title: 'Expirados / Cerrados', value: 'expired' }
+]
 
 const avatarColors = [
   '#4f46e5', '#06b6d4', '#10b981', '#f59e0b', 
   '#ec4899', '#8b5cf6', '#3b82f6', '#f43f5e'
 ]
 
+const panelTitle = computed(() => {
+  return currentTab.value === 'creators' ? 'Listado de Creadores' : 'Catálogo Global de Convocatorias'
+})
+
+// Vigilante para resetear filtros al permutar de pestaña
+watch(currentTab, () => {
+  searchQuery.value = ''
+  searchCreator.value = ''
+  filterState.value = null
+  filterTimeline.value = null
+  loadAllData()
+})
+
 function getRandomColor(index) {
   return avatarColors[index % avatarColors.length]
 }
 
-async function fetchCreatorsData() {
+function isCallExpired(closingTime) {
+  if (!closingTime) return false
+  const currentUnixTime = Math.floor(Date.now() / 1000)
+  return Number(closingTime) < currentUnixTime
+}
+
+function formatUnixTimestamp(timestamp) {
+  if (!timestamp) return 'No definido'
+  const date = new Date(Number(timestamp) * 1000)
+  return date.toLocaleString(navigator.language, {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+// FILTRADO DINÁMICO: PESTAÑA CREADORES
+const filteredCreators = computed(() => {
+  const query = searchQuery.value?.toLowerCase().trim() || ''
+  
+  const regFiltered = registeredCreators.value.filter(c => 
+    c.name.toLowerCase().includes(query) || c.address.toLowerCase().includes(query)
+  )
+  const extFiltered = externalCreators.value.filter(addr => 
+    addr.toLowerCase().includes(query)
+  )
+
+  return { registered: regFiltered, external: extFiltered }
+})
+
+// FILTRADO DINÁMICO MULTI-CRITERIO: PESTAÑA LLAMADOS
+const searchedGlobalCalls = computed(() => {
+  const internals = internalGlobalCalls.value.map(c => ({ ...c, isInternal: true }))
+  const externals = externalGlobalCalls.value.map(c => ({ ...c, isInternal: false }))
+  let unified = [...internals, ...externals]
+
+  // 1. Filtrar por barra de texto (Título, Dirección del contrato, CallID)
+  const query = searchQuery.value?.toLowerCase().trim() || ''
+  if (query) {
+    unified = unified.filter(call => {
+      const titleMatch = call.title?.toLowerCase().includes(query) || false
+      const idMatch = call.callId?.toLowerCase().includes(query) || false
+      const addressMatch = (call.contractAddress || call.address)?.toLowerCase().includes(query) || false
+      return titleMatch || idMatch || addressMatch
+    })
+  }
+
+  // 2. Filtrar por Dirección específica del Creador (Wallet)
+  const creatorQuery = searchCreator.value?.toLowerCase().trim() || ''
+  if (creatorQuery) {
+    unified = unified.filter(call => 
+      call.creator?.toLowerCase().includes(creatorQuery) || false
+    )
+  }
+
+  // 3. Filtrar por Estado (Sincronizado, Blockchain Pura o estados de ciclo de vida local)
+  if (filterState.value) {
+    if (filterState.value === 'internal') {
+      unified = unified.filter(c => c.isInternal)
+    } else if (filterState.value === 'external') {
+      unified = unified.filter(c => !c.isInternal)
+    } else {
+      unified = unified.filter(c => c.state === filterState.value)
+    }
+  }
+
+  // 4. Filtrar por línea de tiempo (Vigentes vs Expirados)
+  if (filterTimeline.value) {
+    const isExpiredTarget = filterTimeline.value === 'expired'
+    unified = unified.filter(c => isCallExpired(c.closingTime) === isExpiredTarget)
+  }
+
+  return unified
+})
+
+async function loadAllData() {
   try {
-    const data = await getCreators()
-    registeredCreators.value = data.registered_creators || []
-    externalCreators.value = data.external_creators || []
+    if (currentTab.value === 'calls') {
+      loadingCalls.value = true
+      const callsCatalog = await getGlobalCalls()
+      if (callsCatalog) {
+        internalGlobalCalls.value = callsCatalog.internal || []
+        externalGlobalCalls.value = callsCatalog.external || []
+      }
+      loadingCalls.value = false
+      return
+    }
+
+    const creatorsData = await getCreators()
+    registeredCreators.value = creatorsData.registered_creators || []
+    externalCreators.value = creatorsData.external_creators || []
   } catch (error) {
-    console.error("Error al cargar los creadores:", error)
+    console.error("Error al cargar los datos del panel público:", error)
+    loadingCalls.value = false
   }
 }
 
 onMounted(() => {
-  fetchCreatorsData()
+  loadAllData()
 })
 </script>
 
@@ -162,7 +425,7 @@ onMounted(() => {
   background-color: rgba(248, 250, 252, 0.92) !important;
   backdrop-filter: blur(8px);
   border: 1px solid rgba(255, 255, 255, 0.6);
-  max-height: 85vh;
+  height: 85vh; 
   display: flex;
   flex-direction: column;
 }
@@ -170,7 +433,16 @@ onMounted(() => {
 .scrollable-containerpe {
   overflow-y: auto;
   flex-grow: 1;
-  padding-right: 4px;
+  padding-right: 8px;
+}
+
+.bg-slate-light {
+  background-color: #f1f5f9 !important;
+  border: 1px solid #e2e8f0;
+}
+
+.search-box {
+  flex-shrink: 0;
 }
 
 .custom-toggle {
@@ -192,10 +464,6 @@ onMounted(() => {
 
 .text-slate-medium {
   color: #334155 !important;
-}
-
-.custom-title {
-  font-family: 'Inter', sans-serif !important;
 }
 
 .text-mono {
@@ -227,6 +495,10 @@ onMounted(() => {
 
 .italic-text {
   font-style: italic;
+}
+
+.select-all {
+  user-select: all;
 }
 
 .scrollable-containerpe::-webkit-scrollbar {
