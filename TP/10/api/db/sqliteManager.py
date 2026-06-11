@@ -551,6 +551,27 @@ class DBManager:
         except Exception as e:
             logger.error(f"Error consultando BD por llamados del creador {creator_address}: {str(e)}")
             raise db_exceptions.DatabaseReadException("Error al consultar los llamados locales del usuario.")
+    
+    def get_all_calls(self) -> list[Call]:
+        """
+        Recupera de la base de datos local la totalidad de los registros de llamados (calls).
+        
+        :return: Una lista de objetos de tipo Call.
+        """
+        try:
+            logger.debug("Consultando todos los registros de llamados en la base de datos local...")
+            with Session(self.engine) as session:
+                statement = select(Call)
+                results = session.exec(statement).all()
+                
+                logger.debug(f"Se recuperaron {len(results)} llamados desde la base de datos local.")
+                return results
+        except Exception as e:
+            logger.error(f"Error crítico al intentar recuperar todos los llamados de la BD: {str(e)}", exc_info=True)
+            raise db_exceptions.DatabaseReadException(
+                "Error al consultar el catálogo completo de llamados en la base de datos local."
+            )
+            
 @lru_cache()
 def get_db_manager() -> DBManager:
     """

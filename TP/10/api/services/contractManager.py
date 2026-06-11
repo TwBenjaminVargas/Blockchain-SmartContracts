@@ -994,6 +994,83 @@ class ContractManager:
         except Exception as e:
             logger.error(f"Error al obtener los detalles batch de los CFPs: {str(e)}")
             raise cm_exceptions.BlockchainReadException("No se pudieron consultar los detalles de los CFPs externos.")
+    
+    def get_all_global_call_ids(self) -> list[str]:
+        """
+        Consulta on-chain y retorna el listado completo de Call IDs (bytes32)
+        almacenados en el array global de la factoría.
+        
+        :return: Lista de strings hexadecimales con prefijo '0x' en lowercase.
+        """
+        try:
+            logger.debug("Consultando catálogo global de Call IDs en la blockchain...")
+            
+            # Invocamos la función view del contrato
+            raw_call_ids_bytes = self.contract.functions.getGlobalCalls().call()
+            
+            # Convertimos cada elemento de bytes a un string hexadecimal normalizado
+            global_call_ids_hex = [to_hex(cid_bytes).lower() for cid_bytes in raw_call_ids_bytes]
+            
+            logger.debug(f"Se recuperaron {len(global_call_ids_hex)} Call IDs globales desde la blockchain.")
+            return global_call_ids_hex
+            
+        except Exception as e:
+            logger.error(f"Error crítico al leer getGlobalCalls en el contrato factoría: {str(e)}", exc_info=True)
+            raise cm_exceptions.BlockchainReadException(
+                "No se pudo recuperar el listado global de convocatorias desde la red blockchain."
+            )
+        
+    def get_cfp_full_details_batch(self, call_ids: list[str]) -> list[dict]:
+        """
+        Consulta de forma iterativa el mapping 'calls' de la factoría para un listado de 
+        Call IDs. Obtiene el creador, la dirección del contrato CFP y consulta a cada 
+        contrato CFP su 'closingTime'.
+        
+        :param call_ids: Lista de strings hexadecimales con los IDs de los llamados.
+        :return: Lista de diccionarios con el detalle completo de cada convocatoria.
+        """
+        full_details = []
+        try:
+            logger.debug(f"Iniciando consulta iterativa de detalles para {len(call_ids)} llamados...")
+            
+            for call_id in call_ids:
+                # Convertimos el string hex a bytes para pegarle al mapping de Solidity
+                call_id_bytes = to_bytes(hexstr=call_id)
+                
+                # calls(bytes32) retorna la estructura CallForProposals: (address creator, address cfp)
+                creator_address, cfp_address = self.contract.functions.calls(call_id_bytes).call()
+                
+                # Verificamos si el llamado realmente existe (si no existe, el address es 0x0)
+                if cfp_address != "0x0000000000000000000000000000000000000000":
+                    try:
+                        # Instanciamos el contrato CFP hijo usando su dirección y el ABI correspondiente
+                        cfp_contract = self.w3.eth.contract(
+                            address=self.w3.to_checksum_address(cfp_address), 
+                            abi=self.cfp_abi_data
+                        )
+                        # Consultamos el tiempo de cierre al contrato CFP
+                        closing_time = cfp_contract.functions.closingTime().call()
+                        
+                        full_details.append({
+                            "callId": call_id.lower(),
+                            "address": cfp_address,
+                            "creator": creator_address,
+                            "closingTime": closing_time
+                        })
+                    except Exception as cfp_err:
+                        # Si un contrato CFP falla individualmente, lo logueamos pero seguimos con los demás
+                        logger.warning(f"No se pudo leer el closingTime del CFP en {cfp_address}: {str(cfp_err)}")
+                        continue
+                        
+            logger.debug(f"Detalles recuperados exitosamente para {len(full_details)} llamados activos.")
+            return full_details
+            
+        except Exception as e:
+            logger.error(f"Error crítico en el procesamiento por lote de detalles de CFPs: {str(e)}", exc_info=True)
+            raise cm_exceptions.BlockchainReadException(
+                "No se pudieron recuperar los detalles completos de las convocatorias desde la blockchain."
+            )
+            
 @lru_cache()
 def get_contract_manager() -> ContractManager:
     """

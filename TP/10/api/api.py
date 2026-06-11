@@ -48,13 +48,10 @@ async def lifespan(app: FastAPI):
             db_manager.createAdminUser(admin_address)
             logger.info("Administrador verificado e insertado con éxito.")
         
-        if not signer.is_admin_address(admin_user.address):
+        if admin_user and not signer.is_admin_address(admin_user.address):
             logger.info(f"Actualizando admin address")
             admin_user.address = signer.admin_address
-            db_manager.updateExistingUser(admin_user)
-        else:
-            logger.info(f"El administrador ya se encuentra registrado address: {admin_user.address}.\n Nonce actual: {admin_user.nonce}")
-            
+            db_manager.updateExistingUser(admin_user)            
     except Exception as e:
         logger.critical(
             f"FALLO CRÍTICO AL INICIALIZAR DATOS DEL SISTEMA: {str(e)}. "
@@ -1477,5 +1474,83 @@ async def get_user_calls(
         logger.error(f"Fallo no manejado en GET /calls/{address}: {str(e)}", exc_info=True)
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"message": Messages.INTERNAL_ERROR}
+        )
+
+@app.get(
+    "/global-calls",
+    status_code=status.HTTP_200_OK,
+    summary="Obtiene la totalidad de las convocatorias globales clasificadas en internas y externas"
+)
+async def get_global_calls_catalog(
+    db_manager: DBManager = Depends(get_db_manager),
+    contract_manager: ContractManager = Depends(get_contract_manager)
+):
+    """
+    Obtiene todos los Call IDs de la blockchain. Clasifica las convocatorias:
+    - internal: Convocatorias enriquecidas que ya existen en nuestra base de datos local.
+    - external: Convocatorias que solo existen en la blockchain (trae id, address, creator y closingTime).
+    """
+    try:
+        # Obtener todos los Call IDs globales de la Blockchain
+        onchain_global_ids = contract_manager.get_all_global_call_ids()
+        
+        # Obtener todos los registros locales de SQLite
+        db_calls = db_manager.get_all_calls()
+        
+        # Indexamos localmente por callId en minúsculas para búsquedas de O(1)
+        local_calls_dict = {call.callId.lower(): call for call in db_calls}
+        
+        # Separar los IDs on-chain en dos grupos: internos (en BD) y externos (solo Blockchain)
+        internal_ids = []
+        external_ids = []
+        
+        for cid in onchain_global_ids:
+            if cid in local_calls_dict:
+                internal_ids.append(cid)
+            else:
+                external_ids.append(cid)
+                
+        # Formatear la lista de internos (enriquecidos con data local de la BD)
+        internal_calls_formatted = []
+        for cid in internal_ids:
+            local_call = local_calls_dict[cid]
+            internal_calls_formatted.append({
+                "callId": local_call.callId,
+                "title": local_call.title,
+                "description": local_call.description,
+                "creator": local_call.creator,
+                "state": local_call.state.value,
+                "address": local_call.contractAddress,
+                "closingTime": local_call.closingTime
+            })
+            
+        #Resolver e iterar los detalles on-chain únicamente para los llamados externos
+        external_calls_formatted = []
+        if external_ids:
+            external_calls_formatted = contract_manager.get_cfp_full_details_batch(external_ids)
+            
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "internal": internal_calls_formatted,
+                "external": external_calls_formatted
+            }
+        )
+        
+    except contract_exceptions.BlockchainReadException as ce:
+        return JSONResponse(
+            status_code=status.HTTP_502_BAD_GATEWAY, 
+            content={"message": str(ce)}
+        )
+    except db_exceptions.DatabaseReadException as de:
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            content={"message": str(de)}
+        )
+    except Exception as e:
+        logger.error(f"Fallo no manejado en catálogo global GET /calls: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
             content={"message": Messages.INTERNAL_ERROR}
         )

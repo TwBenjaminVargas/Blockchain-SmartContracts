@@ -466,6 +466,11 @@ def get_users():
     assert APPLICATION_JSON in response.headers["Content-type"]
     return response
 
+def get_global_calls() -> requests.Response:
+    """Efectúa una petición GET al catálogo unificado y global de convocatorias."""
+    return requests.get(url("global-calls"), timeout=15)
+
+
 def get_contract_owner() -> str:
     """Obtiene la dirección del dueño del contrato."""
     response = requests.get(url("contract-owner"), timeout=3)
@@ -2848,3 +2853,51 @@ def test_admin_cannot_execute_create_endpoint() -> None:
     
     # Validamos que el mensaje coincida de forma estricta con la constante del sistema
     assert data["message"] == messages.INVALID_ADDRESS
+    
+    
+    
+def test_get_global_calls_catalog_structure() -> None:
+        """Prueba que el endpoint unificado GET /calls devuelva correctamente la
+
+        estructura del catálogo global, segmentando convocatorias internas y externas.
+        """
+        # Realizamos la consulta directa hacia el endpoint híbrido global
+        response = get_global_calls()
+
+        # Validaciones de Capa de Protocolo HTTP
+        assert response.status_code == 200
+        assert APPLICATION_JSON in response.headers["Content-type"]
+
+        data = response.json()
+
+        # Validamos la existencia de las llaves del catálogo híbrido según el requerimiento
+        assert "internal" in data, "La respuesta debe contener la lista 'internal' de llamados enriquecidos localmente"
+        assert "external" in data, "La respuesta debe contener la lista 'external' de llamados puros de la blockchain"
+
+        # Validamos que ambas estructuras correspondan a listas de Python (arrays de JSON)
+        assert isinstance(data["internal"], list), "El campo 'internal' debe estructurarse como un arreglo"
+        assert isinstance(data["external"], list), "El campo 'external' debe estructurarse como un arreglo"
+
+        # Validación de firmas e integridad de campos para datos internos (si llegara a haber elementos)
+        for internal_call in data["internal"]:
+            assert "callId" in internal_call
+            assert "title" in internal_call
+            assert "description" in internal_call
+            assert "creator" in internal_call
+            assert "state" in internal_call
+            assert "address" in internal_call
+            assert "closingTime" in internal_call
+
+        # Validación estricta sobre el esquema de los llamados externos (obtenidos iterativamente on-chain)
+        for external_call in data["external"]:
+            assert "callId" in external_call, "El llamado externo debe conservar su hash identificador único"
+            assert "address" in external_call, "Debe mapear la dirección física del contrato CFP"
+            assert "creator" in external_call, "Debe mapear el address del creador obtenido de la factoría"
+            assert "closingTime" in external_call, "Debe incluir el timestamp de cierre extraído del contrato hijo"
+
+            # Validamos tipos básicos devueltos por la EVM e interpretados por la API
+            assert isinstance(external_call["callId"], str)
+            assert external_call["callId"].startswith("0x")
+            assert isinstance(external_call["address"], str)
+            assert isinstance(external_call["creator"], str)
+            assert isinstance(external_call["closingTime"], int)

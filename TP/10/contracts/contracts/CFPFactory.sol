@@ -70,6 +70,8 @@ contract CFPFactory {
     address[] private pendingList;
 
     mapping (address => AddressStatus) private addressStatus;
+
+    bytes32[] public globalCallIds;
     
 
 
@@ -126,6 +128,7 @@ contract CFPFactory {
             creators.push(msg.sender);
         }
         createdByMap[msg.sender].push(cfp);
+        globalCallIds.push(callId);
         emit CFPCreated(msg.sender, callId, cfp);
         return cfp;
     }
@@ -147,6 +150,7 @@ contract CFPFactory {
             creators.push(creator);
         }
         createdByMap[creator].push(cfp);
+        globalCallIds.push(callId);
         emit CFPCreated(creator, callId, cfp);
         return cfp;
     }
@@ -232,8 +236,8 @@ contract CFPFactory {
         return creators;
     }
 
-
-
-
+    function getGlobalCalls() public view returns (bytes32[] memory) {
+        return globalCallIds;
+    }
 
 }
