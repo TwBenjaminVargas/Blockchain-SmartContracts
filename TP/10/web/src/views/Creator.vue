@@ -85,12 +85,11 @@
                   v-for="call in allCalls"
                   :key="call.callId"
                   class="call-panel-item"
+                  @group:selected="initClosingTimeInput(call)"
                 >
-                  <!-- CABECERA ATRIBUTOS VISIBLES SIN DESPLEGAR -->
                   <v-expansion-panel-title class="py-4">
                     <v-row no-gutters class="align-center w-100 min-w-0">
                       <v-col cols="12" md="8" class="d-flex flex-column text-left min-w-0 pr-4">
-                        <!-- Fila Superior: ID y Chips de estado -->
                         <div class="d-flex align-center flex-wrap gap-2 mb-2">
                           <span class="text-mono text-body-2 font-weight-bold text-indigo-darken-1 bg-indigo-lighten-5 px-2 py-0.5 rounded">
                             {{ call.callId.substring(0, 10) }}...{{ call.callId.substring(call.callId.length - 4) }}
@@ -126,13 +125,11 @@
                           </v-chip>
                         </div>
                         
-                        <!-- Fila Inferior: TÍTULO DEL LLAMADO VISIBLE DIRECTAMENTE -->
                         <div class="text-subtitle-1 font-weight-bold text-slate-dark text-truncate w-100">
                           {{ call.title || 'Convocatoria Externa (Sin metadatos)' }}
                         </div>
                       </v-col>
 
-                      <!-- Columna Derecha: Cierre -->
                       <v-col cols="12" md="4" class="text-md-right mt-2 mt-md-0">
                         <span class="text-body-2 font-weight-medium text-slate-medium">
                           <v-icon icon="mdi-clock-outline" size="16" class="me-1 text-grey-darken-1"></v-icon>
@@ -153,23 +150,59 @@
                       
                       <v-divider class="mb-3"></v-divider>
                       
-                      <div class="d-flex flex-column gap-1 text-caption text-grey-darken-2">
+                      <div class="d-flex flex-column gap-1 text-caption text-grey-darken-2 mb-4">
                         <div>
                           <v-icon icon="mdi-file-sign" size="14" class="me-1"></v-icon>
-                          <strong>Address: </strong> 
+                          <strong>Address: </strong>  
                           <span class="text-mono ms-1 select-all">{{ call.contractAddress || 'No desplegado / 0x00...' }}</span>
                         </div>
                         <div>
                           <v-icon icon="mdi-account-circle" size="14" class="me-1"></v-icon>
-                          <strong>Creador (Wallet):</strong> 
+                          <strong>Creador (Wallet):</strong>  
                           <span class="text-mono ms-1">{{ call.creator || walletStore.account }}</span>
                         </div>
                         <div>
                           <v-icon icon="mdi-identifier" size="14" class="me-1"></v-icon>
-                          <strong>Call ID: </strong> 
+                          <strong>Call ID: </strong>  
                           <span class="text-mono ms-1 select-all">{{ call.callId }}</span>
                         </div>
                       </div>
+
+                      <div v-if="call.isInternal && call.state === 'PENDING'" class="mt-4 border pa-4 rounded-xl bg-white elevation-1">
+                        <div class="text-subtitle-2 font-weight-bold text-slate-dark mb-2">
+                          Configuración de Cierre On-Chain
+                        </div>
+                        
+                        <v-row class="align-center" dense>
+                          <v-col cols="12" sm="6">
+                            <v-text-field
+                              v-model="closingInputs[call.callId]"
+                              label="Fecha y hora límite de cierre"
+                              type="datetime-local"
+                              variant="outlined"
+                              density="comfortable"
+                              color="indigo"
+                              hide-details
+                              prepend-inner-icon="mdi-calendar-clock"
+                            ></v-text-field>
+                          </v-col>
+                          
+                          <v-col cols="12" sm="6" class="text-right mt-2 mt-sm-0">
+                            <v-btn
+                              color="indigo-darken-1"
+                              variant="flat"
+                              class="font-weight-bold text-white rounded-lg px-4"
+                              :loading="!!loadingOnChain[call.callId]"
+                              :disabled="!walletStore.account"
+                              @click="handleCreateOnChain(call)"
+                            >
+                              <img src="/metamask-icon.svg" alt="MetaMask" width="26" height="26" class="me-2" />
+                              Crear On-Chain
+                            </v-btn>
+                          </v-col>
+                        </v-row>
+                      </div>
+
                     </div>
                   </v-expansion-panel-text>
                 </v-expansion-panel>
@@ -326,8 +359,13 @@ import {
   getUserCalls,
   createCall
 } from '../services/api'
+import { createInFactory } from '../services/cfpfactory'
 
 const walletStore = useWalletStore()
+const loadingOnChain = ref({})
+
+// Diccionario reactivo para las fechas seleccionadas por cada callId
+const closingInputs = ref({})
 
 const backgroundImage = ASSETS.creatorBg
 const question_svg = ASSETS.questionIcon
@@ -361,7 +399,6 @@ const editModal = ref({
   }
 })
 
-// Estado de control para el modal de añadir llamados
 const createCallModal = ref({
   show: false,
   loading: false,
@@ -396,6 +433,23 @@ function formatUnixTimestamp(timestamp) {
     hour: '2-digit',
     minute: '2-digit'
   })
+}
+
+// Inicializa el input datetime-local a +30 días por defecto cuando el usuario despliega el panel
+function initClosingTimeInput(call) {
+  if (call.isInternal && call.state === 'PENDING' && !closingInputs.value[call.callId]) {
+    const defaultDate = new Date()
+    defaultDate.setDate(defaultDate.getDate() + 30)
+    
+    // Formatear al formato ISO requerido por datetime-local (YYYY-MM-DDTHH:mm)
+    const year = defaultDate.getFullYear()
+    const month = String(defaultDate.getMonth() + 1).padStart(2, '0')
+    const day = String(defaultDate.getDate()).padStart(2, '0')
+    const hours = String(defaultDate.getHours()).padStart(2, '0')
+    const minutes = String(defaultDate.getMinutes()).padStart(2, '0')
+    
+    closingInputs.value[call.callId] = `${year}-${month}-${day}T${hours}:${minutes}`
+  }
 }
 
 async function fetchUserCallsData() {
@@ -616,6 +670,66 @@ watch(() => walletStore.account, (newAcc) => {
     fetchUserCallsData()
   }
 })
+
+async function handleCreateOnChain(call) {
+  if (!call.callId) {
+    showSnackbar("El identificador del llamado no es válido.")
+    return
+  }
+
+  // Extraer e interpretar el valor del input del usuario
+  const userInput = closingInputs.value[call.callId]
+  if (!userInput) {
+    showSnackbar("Por favor, selecciona una fecha y hora de cierre válida.")
+    return
+  }
+
+  const selectedDate = new Date(userInput)
+  const closingTimestamp = Math.floor(selectedDate.getTime() / 1000)
+
+  // Validación rápida: que no esté en el pasado
+  if (closingTimestamp <= Math.floor(Date.now() / 1000)) {
+    showSnackbar("La fecha de cierre debe ser mayor al tiempo actual.")
+    return
+  }
+
+  try {
+    loadingOnChain.value[call.callId] = true
+
+    console.log(`[On-Chain] Enviando a Blockchain -> callId: ${call.callId}, closingTime seleccionado: ${closingTimestamp}`)
+
+    // Ejecución contra MetaMask y la Blockchain
+    const receipt = await createInFactory(call.callId, closingTimestamp)
+    console.log("[On-Chain] Transacción confirmada con éxito:", receipt)
+
+    showSnackbar("¡Transacción confirmada! Refrescando catálogo en 3 segundos...", "success")
+    
+    // REQUISITO: Esperar 3 segundos (3000ms) antes de realizar el refresco de los llamados
+    setTimeout(async () => {
+      await fetchUserCallsData()
+      // Limpiar el input local del diccionario una vez procesado
+      delete closingInputs.value[call.callId]
+    }, 3000)
+
+  } catch (error) {
+    console.error("Error al ejecutar create on-chain:", error)
+    let alertMsg = 'Ocurrió un error al enviar la transacción a la Blockchain.'
+    
+    if (error.code === 'ACTION_REJECTED') {
+      alertMsg = 'Firma rechazada en MetaMask por el usuario.'
+    } else if (error.message && error.message.includes('El llamado ya existe')) {
+      alertMsg = 'Error: El llamado ya se encuentra registrado en el Smart Contract.'
+    } else if (error.message && error.message.includes('No autorizado')) {
+      alertMsg = 'Error: Tu wallet no cuenta con autorización en el Smart Contract.'
+    } else if (error.message) {
+      alertMsg = error.message
+    }
+    
+    showSnackbar(alertMsg)
+  } finally {
+    loadingOnChain.value[call.callId] = false
+  }
+}
 
 onMounted(() => {
   fetchCreatorProfile()

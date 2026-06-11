@@ -25,3 +25,17 @@ export async function registerInFactory() {
   const tx = await contract.register()
   return await tx.wait()
 }
+
+export async function createInFactory(callId, timestamp) {
+  const contract = await getContractInstance()
+  
+  // Aseguramos que el callId mantenga el formato correcto para bytes32 de ethers
+  const formattedCallId = callId.startsWith('0x') ? callId : `0x${callId}`
+  const bigIntTimestamp = BigInt(timestamp)
+
+  // Ejecutamos la función en el Smart Contract
+  const tx = await contract.create(formattedCallId, bigIntTimestamp)
+  
+  // Esperamos a que la transacción se mine en la red
+  return await tx.wait()
+}
