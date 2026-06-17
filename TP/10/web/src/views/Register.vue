@@ -402,8 +402,21 @@ async function handleSystemRegister() {
     const response = await registerUser(payload)
 
     if (response) {
-      await walletStore.refreshRegistration()
-      currentStep.value = 'blockchain'
+      const freshReg = await walletStore.refreshRegistration()
+      
+      // Control de flujos automatizado según el ciclo de vida devuelto por la API
+      if (freshReg && freshReg.status === 'authorized') {
+        walletStore.userRole = 'creator'
+        router.push({ name: 'creator' })
+      } 
+      else if (freshReg && freshReg.status === 'registered') {
+        // Si ya está registrado on-chain pero falta aprobación, salta a evaluación
+        currentStep.value = 'evaluation'
+      } 
+      else {
+        // Flujo inicial estándar: avanzar al paso de transacción de la Blockchain
+        currentStep.value = 'blockchain'
+      }
     }
 
   } catch (error) {

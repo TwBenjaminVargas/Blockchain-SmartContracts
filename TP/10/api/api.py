@@ -815,37 +815,42 @@ async def get_registration_status(
                         "nonce": local_user.nonce
                     }
                 )
+            else:
+                return JSONResponse(
+                status_code=status.HTTP_200_OK,
+                content={"status": UserState.PENDING.value}
+                )
         except db_exceptions.DatabaseConnectionException:
             return JSONResponse(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 content={"message": Messages.INTERNAL_ERROR}
             )
 
-        # Flujo de rescate/fallback mediante consulta On-Chain
-        try:
-            is_reg = contract_manager.is_address_registered(address)
-            
-            if not is_reg:
-                return JSONResponse(
-                status_code=status.HTTP_200_OK,
-                content={"status": UserState.PENDING.value}
-            )
-                
-            is_auth = contract_manager.is_address_authorized(address)
-            
-            # Si esta registrado pero no autorizado, su estado es "registered"
-            account_status = "authorized" if is_auth else "registered"
-            
-            return JSONResponse(
-                status_code=status.HTTP_200_OK,
-                content={"status": account_status}
-            )
-
-        except contract_exceptions.BlockchainReadException:
-            return JSONResponse(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                content={"message": Messages.INTERNAL_ERROR}
-            )
+#        # Flujo de rescate/fallback mediante consulta On-Chain
+#        try:
+#            is_reg = contract_manager.is_address_registered(address)
+#            
+#            if not is_reg:
+#                return JSONResponse(
+#                status_code=status.HTTP_200_OK,
+#                content={"status": UserState.PENDING.value}
+#            )
+#                
+#            is_auth = contract_manager.is_address_authorized(address)
+#            
+#            # Si esta registrado pero no autorizado, su estado es "registered"
+#            account_status = "authorized" if is_auth else "registered"
+#            
+#            return JSONResponse(
+#                status_code=status.HTTP_200_OK,
+#                content={"status": account_status}
+#            )
+#
+#        except contract_exceptions.BlockchainReadException:
+#            return JSONResponse(
+#                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#                content={"message": Messages.INTERNAL_ERROR}
+#            )
 
     except Exception as e:
         logger.error(f"Fallo no manejado en GET /registrations/{address}: {str(e)}", exc_info=True)
@@ -1007,7 +1012,7 @@ async def authorize_address(
 
         # Verificar existencia del usuario objetivo en la base de datos local
         target_user = db_manager.getUser(target_address)
-        if not target_user or target_user.state == UserState.PENDING:
+        if not target_user:
             return JSONResponse(
                 status_code=status.HTTP_404_NOT_FOUND,
                 content={"message": Messages.NOT_REGISTERED}
@@ -1094,7 +1099,7 @@ async def unauthorize_address(
             )
         # Verificar existencia del usuario objetivo en la base de datos local
         target_user = db_manager.getUser(target_address)
-        if not target_user or target_user.state == UserState.PENDING:
+        if not target_user:
             return JSONResponse(
                 status_code=status.HTTP_404_NOT_FOUND,
                 content={"message": Messages.NOT_REGISTERED}

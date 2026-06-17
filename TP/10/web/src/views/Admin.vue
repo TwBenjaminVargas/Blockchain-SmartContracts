@@ -93,40 +93,65 @@
               <v-img :src="question_svg" max-width="80" class="mx-auto mb-4" opacity="0.6"></v-img>
               <p class="text-subtitle-1 font-weight-medium">No se encontraron creadores que coincidan con la búsqueda</p>
             </div>
-
             <v-expansion-panels v-else variant="accordion" class="custom-panels">
-              <v-expansion-panel v-for="(creator, index) in filteredCreators.registered" :key="creator.address" class="creator-row mb-3 rounded-lg overflow-hidden" elevation="1">
+              <v-expansion-panel 
+                v-for="(creator, index) in filteredCreators.registered" 
+                :key="creator.address" 
+                :class="['creator-row mb-3 rounded-lg overflow-hidden', creator.state === 'pending' ? 'archived-row' : '']" 
+                elevation="1"
+              >
                 <v-expansion-panel-title class="py-4">
-                  <v-avatar :color="getRandomColor(index)" size="48" class="me-4 shadow-sm text-white font-weight-bold">
+                  <v-avatar :color="creator.state === 'pending' ? 'grey' : getRandomColor(index)" size="48" class="me-4 shadow-sm text-white font-weight-bold">
                     {{ creator.name.charAt(0).toUpperCase() }}
                   </v-avatar>
-                  <div class="text-left">
-                    <div class="text-subtitle-1 font-weight-bold text-slate-dark">
-                      {{ creator.name }}
-                      <span v-if="isCurrentUser(creator.address)" class="text-caption text-indigo font-weight-bold ms-1">(Tú)</span>
+                  <div class="text-left w-100 d-flex justify-space-between align-center pe-4">
+                    <div>
+                      <div class="text-subtitle-1 font-weight-bold text-slate-dark">
+                        {{ creator.name }}
+                        <span v-if="isCurrentUser(creator.address)" class="text-caption text-indigo font-weight-bold ms-1">(Tú)</span>
+                      </div>
+                      <div class="text-caption text-mono text-grey-darken-1">{{ creator.address }}</div>
                     </div>
-                    <div class="text-caption text-mono text-grey-darken-1">{{ creator.address }}</div>
+                    <v-chip v-if="creator.state === 'pending'" color="grey" size="small" variant="flat" class="font-weight-bold text-uppercase">
+                      Archivado
+                    </v-chip>
                   </div>
                 </v-expansion-panel-title>
+
                 <v-expansion-panel-text class="text-left pt-2 text-slate-medium">
                   <div class="mb-2"><strong class="text-slate-dark">Descripción:</strong> {{ creator.description || 'Sin descripcion provista' }}</div>
                   <div class="mb-4"><strong class="text-slate-dark">Nonce: </strong> <span class="text-mono">{{ creator.nonce }}</span></div>
+
                   <div class="text-right">
+                    <v-chip v-if="isCurrentUser(creator.address)" color="indigo-lighten-4" text-color="indigo-darken-4" size="small" class="font-weight-bold">
+                      Administrador Activo
+                    </v-chip>
+                  
+                    <v-chip 
+                      v-else-if="creator.state === 'pending'" 
+                      color="grey-darken-1" 
+                      variant="tonal"
+                      size="small" 
+                      class="font-weight-bold"
+                    >
+                      Acciones deshabilitadas (Creador Archivado)
+                    </v-chip>
+                  
                     <v-btn 
-                      v-if="!isCurrentUser(creator.address)"
+                      v-else
                       color="error" 
                       variant="tonal" 
                       size="small" 
                       class="font-weight-bold" 
                       :loading="isActionLoading === creator.address" 
                       @click="handleAction('unauthorize', creator.address)"
-                    > Desautorizar
+                    > 
+                      Desautorizar
                     </v-btn>
-                    <v-chip v-else color="indigo-lighten-4" text-color="indigo-darken-4" size="small" class="font-weight-bold">Administrador Activo</v-chip>
                   </div>
                 </v-expansion-panel-text>
               </v-expansion-panel>
-
+            
               <v-expansion-panel v-for="address in filteredCreators.external" :key="address" class="creator-row external-row mb-3 rounded-lg overflow-hidden" elevation="1">
                 <v-expansion-panel-title class="py-4">
                   <v-avatar color="grey-lighten-2" size="48" class="me-4 border-dashed text-grey-darken-2">
@@ -142,39 +167,26 @@
                 </v-expansion-panel-title>
                 <v-expansion-panel-text class="text-left pt-2 text-grey-darken-2">
                   <p class="italic-text mb-4">Este creador se ha registrado por otros medios y no se posee información al respecto</p>
-                  <div class="text-right">
-                    <v-btn 
-                      v-if="!isCurrentUser(address)"
-                      color="error" 
-                      variant="tonal" 
-                      size="small" 
-                      class="font-weight-bold" 
-                      :loading="isActionLoading === address" 
-                      @click="handleAction('unauthorize', address)"
-                    > Desautorizar
-                    </v-btn>
-                    <v-chip v-else color="indigo-lighten-4" text-color="indigo-darken-4" size="small" class="font-weight-bold">Administrador Activo</v-chip>
-                  </div>
                 </v-expansion-panel-text>
               </v-expansion-panel>
-            </v-expansion-panels>
+            </v-expansion-panels>            
           </div>
 
           <div v-else-if="currentTab === 'users'" class="scrollable-containerpe">
             <div v-if="searchedUsers.length === 0" class="text-center py-10 text-grey-darken-1">
               <v-img :src="question_svg" max-width="80" class="mx-auto mb-4" opacity="0.6"></v-img>
-              <p class="text-subtitle-1 font-weight-medium">No hay usuarios activos o archivados que coincidan.</p>
+              <p class="text-subtitle-1 font-weight-medium">No hay usuarios activos que coincidan.</p>
             </div>
 
             <v-expansion-panels v-else variant="accordion" class="custom-panels">
               <v-expansion-panel
                 v-for="(user, index) in searchedUsers"
                 :key="user.address"
-                :class="['creator-row mb-3 rounded-lg overflow-hidden', user.state === 'archived' ? 'archived-row' : '']"
+                :class="['creator-row mb-3 rounded-lg overflow-hidden']"
                 elevation="1"
               >
                 <v-expansion-panel-title class="py-4">
-                  <v-avatar :color="user.state === 'archived' ? 'grey' : getRandomColor(index)" size="48" class="me-4 text-white font-weight-bold">
+                  <v-avatar :color="getRandomColor(index)" size="48" class="me-4 text-white font-weight-bold">
                     {{ user.name.charAt(0).toUpperCase() }}
                   </v-avatar>
                   <div class="text-left w-100 d-flex justify-space-between align-center pe-4">
@@ -185,7 +197,7 @@
                       </div>
                       <div class="text-caption text-mono text-grey-darken-1">{{ user.address }}</div>
                     </div>
-                    <v-chip :color="user.state === 'archived' ? 'grey' : 'success'" size="small" variant="flat" class="font-weight-bold text-uppercase">
+                    <v-chip color="success" size="small" variant="flat" class="font-weight-bold text-uppercase">
                       {{ user.state }}
                     </v-chip>
                   </div>
@@ -197,10 +209,6 @@
                   <div class="text-right">
                     <v-chip v-if="isCurrentUser(user.address)" color="indigo-lighten-4" text-color="indigo-darken-4" size="small" class="font-weight-bold">
                       Administrador Activo (Tú)
-                    </v-chip>
-
-                    <v-chip v-else-if="user.state === 'archived'" color="grey-lighten-2" text-color="grey-darken-1" size="small" class="font-weight-bold">
-                      Acciones deshabilitadas (Archivado)
                     </v-chip>
 
                     <v-btn 
@@ -232,9 +240,19 @@
                   <v-avatar :color="getRandomColor(index)" size="48" class="me-4 text-white font-weight-bold">
                     {{ req.name.charAt(0).toUpperCase() }}
                   </v-avatar>
-                  <div class="text-left">
-                    <div class="text-subtitle-1 font-weight-bold text-slate-dark">{{ req.name }}</div>
-                    <div class="text-caption text-mono text-grey-darken-1">{{ req.address }}</div>
+                  <div class="text-left w-100 d-flex justify-space-between align-center pe-4">
+                    <div>
+                      <div class="text-subtitle-1 font-weight-bold text-slate-dark">{{ req.name }}</div>
+                      <div class="text-caption text-mono text-grey-darken-1">{{ req.address }}</div>
+                    </div>
+                    <v-chip 
+                      :color="req.state === 'pending' ? 'warning' : req.state === 'registered' ? 'success' : 'grey'" 
+                      variant="flat" 
+                      size="small" 
+                      class="font-weight-bold text-uppercase"
+                    >
+                      {{ req.state }}
+                    </v-chip>
                   </div>
                 </v-expansion-panel-title>
                 <v-expansion-panel-text class="text-left pt-2 text-slate-medium">
@@ -257,11 +275,7 @@
                   </div>
                 </v-expansion-panel-title>
                 <v-expansion-panel-text class="text-left pt-2 text-grey-darken-2">
-                  <div class="mb-4"><strong class="text-slate-dark">Descripción:</strong> <span class="italic-text">Sin descripción provista</span></div>
-                  <div class="d-flex justify-end gap-2">
-                    <v-btn color="error" variant="text" class="font-weight-bold" :disabled="isActionLoading === address" @click="handleAction('unauthorize', address)">Rechazar</v-btn>
-                    <v-btn color="success" variant="flat" class="font-weight-bold" :loading="isActionLoading === address" @click="handleAction('authorize', address)">Autorizar</v-btn>
-                  </div>
+                  <div class="mb-4"><strong class="text-slate-dark">Descripción:</strong> <span class="italic-text">Este usuario se ha registrado Onchain pero no se ha registrado en el sitema todavia</span></div>
                 </v-expansion-panel-text>
               </v-expansion-panel>
             </v-expansion-panels>
@@ -468,9 +482,9 @@ const filteredCreators = computed(() => {
 // FILTRADO DINÁMICO: PESTAÑA USUARIOS
 const searchedUsers = computed(() => {
   const query = searchQuery.value?.toLowerCase().trim() || ''
-  const activeAndArchived = allUsers.value.filter(u => u.state !== 'pending' && u.state !== 'registered')
+  const active = allUsers.value.filter(u => u.state !== 'pending' && u.state !== 'registered')
   
-  return activeAndArchived.filter(u => 
+  return active.filter(u => 
     u.name.toLowerCase().includes(query) || u.address.toLowerCase().includes(query)
   )
 })
@@ -608,9 +622,9 @@ async function handleAction(actionType, targetAddress) {
     }
 
     const targetUser = allUsers.value.find(u => u.address.toLowerCase() === targetAddress.toLowerCase())
-    if (targetUser && targetUser.state === 'archived') {
-      throw new Error('Operación abortada: No se pueden realizar acciones sobre usuarios archivados.')
-    }
+    // if (targetUser && targetUser.state === 'archived') {
+    //   throw new Error('Operación abortada: No se pueden realizar acciones sobre usuarios archivados.')
+    // }
 
     isActionLoading.value = targetAddress
 
