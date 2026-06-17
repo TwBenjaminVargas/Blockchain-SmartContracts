@@ -573,6 +573,20 @@ class DBManager:
             raise db_exceptions.DatabaseReadException(
                 "Error al consultar el catálogo completo de llamados en la base de datos local."
             )
+    
+    def get_proposal_by_id(self, proposal_id: str) -> Optional[Proposal]:
+        """
+        Busca y retorna una propuesta específica de la base de datos local por su proposalId.
+        """
+        try:
+            logger.debug(f"Buscando la propuesta {proposal_id} en la base de datos local...")
+            with Session(self.engine) as session:
+                statement = select(Proposal).where(Proposal.proposalId == proposal_id)
+                result = session.exec(statement).first()
+                return result
+        except Exception as e:
+            logger.error(f"Error al buscar la propuesta {proposal_id}: {str(e)}", exc_info=True)
+            raise db_exceptions.DatabaseReadException("Error al consultar la propuesta en la base de datos local.")
             
 @lru_cache()
 def get_db_manager() -> DBManager:

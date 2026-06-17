@@ -12,6 +12,7 @@ import messages as Messages
 from models.AuthorieAddress import AuthorizeAddress
 from models.UnauthorizeAddress import UnauthorizeAddress
 from models.VerifyProof import VerifyProof
+from models.VerifyReceipt import VerifyReceipt
 from services.signer import get_signer, Signer
 from models.persistence.Call import CallState
 from models.CallCreate import CallCreate
@@ -19,9 +20,9 @@ from models.UserRegister import UserRegister
 from models.ProposalRegister import ProposalRegister
 from models.UserPatch import UserPatch
 from services.contractManager import get_contract_manager, ContractManager
-from web3.exceptions import ContractLogicError
 from db.sqliteManager import DBManager, get_db_manager
 import re
+import json
 from models.persistence.User import UserState
 import asyncio
 import exceptions.contractManagerExceptions as contract_exceptions
@@ -1619,4 +1620,133 @@ async def upload_files(
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"message": "Error interno al intentar guardar los archivos físicos."}
+        )
+        
+@app.get(
+    "/proposals/{proposalId}/receipt",
+    status_code=status.HTTP_200_OK,
+    summary="Entrega el recibo portable de una propuesta registrada"
+)
+async def get_proposal_receipt(
+    proposalId: str = Path(..., description="El identificador único / Raíz de Merkle de la propuesta"),
+    db_manager: DBManager = Depends(get_db_manager)
+):
+    try:
+        # Buscar la propuesta en la base de datos local
+        proposal = db_manager.get_proposal_by_id(proposalId)
+        
+        # Si no existe, responder 404
+        if not proposal:
+            return JSONResponse(
+                status_code=status.HTTP_404_NOT_FOUND,
+                content={"message": Messages.PROPOSAL_NOT_FOUND}
+            )
+            
+        # Decodificar las estructuras JSON que se guardaron como texto plano en el SQLite
+        try:
+            merkle_proofs = json.loads(proposal.proofsJson)
+        except Exception:
+            logger.error(f"Error al deserializar proofsJson para la propuesta {proposalId}")
+            merkle_proofs = {}
+        
+        try:
+            files_hashes = json.loads(proposal.filesJson)
+        except Exception:
+            logger.error(f"Error al deserializar filesJson para la propuesta {proposalId}")
+            files_hashes = []
+
+        # Construir y retornar la estructura exacta del recibo
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "message": Messages.OK,
+                "proposalId": proposal.proposalId,
+                "callId": proposal.callId,
+                "title": proposal.title,
+                "description": proposal.description,
+                "proofs": merkle_proofs,
+                "files": files_hashes,
+                "transactionHash": proposal.transactionHash,
+                "blockNumber": proposal.blocknumber,
+                "timestamp": proposal.created,
+                "sender": proposal.sender
+                
+            }
+        )
+
+    except db_exceptions.DatabaseReadException as de:
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"message": str(de)}
+        )
+    except Exception as e:
+        logger.error(f"Fallo no controlado al obtener el recibo para {proposalId}: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"message": Messages.INTERNAL_ERROR}
+        )
+
+@app.post(
+    "/proposals/verify",
+    status_code=status.HTTP_200_OK,
+    summary="Valida la integridad de un recibo y verifica su compromiso en la blockchain"
+)
+async def verify_proposal_receipt(
+    receipt: VerifyReceipt,
+    contract_manager: ContractManager = Depends(get_contract_manager)
+):
+    try:
+        # Re-calcular el proposalID (raíz de Merkle) utilizando el generador
+        calculated_proposal_id, _, _, _ = contract_manager.generate_merkle_tree(
+            call_id=receipt.callId,
+            title=receipt.title,
+            description=receipt.description,
+            files=receipt.files  # Lista de hashes que el usuario declaró en el recibo
+        )
+        
+        # Si la raíz recalculada difiere del proposalId del recibo, los datos fueron adulterados
+        if calculated_proposal_id.lower() != receipt.proposalId.lower():
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={
+                    "valid": False,
+                    "reason": "La validación criptográfica falló. Los contenidos del recibo no coinciden con el proposalId provisto."
+                }
+            )
+
+        # Consultamos directamente al contrato inteligente si el compromiso existe
+        try:
+            exists_on_chain = contract_manager.check_proposal_exists_on_chain(
+                call_id_hex=receipt.callId,
+                proposal_id_hex=receipt.proposalId
+            )
+        except contract_exceptions.BlockchainReadException as bcre:
+            return JSONResponse(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                content={"message": str(bcre)}
+            )
+
+        if not exists_on_chain:
+            return JSONResponse(
+                status_code=status.HTTP_200_OK,
+                content={
+                    "valid": False,
+                    "reason": "El recibo es matemáticamente íntegro, pero el compromiso no existe registrado en la blockchain."
+                }
+            )
+
+        # Los datos coinciden y el estado existe on-chain
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "valid": True,
+                "message": "Recibo verificado con éxito. Los datos coinciden con los hashes comprometidos y la propuesta está asentada on-chain."
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Fallo crítico en el proceso de verificación de recibo: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"message": Messages.INTERNAL_ERROR}
         )

@@ -1078,6 +1078,42 @@ class ContractManager:
         if not file_bytes:
             return "0x" + "0" * 64
         return to_hex(keccak(primitive=file_bytes))
+
+    def check_proposal_exists_on_chain(self, call_id_hex: str, proposal_id_hex: str) -> bool:
+        """
+        Consulta directamente al contrato CFP correspondiente si la raíz de Merkle (proposal_id)
+        está registrada en el mapping 'proposalData'.
+        """
+        try:
+            logger.debug(f"Verificando existencia on-chain de propuesta {proposal_id_hex} para el llamado {call_id_hex}")
+            
+            # Obtener los detalles del llamado (dirección del contrato CFP)
+            _, cfp_address = self.get_call_details(call_id_hex)
+            
+            if not cfp_address or cfp_address == "0x0000000000000000000000000000000000000000":
+                logger.warning(f"No se encontró un contrato CFP para el callId: {call_id_hex}")
+                return False
+
+            # Instanciar el contrato CFP con su dirección y el ABI correspondiente
+            cfp_contract = self.w3.eth.contract(address=Web3.to_checksum_address(cfp_address), abi=self.cfp_abi)
+            
+            # Invocar al mapping público 'proposalData' pasándole el hash de la propuesta
+            proposal_data = cfp_contract.functions.proposalData(Web3.to_bytes(hexstr=proposal_id_hex)).call()
+            
+            # La estructura retorna: [address sender, uint256 blockNumber, uint256 timestamp]
+            sender = proposal_data[0]
+            
+            # Si el sender es la dirección cero, significa que no está registrada
+            if sender == "0x0000000000000000000000000000000000000000":
+                return False
+                
+            return True
+
+        except Exception as e:
+            logger.error(f"Error al leer proposalData desde la blockchain: {str(e)}", exc_info=True)
+            raise cm_exceptions.BlockchainReadException(
+                "No se pudo completar la verificación del compromiso en el Smart Contract."
+            )
             
 @lru_cache()
 def get_contract_manager() -> ContractManager:
