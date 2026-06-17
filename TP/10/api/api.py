@@ -1,10 +1,12 @@
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 import logging
+import os
 import sys
-from fastapi import Depends, FastAPI, HTTPException, status, Request,Path
+from fastapi import Depends, FastAPI, HTTPException, status, Request,Path,UploadFile, File
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from services.settings import get_settings, Settings
 from listeners.BlockChainWorker import BlockchainWorker
 import messages as Messages
 from models.AuthorieAddress import AuthorizeAddress
@@ -39,6 +41,7 @@ logger = logging.getLogger("app")
 async def lifespan(app: FastAPI):
     db_manager = get_db_manager()
     signer = get_signer()
+    settings = get_settings()
     admin_address = signer.admin_address.lower()
 
     try:
@@ -61,6 +64,9 @@ async def lifespan(app: FastAPI):
         # sys.exit(1) aborta el proceso de Python por completo, matando a Uvicorn
         sys.exit(1)
         
+    os.makedirs(settings.upload_dir, exist_ok=True)
+    logger.info(f"Directorio de almacenamiento de archivos: {settings.upload_dir}")
+    
     worker = BlockchainWorker()
     
     # Creamos una tarea en segundo plano en el event loop de Python
@@ -425,7 +431,8 @@ async def register_proposal(
                 proofs=merkle_proofs,            
                 created=block_timestamp,
                 blocknumber=mining_block,
-                sender=receipt.get('from')       
+                sender=receipt.get('from'),
+                transaction_hash=tx_hash_hex,    
             )
         except db_exceptions.RecordAlreadyExistsException:
             return JSONResponse(
@@ -1558,4 +1565,58 @@ async def get_global_calls_catalog(
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
             content={"message": Messages.INTERNAL_ERROR}
+        )
+        
+        
+@app.post(
+    "/upload-files",
+    status_code=status.HTTP_201_CREATED,
+    summary="Persiste archivos físicos en el servidor renombrándolos por su hash Keccak256"
+)
+async def upload_files(
+    uploaded_files: list[UploadFile] = File(..., description="Archivos binarios a guardar en el servidor"),
+    contract_manager: ContractManager = Depends(get_contract_manager),
+    settings: Settings = Depends(get_settings)
+):
+    try:
+        saved_file_names = []
+
+        for u_file in uploaded_files:
+            # Leer el contenido binario real del archivo que envió el usuario
+            file_content = await u_file.read()
+            
+            #  cálculo del hash
+            file_hash = contract_manager.hash_file_contents(file_content)
+            
+            # Conservar la extensión original (.pdf, .zip, etc.)
+            _, ext = os.path.splitext(u_file.filename)
+            
+            #El nombre final del archivo es estrictamente su HASH + Extensión
+            new_filename = f"{file_hash}{ext}"
+            file_path = os.path.join(settings.upload_dir, new_filename)
+            
+            #Guardar físicamente el archivo en el almacenamiento local
+            with open(file_path, "wb") as f:
+                f.write(file_content)
+                
+            logger.info(f"Archivo guardado por su hash: {new_filename}")
+            
+            # Registramos el nombre final para la respuesta HTTP
+            saved_file_names.append(new_filename)
+            
+            # Reseteamos el puntero por seguridad
+            await u_file.seek(0)
+
+        return JSONResponse(
+            status_code=status.HTTP_201_CREATED,
+            content={
+                "message": Messages.OK
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Error crítico en el endpoint genérico /upload-files: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"message": "Error interno al intentar guardar los archivos físicos."}
         )

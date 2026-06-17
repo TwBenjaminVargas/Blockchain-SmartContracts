@@ -1071,6 +1071,14 @@ class ContractManager:
                 "No se pudieron recuperar los detalles completos de las convocatorias desde la blockchain."
             )
             
+    def hash_file_contents(self, file_bytes: bytes) -> str:
+        """
+        Calcula el hash keccak256 de los bytes de un archivo.
+        """
+        if not file_bytes:
+            return "0x" + "0" * 64
+        return to_hex(keccak(primitive=file_bytes))
+            
 @lru_cache()
 def get_contract_manager() -> ContractManager:
     """

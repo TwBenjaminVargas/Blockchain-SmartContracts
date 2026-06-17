@@ -15,4 +15,6 @@ class Proposal(SQLModel, table=True):
     
     created: int = SQLField(description="Timestamp Unix de confirmación on-chain")
     blocknumber: int = SQLField(description="Número de bloque en el que se minó la transacción")
+    transactionHash: str = SQLField(description="Hash único de la transacción en la blockchain", index=True)
     sender: str = SQLField(description="Dirección de la cuenta del servidor que envió la TX")
+    

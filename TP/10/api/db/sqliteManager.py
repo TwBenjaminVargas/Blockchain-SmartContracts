@@ -287,7 +287,8 @@ class DBManager:
         proofs: dict,
         created: int,
         blocknumber: int,
-        sender: str
+        sender: str,
+        transaction_hash: str
     ):
         import json
         new_proposal = Proposal(
@@ -301,7 +302,8 @@ class DBManager:
             proofsJson=json.dumps(proofs),
             created=created,
             blocknumber=blocknumber,
-            sender=sender.lower()
+            sender=sender.lower(),
+            transactionHash=transaction_hash
         )
         return self._add(new_proposal)
 
