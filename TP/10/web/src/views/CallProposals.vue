@@ -52,7 +52,7 @@
                 Listado de Postulaciones ({{ proposals.length }})
               </h4>
               <v-btn
-                v-if="!isCallClosed"
+                v-if="!isCallClosed && !hasRestrictedRole"
                 color="indigo-darken-1"
                 variant="flat"
                 class="rounded-lg font-weight-bold text-white px-4 shadow-sm"
@@ -60,8 +60,11 @@
               >
                 Añadir Propuesta
               </v-btn>
-              <v-chip v-else color="amber-darken-2" variant="tonal" class="font-weight-bold rounded-lg">
+              <v-chip v-else-if="isCallClosed" color="amber-darken-2" variant="tonal" class="font-weight-bold rounded-lg">
                 Convocatoria Finalizada
+              </v-chip>
+              <v-chip v-else color="grey-darken-2" variant="tonal" class="font-weight-bold rounded-lg">
+                Modo Consulta
               </v-chip>
             </div>
 
@@ -122,7 +125,11 @@
 
                     <div class="d-flex justify-end gap-2 border-top pt-3">
                       
-                      <template v-if="isCallClosed && (matchState(proposal.state, 'created') || !proposal.state)">
+                      <template v-if="hasRestrictedRole">
+                        <span class="text-caption text-slate-medium my-auto italic">Vista de solo lectura para administradores/creadores</span>
+                      </template>
+
+                      <template v-else-if="isCallClosed && (matchState(proposal.state, 'created') || matchState(proposal.state, 'initial') || !proposal.state)">
                         <v-btn
                           color="warning"
                           variant="flat"
@@ -134,7 +141,7 @@
                         </v-btn>
                       </template>
 
-                      <template v-else-if="matchState(proposal.state, 'created') || !proposal.state">
+                      <template v-else-if="matchState(proposal.state, 'created') || matchState(proposal.state, 'initial') || !proposal.state">
                         <input
                           type="file"
                           :id="'receipt-input-' + proposal.proposalId"
@@ -167,7 +174,7 @@
                         <span class="text-caption text-slate-medium my-auto italic">Procesando entrega en blockchain...</span>
                       </template>
 
-                      </div>
+                    </div>
                   </v-expansion-panel-text>
                 </v-expansion-panel>
               </v-expansion-panels>
@@ -305,6 +312,8 @@
 import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { keccak256 } from 'js-sha3'
+// Importación de la tienda de wallet para validar roles
+import { useWalletStore } from '../stores/wallet'
 import { 
   getCallById, 
   getProposalsByCall, 
@@ -317,6 +326,7 @@ import {
 import { ASSETS } from '../config/constants'
 
 const route = useRoute()
+const walletStore = useWalletStore() // Instancia de la tienda
 const callId = ref(route.params.callId)
 const exit_svg = ASSETS.exitIcon
 const BACKGROUND_IMAGE = ASSETS.callsProposalsBg
@@ -358,10 +368,16 @@ const isCallClosed = computed(() => {
   return currentTime.value > new Date(closingTimeISO.value)
 })
 
-// Función auxiliar para comparar estados sin importar mayúsculas/minúsculas
+// Evalúa si el usuario actual posee restricciones por ser administrador o creador institucional
+const hasRestrictedRole = computed(() => {
+  const role = walletStore.userRole?.toLowerCase()
+  return role === 'admin' || role === 'creator'
+})
+
+// Limpieza de estados y comparación segura insensible a mayúsculas/minúsculas
 const matchState = (currentStatus, targetStatus) => {
-  if (!currentStatus) return false
-  return currentStatus.toString().toLowerCase() === targetStatus.toLowerCase()
+  if (currentStatus === undefined || currentStatus === null) return false
+  return currentStatus.toString().trim().toLowerCase() === targetStatus.trim().toLowerCase()
 }
 
 // --- ÁRBOL DE MERKLE ---
@@ -500,6 +516,7 @@ const removeFile = (index) => {
 }
 
 const resetFormAndOpen = () => {
+  if (hasRestrictedRole.value) return
   formProposal.value.title = ''
   formProposal.value.description = ''
   selectedFilesList.value = []
@@ -509,7 +526,7 @@ const resetFormAndOpen = () => {
 }
 
 const submitProposal = async () => {
-  if (!formRef.value) return
+  if (!formRef.value || hasRestrictedRole.value) return
   const { valid } = await formRef.value.validate()
   if (!valid) return
   if (selectedFilesList.value.length === 0) {
@@ -553,6 +570,7 @@ const downloadReceipt = async (proposalId) => {
 }
 
 const triggerReceiptSelection = (proposalId) => {
+  if (hasRestrictedRole.value) return
   const inputEl = document.getElementById(`receipt-input-${proposalId}`)
   if (inputEl) inputEl.click()
 }
@@ -597,6 +615,7 @@ const handleReceiptUpload = (event, proposalId) => {
 }
 
 const openPostClosingModal = (proposal) => {
+  if (hasRestrictedRole.value) return
   selectedProposal.value = proposal
   postClosingReceiptFile.value = null
   postClosingFilesList.value = []
@@ -619,7 +638,7 @@ const onPostClosingFilesChanged = (e) => {
 }
 
 const submitPostClosingData = async () => {
-  if (!postClosingReceiptFile.value || postClosingFilesList.value.length === 0) {
+  if (!postClosingReceiptFile.value || postClosingFilesList.value.length === 0 || hasRestrictedRole.value) {
     postClosingError.value = 'Faltan campos mandatorios.'
     return
   }
