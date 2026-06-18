@@ -8,10 +8,12 @@ export const ASSETS = {
   registerBg: GENERIC_BACKGROUND_URL,
   adminBg: GENERIC_BACKGROUND_URL,
   creatorBg: GENERIC_BACKGROUND_URL,
+  callsProposalsBg: GENERIC_BACKGROUND_URL,
   // Iconos SVG
   clockIcon: 'https://www.svgrepo.com/show/524426/clock-circle.svg',
   questionIcon: 'https://www.svgrepo.com/show/509211/question.svg',
-  pencilIcon: 'https://www.svgrepo.com/show/489772/pencil.svg'
+  pencilIcon: 'https://www.svgrepo.com/show/489772/pencil.svg',
+  exitIcon: 'https://www.svgrepo.com/show/343096/exit-left.svg'
 
 }
 import FactoryAbi from '../abis/CFPFactory.json'
@@ -35,5 +37,10 @@ export const URL = {
     updateRegistration: `/registrations/:address`,
     getUserCalls: '/calls-by/:address',
     createCall: '/create',
-    global_calls: '/global-calls'
+    global_calls: '/global-calls',
+    getProposalsByCall: '/calls/:call_id/proposals',
+    getProposalReceipt: '/proposals/:proposalId/receipt',
+    submitPostClosing: '/proposals/submit-post-closing',
+    verifyProposal: '/proposals/verify',
+    downloadProposalFiles: '/proposals/:proposal_id/download',
 }

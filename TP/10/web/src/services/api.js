@@ -127,3 +127,71 @@ export const getGlobalCalls = async () => {
     throw error
   }
 }
+export const getProposalsByCall = async (callId) => {
+  try {
+    const response = await api.get(URL.getProposalsByCall.replace(':call_id', callId))
+    return response.data
+  } catch (error) {
+    console.error(`Error al obtener propuestas del llamado ${callId}:`, error)
+    throw error
+  }
+}
+
+
+export const getProposalReceipt = async (proposalId) => {
+  try {
+    const response = await api.get(URL.getProposalReceipt.replace(':proposalId', proposalId))
+    return response.data
+  } catch (error) {
+    console.error(`Error al obtener el recibo para la propuesta ${proposalId}:`, error)
+    throw error
+  }
+}
+
+
+export const submitPostClosing = async (payload) => {
+  try {
+    // Si envías archivos binarios físicos reales, recordar configurar 'Content-Type': 'multipart/form-data'
+    const response = await api.post(URL.submitPostClosing, payload, {
+      headers: {
+        'Content-Type': payload instanceof FormData ? 'multipart/form-data' : 'application/json'
+      }
+    })
+    return response.data
+  } catch (error) {
+    console.error('Error en la entrega post-cierre de la propuesta:', error)
+    throw error
+  }
+}
+
+export const verifyProposalReceipt = async (payload) => {
+  try {
+    const response = await api.post(URL.verifyProposal, payload)
+    return response.data
+  } catch (error) {
+    console.error('Error al verificar el recibo de la propuesta:', error)
+    throw error
+  }
+}
+
+export const downloadProposalFiles = async (proposalId) => {
+  try {
+    const response = await api.get(URL.downloadProposalFiles.replace(':proposal_id', proposalId), {
+      responseType: 'blob' // Indica a Axios que maneje la respuesta como archivo binario (Blob)
+    })
+    
+    // Crear un link temporal en el DOM para forzar la descarga del ZIP de forma nativa en el navegador
+    const blob = new Blob([response.data], { type: 'application/x-zip-compressed' })
+    const link = document.createElement('a')
+    link.href = window.URL.createObjectURL(blob)
+    link.download = `propuesta_${proposalId.substring(0, 10)}.zip`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    
+    return true
+  } catch (error) {
+    console.error(`Error al descargar el archivo ZIP de la propuesta ${proposalId}:`, error)
+    throw error
+  }
+}
