@@ -1115,6 +1115,64 @@ class ContractManager:
                 "No se pudo completar la verificación del compromiso en el Smart Contract."
             )
             
+    def build_record_files_reception_tx(self, call_id_hex: str, proposal_id_hex: str, sender_address: str) -> dict:
+        """
+        Construye el diccionario de la transacción para 'recordFilesReception' sin firmar,
+        utilizando las propiedades e infraestructura de la instancia actual de ContractManager.
+        
+        """
+        try:
+            logger.info(f"Construyendo transacción cruda para asentar archivos de la propuesta: {proposal_id_hex}")
+            
+            #Obtener los detalles del llamado (dirección del contrato CFP)
+            call_details = self.get_call_details(call_id_hex)
+            cfp_address = call_details.get("cfp_address") # Asegúrate de mapear según la estructura de retorno de tu método
+            
+            if not cfp_address or cfp_address == "0x" + "0" * 40:
+                raise cm_exceptions.BlockchainContractLogicException("El contrato CFP para el llamado especificado no fue localizado.")
+
+            # Instanciar el contrato CFP
+            cfp_contract = self.w3.eth.contract(
+                address=Web3.to_checksum_address(cfp_address),
+                abi=self.cfp_abi
+            )
+            
+            # Normalizar parámetros para la EVM
+            proposal_bytes = Web3.to_bytes(hexstr=proposal_id_hex)
+            checksum_sender = Web3.to_checksum_address(sender_address)
+
+            # Leer parámetros dinámicos de la red mediante self.w3
+            nonce = self.w3.eth.get_transaction_count(checksum_sender)
+            gas_price = self.w3.eth.gas_price
+            chain_id = self.w3.eth.chain_id
+
+            # Estimar el costo de gas simulando la llamada en la EVM
+            gas_estimate = cfp_contract.functions.recordFilesReception(proposal_bytes).estimate_gas({
+                'from': checksum_sender
+            })
+
+            # Construir el set completo de la transacción cruda
+            tx_built = cfp_contract.functions.recordFilesReception(proposal_bytes).build_transaction({
+                'from': checksum_sender,
+                'nonce': nonce,
+                'gas': int(gas_estimate * 1.2),  # Margen de seguridad del 20%
+                'gasPrice': gas_price,
+                'chainId': chain_id
+            })
+
+            logger.debug(f"Transacción para {checksum_sender} construida con éxito. Nonce: {nonce}, Gas: {gas_estimate}")
+            return tx_built
+
+        except ContractLogicError as cle:
+            # Utiliza el parseador de errores nativo que ya definiste en tu clase
+            revert_reason = self._parse_revert_reason(cle)
+            logger.warning(f"La EVM revirtió la simulación de la transacción: {revert_reason}")
+            raise cm_exceptions.BlockchainContractLogicException(revert_reason)
+        except Exception as e:
+            logger.error(f"Error al estructurar la transacción de recepción en ContractManager: {str(e)}", exc_info=True)
+            raise cm_exceptions.BlockchainReadException("No se pudo compilar la transacción debido a una falla de red o de sincronización.")
+            
+                        
 @lru_cache()
 def get_contract_manager() -> ContractManager:
     """

@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 import logging
 import os
 import sys
-from fastapi import Depends, FastAPI, HTTPException, status, Request,Path,UploadFile, File
+from fastapi import Depends, FastAPI, HTTPException, status, Request,Path,UploadFile, File, Form
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from services.settings import get_settings, Settings
@@ -29,6 +29,7 @@ import exceptions.contractManagerExceptions as contract_exceptions
 import exceptions.SignerExceptions as signer_exceptions
 import exceptions.databaseManagerExceptions as db_exceptions
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import ValidationError
 
 
 logging.basicConfig(
@@ -433,7 +434,7 @@ async def register_proposal(
                 created=block_timestamp,
                 blocknumber=mining_block,
                 sender=receipt.get('from'),
-                transaction_hash=tx_hash_hex,    
+                registration_transaction_hash=tx_hash_hex,    
             )
         except db_exceptions.RecordAlreadyExistsException:
             return JSONResponse(
@@ -1666,7 +1667,7 @@ async def get_proposal_receipt(
                 "description": proposal.description,
                 "proofs": merkle_proofs,
                 "files": files_hashes,
-                "transactionHash": proposal.transactionHash,
+                "transactionHash": proposal.registrationTransactionHash,
                 "blockNumber": proposal.blocknumber,
                 "timestamp": proposal.created,
                 "sender": proposal.sender
@@ -1746,6 +1747,142 @@ async def verify_proposal_receipt(
 
     except Exception as e:
         logger.error(f"Fallo crítico en el proceso de verificación de recibo: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"message": Messages.INTERNAL_ERROR}
+        )
+
+@app.post(
+    "/proposals/submit-post-closing",
+    status_code=status.HTTP_200_OK,
+    summary="Recibe el recibo y los archivos físicos post-cierre, verifica integridad y registra"
+)
+async def submit_post_closing(
+    receipt_data: str = Form(..., description="El JSON del recibo original en formato string"),
+    uploaded_files: list[UploadFile] = File(..., description="Los archivos físicos que componen la propuesta")
+):
+    try:
+        # Deserializar y validar el string JSON contra el Pydantic 'VerifyProof'
+        try:
+            receipt_dict = json.loads(receipt_data)
+            receipt = VerifyReceipt(**receipt_dict)
+        except (json.JSONDecodeError, ValidationError) as ve:
+            return JSONResponse(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                content={"message": "El formato del recibo proveído es inválido.", "errors": str(ve)}
+            )
+
+        #Obtener instancias mediante inyección manual dentro del handler
+        contract_manager = get_contract_manager()
+        settings = get_settings()
+
+        # Calcular los hashes de los archivos físicos reales subidos por el usuario
+        actual_files_hashes = []
+        file_contents_map = {} # Guardamos los bytes en memoria temporal por si pasan la validación
+        
+        for u_file in uploaded_files:
+            content = await u_file.read()
+            # Calcular hash
+            file_hash = contract_manager.hash_file_contents(content)
+            actual_files_hashes.append(file_hash)
+            file_contents_map[file_hash] = (content, u_file.filename)
+            await u_file.seek(0)
+
+        # Validar integridad de los archivos contra el recibo comprometido
+        # Ordenamos ambas listas para que la comparación de hashes sea exacta sin importar el orden de subida
+        if sorted(actual_files_hashes) != sorted(receipt.files):
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={
+                    "valid": False,
+                    "reason": "Los archivos subidos no coinciden con los hashes comprometidos en el recibo original."
+                }
+            )
+
+        # Re-verificar la raíz de Merkle local
+        calculated_proposal_id, _, _, _ = contract_manager.generate_merkle_tree(
+            call_id=receipt.callId,
+            title=receipt.title,
+            description=receipt.description,
+            files=receipt.files
+        )
+        if calculated_proposal_id.lower() != receipt.proposalId.lower():
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"valid": False, "reason": "La validación criptográfica del recibo falló (fue adulterado)."}
+            )
+
+        # Validar Fuente de Verdad On-Chain (Consultar al Smart Contract CFP si existe la propuesta)
+        exists_on_chain = contract_manager.check_proposal_exists_on_chain(
+            call_id_hex=receipt.callId,
+            proposal_id_hex=receipt.proposalId
+        )
+        if not exists_on_chain:
+            return JSONResponse(
+                status_code=status.HTTP_404_NOT_FOUND,
+                content={"valid": False, "reason": "El recibo es íntegro pero la propuesta no se encuentra en la Blockchain."}
+            )
+
+        proposal_folder = os.path.join(settings.upload_dir, receipt.proposalId)
+        
+        # Nos aseguramos de que la carpeta de la propuesta exista (si no, la crea)
+        os.makedirs(proposal_folder, exist_ok=True)
+        logger.info(f"Carpeta de almacenamiento preparada para la propuesta: {proposal_folder}")
+
+        # Guardamos físicamente cada archivo verificado dentro de dicha subcarpeta
+        for f_hash, (bytes_data, original_name) in file_contents_map.items():
+            _, ext = os.path.splitext(original_name)
+            final_filename = f"{f_hash}{ext}"
+            
+            file_path = os.path.join(proposal_folder, final_filename)
+            
+            with open(file_path, "wb") as f:
+                f.write(bytes_data)
+                
+            logger.info(f"Archivo verificado guardado de forma agrupada en: {file_path}")
+            
+        try:
+            # Obtener la instancia del Signer inyectado (get_signer)
+            signer = get_signer()
+
+            # Construir el diccionario de la transacción (tx_dict)
+            tx_dict = contract_manager.build_record_files_reception_tx(
+                call_id_hex=receipt.callId,
+                proposal_id_hex=receipt.proposalId,
+                sender_address=signer.address
+            )
+
+            # Firmar la transacción 
+            raw_tx_bytes = signer.sign_transaction(tx_dict)
+
+            # Enviar los bytes firmados a la red 
+            tx_hash = contract_manager.execute_transaction(raw_tx_bytes)
+            
+            logger.info(f"Recepción post-cierre asentada on-chain. Hash: {tx_hash}")
+
+        except contract_exceptions.BlockchainContractLogicException as bcle:
+            # Mapear el error de Solidity
+            error_message = contract_manager.map_revert_reason_to_message(bcle.message)
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"valid": False, "message": error_message}
+            )
+        except (contract_exceptions.NodeRPCException, contract_exceptions.BlockchainTransactionException) as bte:
+            logger.error(f"Fallo de infraestructura de red en entrega post-cierre: {str(bte)}")
+            return JSONResponse(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                content={"message": Messages.INTERNAL_ERROR}
+            )
+        
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "message": Messages.OK,
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Error crítico en entrega post-cierre: {str(e)}", exc_info=True)
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"message": Messages.INTERNAL_ERROR}

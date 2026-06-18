@@ -47,6 +47,7 @@ class BlockchainWorker:
                 await self._process_creator_authorized(from_block, current_latest_block)
                 await self._process_creator_unauthorized(from_block, current_latest_block)
                 await self._process_cfp_created(from_block, current_latest_block)
+                await self._process_files_received(from_block, current_latest_block)
 
                 # Guardar progreso tras éxito de la tanda (Checkpointing en DB)
                 self.db_manager.update_last_block(current_latest_block)
@@ -195,3 +196,67 @@ class BlockchainWorker:
                 
             except Exception as event_err:
                 logger.error(f"Error inesperado al procesar un evento individual CFPCreated: {str(event_err)}", exc_info=True)
+                
+    async def _process_files_received(self, from_block: int, to_block: int):
+            """
+            Filtra y procesa 'event FilesReceived(bytes32 indexed proposal, address sender, uint256 timestamp)'
+            emitido por los contratos CFP individuales.
+            """
+            try:
+                # Obtener todas las convocatorias activas/creadas que tienen dirección de contrato on-chain
+                active_calls = self.db_manager.get_active_calls() 
+                if not active_calls:
+                    return
+
+                for call in active_calls:
+                    try:
+                        # Instanciar dinámicamente el contrato CFP usando el ABI
+                        cfp_contract = self.w3.eth.contract(
+                            address=self.w3.to_checksum_address(call.contractAddress),
+                            abi=self.contract_manager.cfp_abi
+                        )
+
+                        # Crear el filtro de eventos para este rango de bloques específico
+                        event_filter = cfp_contract.events.FilesReceived.create_filter(
+                            from_block=from_block, 
+                            to_block=to_block
+                        )
+
+                        # Iterar y procesar las entradas capturadas
+                        for event in event_filter.get_all_entries():
+                            try:
+                                # Extraer y formatear la propuesta (bytes32) a string hex
+                                proposal_id_raw = event.args.proposal
+                                proposal_id_hex = "0x" + proposal_id_raw.hex() if isinstance(proposal_id_raw, bytes) else str(proposal_id_raw).lower()
+
+                                # Metadatos del bloque y de la transacción provistos de forma nativa por la red
+                                tx_hash = event['transactionHash'].hex()
+                                if not tx_hash.startswith("0x"):
+                                    tx_hash = "0x" + tx_hash
+
+                                block_number = event['blockNumber']
+
+                                logger.info(f"[Listener] Evento FilesReceived detectado en {call.contractAddress} para propuesta: {proposal_id_hex}")
+
+                                #Guardar la evidencia e hito on-chain en la base de datos local
+                                # invocando al método del DBManager que asienta la entrega de archivos
+                                updated = self.db_manager.mark_proposal_files_delivered(
+                                    proposal_id_hex=proposal_id_hex,
+                                    tx_hash=tx_hash,
+                                    block_number=block_number
+                                )
+
+                                if updated:
+                                    logger.info(f"[Listener] Estado de entrega actualizado y enlazado on-chain para {proposal_id_hex}")
+                                else:
+                                    logger.warning(f"[Listener] No se pudo actualizar el hito: la propuesta {proposal_id_hex} no existe localmente.")
+
+                            except Exception as single_event_err:
+                                logger.error(f"Error procesando un log individual de FilesReceived: {str(single_event_err)}")
+
+                    except Exception as contract_err:
+                        logger.debug(f"No se pudieron leer logs de FilesReceived en el contrato {call.contractAddress}: {str(contract_err)}")
+                        continue
+
+            except Exception as e:
+                logger.error(f"Error general en el procesamiento del evento FilesReceived: {str(e)}", exc_info=True)

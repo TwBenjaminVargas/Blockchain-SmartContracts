@@ -9,6 +9,9 @@ contract CFP {
         uint256 blockNumber
     );
 
+    // Evento emitido cuando se suben los archivos post-cierre
+    event FilesReceived(bytes32 indexed proposal, address sender, uint256 timestamp);
+
     // Estructura que representa una propuesta
     struct ProposalData {
         address sender;
@@ -27,6 +30,8 @@ contract CFP {
 
     address public creator;
 
+    mapping(bytes32 => bool) public filesDelivered;
+
 
     modifier checkClosingTime(uint256 _closingTime)
     {
@@ -37,6 +42,11 @@ contract CFP {
     modifier closingTimeHasNotPassed()
     {
         require(block.timestamp <= closingTime, "Convocatoria cerrada");
+        _;
+    }
+
+    modifier closingTimeHasPassed() {
+        require(block.timestamp > closingTime, "La convocatoria todavia esta abierta");
         _;
     }
 
@@ -114,5 +124,20 @@ contract CFP {
     function proposalTimestamp( bytes32 proposal) public view returns (uint256) 
     {
         return proposalData[proposal].timestamp;
+    }
+
+    /** Permite registrar en cadena la entrega final posterior al cierre del llamado.
+     *  Verifica que el tiempo de cierre haya pasado y que la propuesta exista.
+     */
+    function recordFilesReception(bytes32 proposal) public 
+        closingTimeHasPassed 
+    {
+        // Verificar que la propuesta realmente exista en el contrato
+        require(proposalData[proposal].sender != address(0), "La propuesta no existe");
+        // Evitar doble registro
+        require(!filesDelivered[proposal], "Los archivos ya fueron registrados previamente");
+        // Asentar el estado on-chain
+        filesDelivered[proposal] = true;
+        emit FilesReceived(proposal, msg.sender, block.timestamp);
     }
 }

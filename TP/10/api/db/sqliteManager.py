@@ -1,3 +1,4 @@
+import time
 import json
 from services.settings import get_settings
 from sqlmodel import Session, SQLModel, create_engine,select, func
@@ -288,7 +289,7 @@ class DBManager:
         created: int,
         blocknumber: int,
         sender: str,
-        transaction_hash: str
+        registration_transaction_hash: str
     ):
         import json
         new_proposal = Proposal(
@@ -303,7 +304,7 @@ class DBManager:
             created=created,
             blocknumber=blocknumber,
             sender=sender.lower(),
-            transactionHash=transaction_hash
+            registrationTransactionHash=registration_transaction_hash
         )
         return self._add(new_proposal)
 
@@ -573,6 +574,33 @@ class DBManager:
             raise db_exceptions.DatabaseReadException(
                 "Error al consultar el catálogo completo de llamados en la base de datos local."
             )
+    def get_active_calls(self) -> list[Call]:
+        """
+        Recupera de la base de datos local todos los llamados que se encuentran 
+        activos, con contrato inteligente desplegado on-chain y cuyo plazo de 
+        presentación (closingTime) aún NO ha expirado.
+        """
+        try:
+            # Obtener el timestamp Unix actual (entero)
+            current_timestamp = int(time.time())
+            
+            logger.debug(f"Consultando llamados activos y no expirados (Timestamp actual: {current_timestamp})...")
+            with Session(self.engine) as session:
+                statement = select(Call).where(
+                    Call.state == CallState.CREATED,
+                    Call.contractAddress.isnot(None),
+                    Call.contractAddress != "",
+                    Call.closingTime.isnot(None),
+                    Call.closingTime > current_timestamp 
+                )
+                
+                active_calls = session.exec(statement).all()
+                logger.info(f"Se localizaron {len(active_calls)} llamados activos y vigentes en la DB.")
+                return list(active_calls)
+                
+        except Exception as e:
+            logger.error(f"Error crítico al leer los llamados activos y vigentes de la base de datos: {str(e)}", exc_info=True)
+            raise db_exceptions.DatabaseReadException("No se pudieron recuperar las convocatorias activas vigentes.")
     
     def get_proposal_by_id(self, proposal_id: str) -> Optional[Proposal]:
         """
@@ -587,6 +615,34 @@ class DBManager:
         except Exception as e:
             logger.error(f"Error al buscar la propuesta {proposal_id}: {str(e)}", exc_info=True)
             raise db_exceptions.DatabaseReadException("Error al consultar la propuesta en la base de datos local.")
+    
+    def mark_proposal_files_delivered(self, proposal_id_hex: str, tx_hash: str, block_number: int) -> bool:
+        """
+        Actualiza el estado de una propuesta local reflejando que el evento 
+        on-chain de recepción de archivos fue capturado por el listener.
+        """
+        try:
+            logger.info(f"Actualizando BD local: propuesta {proposal_id_hex} archivos entregados on-chain.")
+            with Session(self.engine) as session:
+                statement = select(Proposal).where(func.lower(Proposal.proposalId) == proposal_id_hex.lower())
+                proposal = session.exec(statement).first()
+                
+                if not proposal:
+                    logger.warning(f"Se detectó evento para la propuesta {proposal_id_hex} pero no existe en la BD local.")
+                    return False
+                
+                # Actualizamos los campos de referencia on-chain
+                proposal.filesDelivered = True
+                proposal.deliveryTransactionHash = tx_hash
+                proposal.deliveryBlockNumber = block_number
+                
+                session.add(proposal)
+                session.commit()
+                logger.debug(f"Propuesta {proposal_id_hex} actualizada con éxito en BD.")
+                return True
+        except Exception as e:
+            logger.error(f"Error al actualizar estado de entrega de archivos en BD: {str(e)}")
+            raise db_exceptions.DatabaseWriteException("No se pudo actualizar el hito de entrega en la base de datos.")
             
 @lru_cache()
 def get_db_manager() -> DBManager:
