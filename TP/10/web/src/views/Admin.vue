@@ -363,6 +363,16 @@
                       <span class="text-mono ms-1 select-all">{{ call.callId }}</span>
                     </div>
                   </div>
+                  <div v-if="call.isInternal && call.state === 'CREATED'" class="d-flex justify-end">
+                      <v-btn
+                        color="indigo-darken-1"
+                        variant="elevated"
+                        class="rounded-lg font-weight-bold"
+                        @click="$router.push({ name: 'call-proposals', params: { callId: call.callId } })"
+                      >
+                        Ver propuestas
+                      </v-btn>
+                  </div>
                 </v-expansion-panel-text>
               </v-expansion-panel>
             </v-expansion-panels>

@@ -5,13 +5,19 @@ import Public from '../views/Public.vue'
 import Register from '../views/Register.vue'
 import Admin from '../views/Admin.vue'
 import Creator from '../views/Creator.vue'
+import CallProposals from '../views/CallProposals.vue'
 
 const routes = [
   { path: '/', name: 'landing', component: Landing },
   { path: '/admin', name: 'admin', component: Admin, meta: { requiresRole: 'admin' } },
   { path: '/creator', name: 'creator', component: Creator, meta: { requiresRole: 'creator' } },
   { path: '/public', name: 'public', component: Public, meta: { requiresRole: 'guest' } },
-  { path: '/register', name: 'register', component: Register }
+  { path: '/register', name: 'register', component: Register },
+  { 
+    path: '/calls/:callId/proposals', 
+    name: 'call-proposals', 
+    component: CallProposals
+  }
 ]
 
 const router = createRouter({
