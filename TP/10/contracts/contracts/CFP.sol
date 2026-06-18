@@ -130,7 +130,7 @@ contract CFP {
      *  Verifica que el tiempo de cierre haya pasado y que la propuesta exista.
      */
     function recordFilesReception(bytes32 proposal) public 
-        closingTimeHasPassed 
+    closingTimeHasPassed()
     {
         // Verificar que la propuesta realmente exista en el contrato
         require(proposalData[proposal].sender != address(0), "La propuesta no existe");

@@ -8,6 +8,10 @@ class DatabaseWriteException(AppBaseException):
     """Lanzada cuando falla la escritura física en la base de datos (bloqueos, corrupción)."""
     pass
 
+class DatabaseReadException(AppBaseException):
+    """Lanzada cuando falla la lectura física en la base de datos (bloqueos, corrupción)."""
+    pass
+
 class InvalidInputTypeException(AppBaseException):
     """Lanzada cuando alguno de los parámetros de entrada no es valido """
     pass

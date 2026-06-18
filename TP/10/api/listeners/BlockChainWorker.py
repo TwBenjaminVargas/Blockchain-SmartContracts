@@ -213,17 +213,17 @@ class BlockchainWorker:
                         # Instanciar dinámicamente el contrato CFP usando el ABI
                         cfp_contract = self.w3.eth.contract(
                             address=self.w3.to_checksum_address(call.contractAddress),
-                            abi=self.contract_manager.cfp_abi
+                            abi=self.contract_manager.cfp_abi_data
                         )
 
                         # Crear el filtro de eventos para este rango de bloques específico
-                        event_filter = cfp_contract.events.FilesReceived.create_filter(
-                            from_block=from_block, 
-                            to_block=to_block
+                        events = cfp_contract.events.FilesReceived.get_logs(
+                        from_block=from_block, 
+                        to_block=to_block
                         )
 
                         # Iterar y procesar las entradas capturadas
-                        for event in event_filter.get_all_entries():
+                        for event in events:
                             try:
                                 # Extraer y formatear la propuesta (bytes32) a string hex
                                 proposal_id_raw = event.args.proposal

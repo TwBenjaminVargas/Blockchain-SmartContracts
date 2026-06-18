@@ -590,9 +590,7 @@ class DBManager:
                 statement = select(Call).where(
                     Call.state == CallState.CREATED,
                     Call.contractAddress.isnot(None),
-                    Call.contractAddress != "",
-                    Call.closingTime.isnot(None),
-                    Call.closingTime > current_timestamp 
+                    Call.contractAddress != ""
                 )
                 
                 active_calls = session.exec(statement).all()
@@ -655,7 +653,7 @@ class DBManager:
                 proposal.filesDelivered = True
                 proposal.deliveryTransactionHash = tx_hash
                 proposal.deliveryBlockNumber = block_number
-                proposal.state = ProposalState.DELIVERED
+                proposal.state = ProposalState.DELIVERED.value
                 session.add(proposal)
                 session.commit()
                 logger.debug(f"Propuesta {proposal_id_hex} actualizada con éxito en BD.")
@@ -663,7 +661,45 @@ class DBManager:
         except Exception as e:
             logger.error(f"Error al actualizar estado de entrega de archivos en BD: {str(e)}")
             raise db_exceptions.DatabaseWriteException("No se pudo actualizar el hito de entrega en la base de datos.")
-            
+    
+    def mark_proposal_as_pending(self, proposal_id_hex: str) -> Proposal:
+        """
+        Modifica el estado de una propuesta local al valor PENDING en base a su ID.
+        
+        """
+        # Validación preventiva del parámetro de entrada
+        if not isinstance(proposal_id_hex, str) or not proposal_id_hex.strip():
+            logger.error(f"Parámetro inválido o vacío detectado en mark_proposal_as_pending")
+            raise db_exceptions.InvalidInputTypeException("El ID de la propuesta debe ser una cadena de texto válida.")
+
+        cleaned_id = proposal_id_hex.strip().lower()
+
+        try:
+            logger.info(f"Cambiando estado en BD local a PENDING para la propuesta: {cleaned_id}")
+            with Session(self.engine) as session:
+                # Buscar la propuesta por su clave/ID único
+                statement = select(Proposal).where(func.lower(Proposal.proposalId) == cleaned_id)
+                proposal = session.exec(statement).first()
+                
+                if not proposal:
+                    logger.warning(f"Intento de modificación fallido: La propuesta {cleaned_id} no existe en la BD.")
+                    raise db_exceptions.DatabaseReadException(f"La propuesta con ID {cleaned_id} no fue localizada.")
+                
+                # Actualizar el estado al enumerador correspondiente
+                proposal.state = ProposalState.PENDING
+                
+                session.add(proposal)
+                session.commit()
+                session.refresh(proposal)
+                
+                logger.debug(f"Propuesta {cleaned_id} establecida en PENDING con éxito.")
+                return proposal
+
+        except db_exceptions.DatabaseReadException:
+            raise
+        except SQLAlchemyError as db_err:
+            logger.error(f"Fallo crítico al actualizar estado PENDING en propuesta '{cleaned_id}': {str(db_err)}")
+            raise db_exceptions.DatabaseWriteException("El almacenamiento local no está disponible para actualizar la propuesta.") 
 @lru_cache()
 def get_db_manager() -> DBManager:
     """

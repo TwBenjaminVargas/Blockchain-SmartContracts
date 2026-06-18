@@ -1776,6 +1776,7 @@ async def submit_post_closing(
         #Obtener instancias mediante inyección manual dentro del handler
         contract_manager = get_contract_manager()
         settings = get_settings()
+        db_manager = get_db_manager()
 
         # Calcular los hashes de los archivos físicos reales subidos por el usuario
         actual_files_hashes = []
@@ -1873,6 +1874,14 @@ async def submit_post_closing(
             return JSONResponse(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 content={"message": Messages.INTERNAL_ERROR}
+            )
+        try:
+            db_manager.mark_proposal_as_pending(receipt.proposalId)
+        except db_exceptions.DatabaseWriteException as dwe:
+            logger.error(f"Error al actualizar el estado de la propuesta en la base de datos: {str(dwe)}")
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content={"message": "Error interno al actualizar el estado de la propuesta después de la entrega post-cierre."}
             )
         
         return JSONResponse(

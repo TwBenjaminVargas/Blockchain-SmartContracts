@@ -1125,8 +1125,7 @@ class ContractManager:
             logger.info(f"Construyendo transacción cruda para asentar archivos de la propuesta: {proposal_id_hex}")
             
             #Obtener los detalles del llamado (dirección del contrato CFP)
-            call_details = self.get_call_details(call_id_hex)
-            cfp_address = call_details.get("cfp_address") # Asegúrate de mapear según la estructura de retorno de tu método
+            _, cfp_address = self.get_call_details(call_id_hex)
             
             if not cfp_address or cfp_address == "0x" + "0" * 40:
                 raise cm_exceptions.BlockchainContractLogicException("El contrato CFP para el llamado especificado no fue localizado.")
@@ -1134,7 +1133,7 @@ class ContractManager:
             # Instanciar el contrato CFP
             cfp_contract = self.w3.eth.contract(
                 address=Web3.to_checksum_address(cfp_address),
-                abi=self.cfp_abi
+                abi=self.cfp_abi_data
             )
             
             # Normalizar parámetros para la EVM
@@ -1165,7 +1164,7 @@ class ContractManager:
 
         except ContractLogicError as cle:
             # Utiliza el parseador de errores nativo que ya definiste en tu clase
-            revert_reason = self._parse_revert_reason(cle)
+            revert_reason = self.map_revert_reason_to_message(cle)
             logger.warning(f"La EVM revirtió la simulación de la transacción: {revert_reason}")
             raise cm_exceptions.BlockchainContractLogicException(revert_reason)
         except Exception as e:

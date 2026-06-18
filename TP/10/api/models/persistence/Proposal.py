@@ -4,6 +4,7 @@ from enum import Enum
 
 class ProposalState(str, Enum):
     CREATED= "created"
+    PENDING = "pending"
     DELIVERED = "delivered"
 
 class Proposal(SQLModel, table=True):
