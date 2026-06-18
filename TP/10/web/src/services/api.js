@@ -195,3 +195,23 @@ export const downloadProposalFiles = async (proposalId) => {
     throw error
   }
 }
+
+export const getCallById = async (callId) => {
+  try {
+    const response = await api.get(URL.getCallById.replace(':call_id', callId))
+    return response.data
+  } catch (error) {
+    console.error(`Error al obtener el llamado ${callId}:`, error)
+    throw error
+  }
+}
+
+export const getClosingTime = async (callId) => {
+  try {
+    const response = await api.get(URL.getClosingTime.replace(':call_id', callId))
+    return response.data
+  } catch (error) {
+    console.error(`Error al obtener el tiempo de cierre para el llamado ${callId}:`, error)
+    throw error
+  }
+}

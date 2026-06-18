@@ -43,4 +43,6 @@ export const URL = {
     submitPostClosing: '/proposals/submit-post-closing',
     verifyProposal: '/proposals/verify',
     downloadProposalFiles: '/proposals/:proposal_id/download',
+    getCallById: '/calls/:call_id',
+    getClosingTime: '/closing-time/:call_id'
 }
