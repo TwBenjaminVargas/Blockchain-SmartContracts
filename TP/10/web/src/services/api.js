@@ -215,3 +215,13 @@ export const getClosingTime = async (callId) => {
     throw error
   }
 }
+
+export const registerProposal = async (payload) => {
+  try {
+    const response = await api.post(URL.registerProposal, payload)
+    return response.data
+  } catch (error) {
+    console.error('Error al registrar la propuesta en el servidor:', error)
+    throw error
+  }
+}

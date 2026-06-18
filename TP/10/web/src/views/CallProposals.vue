@@ -55,7 +55,7 @@
                 color="indigo-darken-1"
                 variant="flat"
                 class="rounded-lg font-weight-bold text-white px-4 shadow-sm"
-                @click="dialogOpen = true"
+                @click="resetFormAndOpen"
               >
                 Añadir Propuesta
               </v-btn>
@@ -86,7 +86,6 @@
                   <v-expansion-panel-title class="font-weight-bold text-slate-dark py-4">
                     <div class="d-flex align-center justify-space-between w-100 pr-4">
                       <div class="d-flex align-center">
-                        <v-icon icon="mdi-file-document-outline" color="indigo-darken-1" class="me-2"></v-icon>
                         <span>{{ proposal.title }}</span>
                       </div>
                       <v-chip
@@ -120,7 +119,6 @@
                       <v-btn
                         color="secondary"
                         variant="outlined"
-                        prepend-icon="mdi-receipt-text-outline"
                         class="rounded-lg font-weight-bold border-light text-slate-dark"
                         @click="downloadReceipt(proposal.proposalId)"
                       >
@@ -144,24 +142,29 @@
             <v-icon icon="mdi-file-plus-outline" color="indigo-darken-1" class="me-2"></v-icon>
             Nueva Propuesta
           </div>
-          <v-btn variant="text" icon="mdi-close" color="slate-medium" @click="dialogOpen = false"></v-btn>
+          <v-btn variant="text" icon="mdi-close" color="slate-medium" @click="dialogOpen = false" :disabled="submitting"></v-btn>
         </v-card-title>
         
         <v-divider class="my-2"></v-divider>
 
         <v-card-text class="pa-2">
-          <v-form>
+          <v-form ref="formRef" v-model="isFormValid" lazy-validation>
             <div class="text-subtitle-2 font-weight-bold text-slate-dark mb-2">Título de la propuesta *</div>
             <v-text-field
+              v-model="formProposal.title"
+              :rules="[v => !!v || 'El título es obligatorio', v => v.length <= 150 || 'El título no puede superar los 150 caracteres']"
               placeholder="Ej: Desarrollo de Infraestructura Descentralizada"
               variant="outlined"
               color="indigo-darken-1"
               class="rounded-lg mb-2"
               density="comfortable"
+              :disabled="submitting"
             ></v-text-field>
 
             <div class="text-subtitle-2 font-weight-bold text-slate-dark mb-2">Descripción Corta *</div>
             <v-textarea
+              v-model="formProposal.description"
+              :rules="[v => !!v || 'La descripción es obligatoria', v => v.length <= 1000 || 'La descripción no puede superar los 1000 caracteres']"
               placeholder="Detalla los alcances técnicos resumidos de tu postulación..."
               variant="outlined"
               color="indigo-darken-1"
@@ -169,10 +172,26 @@
               rows="3"
               auto-grow
               density="comfortable"
+              :disabled="submitting"
             ></v-textarea>
 
             <div class="text-subtitle-2 font-weight-bold text-slate-dark mb-2">Archivos Comprobatorios *</div>
-            <div class="drag-drop-zone d-flex flex-column align-center justify-center pa-6 rounded-xl text-center">
+            
+            <input
+              type="file"
+              ref="fileInputRef"
+              multiple
+              style="display: none"
+              @change="onFilesSelected"
+              accept=".pdf,.zip,.docx"
+            />
+
+            <div 
+              class="drag-drop-zone d-flex flex-column align-center justify-center pa-6 rounded-xl text-center mb-2"
+              @dragover.prevent
+              @drop.prevent="onFilesDropped"
+              :class="{ 'disabled-zone': submitting }"
+            >
               <v-icon icon="mdi-cloud-upload-outline" color="indigo-darken-1" size="48" class="mb-2"></v-icon>
               <div class="text-body-2 font-weight-bold text-slate-dark mb-1">
                 Arrastra tus archivos aquí o haz clic para buscar
@@ -185,10 +204,53 @@
                 variant="tonal" 
                 size="small" 
                 class="rounded-lg font-weight-bold"
+                @click="$refs.fileInputRef.click()"
+                :disabled="submitting"
               >
                 Seleccionar archivos
               </v-btn>
             </div>
+
+            <div v-if="selectedFilesList.length > 0" class="mb-2">
+              <div class="text-caption font-weight-bold text-slate-dark mb-1">Archivos seleccionados ({{ selectedFilesList.length }}):</div>
+              <v-sheet max-height="120" class="overflow-y-auto pa-2 border rounded-lg bg-slate-light-flat">
+                <div 
+                  v-for="(fileItem, index) in selectedFilesList" 
+                  :key="index"
+                  class="d-flex align-center justify-space-between text-caption border-bottom py-1"
+                >
+                  <div class="d-flex align-center text-truncate max-w-70">
+                    <v-icon icon="mdi-paperclip" size="16" class="me-1 text-slate-medium"></v-icon>
+                    <span class="text-truncate">{{ fileItem.name }}</span>
+                  </div>
+                  <div class="d-flex align-center">
+                    <span v-if="fileItem.hashing" class="text-orange font-weight-bold me-2 text-xxs">Calculando hash...</span>
+                    <span v-else class="text-success font-weight-bold me-2 text-mono text-xxs">✓ {{ fileItem.hash.substring(0,10) }}...</span>
+                    <v-btn 
+                      icon="mdi-delete-outline" 
+                      variant="text" 
+                      density="compact" 
+                      color="error"
+                      @click="removeFile(index)"
+                      :disabled="submitting"
+                    ></v-btn>
+                  </div>
+                </div>
+              </v-sheet>
+            </div>
+
+            <v-alert 
+              v-if="localProposalId" 
+              type="success" 
+              variant="tonal" 
+              class="rounded-xl mt-3 pa-2"
+              icon="mdi-shield-check-outline"
+            >
+              <div class="text-caption font-weight-bold">Proposal ID Calculado Localmente:</div>
+              <div class="text-mono text-truncate text-xxs">{{ localProposalId }}</div>
+            </v-alert>
+
+            <div v-if="fileError" class="text-caption text-error mb-2 font-weight-bold">{{ fileError }}</div>
           </v-form>
         </v-card-text>
 
@@ -198,6 +260,7 @@
             color="slate-medium" 
             class="rounded-lg font-weight-bold px-4" 
             @click="dialogOpen = false"
+            :disabled="submitting"
           >
             Cancelar
           </v-btn>
@@ -205,6 +268,9 @@
             color="indigo-darken-1" 
             variant="flat" 
             class="rounded-lg font-weight-bold px-6 text-white shadow-sm"
+            @click="submitProposal"
+            :loading="submitting"
+            :disabled="selectedFilesList.length === 0 || hashingInProgress"
           >
             Enviar Propuesta
           </v-btn>
@@ -213,70 +279,143 @@
     </v-dialog>
   </v-container>
 </template>
+
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
-// Agregamos la importación de getClosingTime desde tu capa de servicios
-import { getCallById, getProposalsByCall, getProposalReceipt, getClosingTime } from '../services/api'
+import { keccak256 } from 'js-sha3'
+import { getCallById, getProposalsByCall, getProposalReceipt, getClosingTime, registerProposal as apiRegisterProposal } from '../services/api'
 import { ASSETS } from '../config/constants'
 
 const route = useRoute()
 const callId = ref(route.params.callId)
 const exit_svg = ASSETS.exitIcon
-
-// Estética
 const BACKGROUND_IMAGE = ASSETS.callsProposalsBg
 
-// Estados de carga e información reactiva
+const formRef = ref(null)
+const fileInputRef = ref(null)
+
 const dialogOpen = ref(false)
 const loadingCall = ref(true)
 const loadingProposals = ref(true)
+const submitting = ref(false)
+const isFormValid = ref(false)
+
 const callData = ref(null)
 const proposals = ref([])
-const closingTimeISO = ref(null) // Nuevo estado reactivo para almacenar la fecha ISO del endpoint
+const closingTimeISO = ref(null)
 
-// Función auxiliar robustecida para formatear tanto Unix Timestamps (números) como Strings ISO 8601
+const formProposal = ref({ title: '', description: '' })
+const selectedFilesList = ref([])
+const fileError = ref(null)
+
+const hashingInProgress = computed(() => selectedFilesList.value.some(f => f.hashing))
+
+// --- ÁRBOL DE MERKLE ---
+const localProposalId = computed(() => {
+  if (!formProposal.value.title || !formProposal.value.description || selectedFilesList.value.length === 0 || hashingInProgress.value) {
+    return ''
+  }
+
+  try {
+    // Hashear Título y Descripción usando Keccak256 de forma idéntica a Python encoding utf-8
+    const titleHash = '0x' + keccak256(formProposal.value.title)
+    const descHash = '0x' + keccak256(formProposal.value.description)
+    const callIdNormalized = callId.value.toLowerCase().replace('0x', '')
+
+    // Preparar todas las hojas convirtiéndolas a buffers de bytes para ordenamiento estricto
+    const leavesHex = [
+      callId.value.toLowerCase().replace('0x', ''),
+      keccak256(formProposal.value.title),
+      keccak256(formProposal.value.description),
+      ...selectedFilesList.value.map(f => f.hash.toLowerCase().replace('0x', ''))
+    ]
+
+    // Ordenamiento lexicográfico equivalente al sorted([bytes]) de Python sobre cadenas hex normalizadas
+    leavesHex.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+
+    const n = leavesHex.length
+    // Representamos el árbol como un arreglo lineal de 2n - 1 elementos (cada elemento es un string hex)
+    const tree = new Array(2 * n - 1).fill('')
+
+    // Colocar las hojas al final del arreglo
+    for (let i = 0; i < n; i++) {
+      tree[2 * n - 2 - i] = leavesHex[i]
+    }
+
+    // Convertir string hex par a Uint8Array para operaciones seguras de comparación binaria min/max
+    const hexToBytes = (hex) => {
+      const arr = new Uint8Array(hex.length / 2)
+      for (let i = 0; i < arr.length; i++) {
+        arr[i] = parseInt(hex.substr(i * 2, 2), 16)
+      }
+      return arr
+    }
+
+    const bytesToHex = (bytes) => {
+      return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')
+    }
+
+    // Calcular los nodos internos combinando los hijos correspondientes con la lógica de OpenZeppelin standard pairing
+    for (let i = n - 2; i >= 0; i--) {
+      const leftHex = tree[2 * i + 1]
+      const rightHex = tree[2 * i + 2]
+
+      const leftBytes = hexToBytes(leftHex)
+      const rightBytes = hexToBytes(rightHex)
+
+      // Lógica de comparación de bytes min/max idéntica a Python
+      let isLeftSmaller = true
+      for (let j = 0; j < Math.min(leftBytes.length, rightBytes.length); j++) {
+        if (leftBytes[j] !== rightBytes[j]) {
+          isLeftSmaller = leftBytes[j] < rightBytes[j]
+          break
+        }
+      }
+
+      const combinedBytes = new Uint8Array(leftBytes.length + rightBytes.length)
+      if (isLeftSmaller) {
+        combinedBytes.set(leftBytes, 0)
+        combinedBytes.set(rightBytes, leftBytes.length)
+      } else {
+        combinedBytes.set(rightBytes, 0)
+        combinedBytes.set(leftBytes, rightBytes.length)
+      }
+
+      // Aplicar Keccak-256 al par combinado
+      tree[i] = keccak256(combinedBytes)
+    }
+
+    return '0x' + tree[0].toLowerCase()
+  } catch (err) {
+    console.error('Error calculando Merkle Root local:', err)
+    return ''
+  }
+})
+
 const formatTimestamp = (value) => {
   if (!value) return 'Sin fecha'
-  
-  // Si viene en formato String ISO (como el que devuelve /closing-time/{call_id}), instanciamos directamente la fecha
-  // Si viene como un timestamp numérico de Unix, multiplicamos por 1000
   const date = typeof value === 'string' ? new Date(value) : new Date(value * 1000)
-  
-  // Verificamos si la fecha resultante es válida antes de parsear
   if (isNaN(date.getTime())) return 'Fecha inválida'
-
-  return date.toLocaleString('es-AR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
+  return date.toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-// Carga los datos de la Convocatoria desde la API y consulta su tiempo de cierre
 const loadCallDetails = async () => {
   try {
     loadingCall.value = true
-    
-    // Ejecutamos las dos llamadas de forma concurrente para optimizar tiempos de respuesta
     const [callResponse, closingTimeResponse] = await Promise.all([
       getCallById(callId.value),
       getClosingTime(callId.value)
     ])
-    
     callData.value = callResponse
-    // Guardamos la propiedad 'closingTime' devuelta dentro del JSON por el backend de FastAPI
     closingTimeISO.value = closingTimeResponse.closingTime 
   } catch (error) {
-    console.error("Error al cargar detalles de la convocatoria o fecha de cierre:", error)
+    console.error("Error al cargar detalles de la convocatoria:", error)
   } finally {
     loadingCall.value = false
   }
 }
 
-// Carga las propuestas vinculadas desde la API
 const loadProposals = async () => {
   try {
     loadingProposals.value = true
@@ -289,12 +428,102 @@ const loadProposals = async () => {
   }
 }
 
-// Descarga el recibo de la propuesta en formato JSON para el oferente
+// Criptografía: Hashear el archivo usando Keccak256 para ser compatible con la validación del Backend
+const calculateFileHash = async (file) => {
+  return new Promise((resolve) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const arrayBuffer = e.target.result
+      const hashResult = keccak256(arrayBuffer)
+      resolve(`0x${hashResult}`.toLowerCase())
+    }
+    reader.readAsArrayBuffer(file)
+  })
+}
+
+const processIncomingFiles = async (files) => {
+  fileError.value = null
+  const maxSize = 10 * 1024 * 1024
+
+  for (let file of files) {
+    if (file.size > maxSize) {
+      fileError.value = `El archivo "${file.name}" supera el límite de 10MB.`
+      continue
+    }
+
+    const fileIdx = selectedFilesList.value.length
+    selectedFilesList.value.push({
+      name: file.name,
+      size: file.size,
+      hash: '',
+      hashing: true
+    })
+    
+    const hashResult = await calculateFileHash(file)
+    selectedFilesList.value[fileIdx].hash = hashResult
+    selectedFilesList.value[fileIdx].hashing = false
+  }
+}
+
+const onFilesSelected = (e) => {
+  if (e.target.files) processIncomingFiles(e.target.files)
+}
+
+const onFilesDropped = (e) => {
+  if (submitting.value) return
+  if (e.dataTransfer && e.dataTransfer.files) processIncomingFiles(e.dataTransfer.files)
+}
+
+const removeFile = (index) => {
+  selectedFilesList.value.splice(index, 1)
+}
+
+const resetFormAndOpen = () => {
+  formProposal.value.title = ''
+  formProposal.value.description = ''
+  selectedFilesList.value = []
+  fileError.value = null
+  if (formRef.value) formRef.value.resetValidation()
+  dialogOpen.value = true
+}
+
+const submitProposal = async () => {
+  if (!formRef.value) return
+  
+  const { valid } = await formRef.value.validate()
+  if (!valid) return
+
+  if (selectedFilesList.value.length === 0) {
+    fileError.value = 'Debes incluir al menos un archivo comprobatorio.'
+    return
+  }
+
+  try {
+    submitting.value = true
+    fileError.value = null
+
+    const payload = {
+      callId: callId.value,
+      title: formProposal.value.title,
+      description: formProposal.value.description,
+      files: selectedFilesList.value.map(file => file.hash)
+    }
+
+    await apiRegisterProposal(payload)
+    dialogOpen.value = false
+    await loadProposals()
+  } catch (error) {
+    console.error("Error al registrar propuesta:", error)
+    const backMsg = error.response?.data?.message || 'Error interno al procesar propuesta.'
+    fileError.value = `Error en el servidor: ${backMsg}`
+  } finally {
+    submitting.value = false
+  }
+}
+
 const downloadReceipt = async (proposalId) => {
   try {
     const receiptData = await getProposalReceipt(proposalId)
-    
-    // Convertimos el JSON recibido en un archivo descargable al vuelo
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(receiptData, null, 2))
     const downloadAnchor = document.createElement('a')
     downloadAnchor.setAttribute("href", dataStr)
@@ -307,7 +536,6 @@ const downloadReceipt = async (proposalId) => {
   }
 }
 
-// Ejecución al montar el componente
 onMounted(() => {
   if (callId.value) {
     loadCallDetails()
@@ -321,7 +549,6 @@ onMounted(() => {
   min-height: 100vh;
   overflow: hidden;
 }
-
 .blur-background {
   position: absolute;
   top: 0; left: 0; right: 0; bottom: 0;
@@ -331,11 +558,9 @@ onMounted(() => {
   transform: scale(1.05);
   z-index: 0;
 }
-
 .z-index-1 {
   z-index: 1;
 }
-
 .main-panel {
   background-color: rgba(248, 250, 252, 0.92) !important;
   backdrop-filter: blur(12px);
@@ -344,71 +569,70 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
 }
-
 .bg-slate-light {
   background-color: #ffffff !important;
   border: 1px solid #e2e8f0;
 }
-
 .bg-slate-light-flat {
   background-color: #f8fafc !important;
 }
-
 .border-light {
   border: 1px solid #e2e8f0 !important;
 }
-
 .italic-description {
   font-style: italic;
   word-wrap: break-word;
   white-space: normal;
 }
-
 .text-slate-dark {
   color: #0f172a !important;
 }
-
 .text-slate-medium {
   color: #475569 !important;
 }
-
 .text-mono {
   font-family: 'Courier New', Courier, monospace;
   font-weight: bold;
 }
-
 .proposals-scroll-containerpe {
   overflow-y: auto;
   flex-grow: 1;
 }
-
 .proposal-row {
   background-color: #ffffff !important;
   border: 1px solid #e2e8f0 !important;
   transition: all 0.2s ease-in-out;
 }
-
 .proposal-row :deep(.v-expansion-panel-title--active) {
   background-color: #f1f5f9 !important;
 }
-
 .drag-drop-zone {
   border: 2px dashed #cbd5e1;
   background-color: #f8fafc;
   cursor: pointer;
   transition: all 0.2s ease-in-out;
 }
-
-.drag-drop-zone:hover {
+.drag-drop-zone:hover:not(.disabled-zone) {
   border-color: #4f46e5;
   background-color: #f0f2ff;
 }
-
+.disabled-zone {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 .border-top {
   border-top: 1px solid #e2e8f0;
 }
-
+.border-bottom {
+  border-bottom: 1px solid #e2e8f0;
+}
 .gap-2 {
   gap: 8px;
+}
+.max-w-70 {
+  max-width: 70%;
+}
+.text-xxs {
+  font-size: 0.72rem;
 }
 </style>

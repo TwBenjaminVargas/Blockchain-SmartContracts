@@ -44,5 +44,6 @@ export const URL = {
     verifyProposal: '/proposals/verify',
     downloadProposalFiles: '/proposals/:proposal_id/download',
     getCallById: '/calls/:call_id',
-    getClosingTime: '/closing-time/:call_id'
+    getClosingTime: '/closing-time/:call_id',
+    registerProposal: '/register-proposal'
 }

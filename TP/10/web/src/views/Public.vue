@@ -342,7 +342,7 @@ const searchedGlobalCalls = computed(() => {
   const externals = externalGlobalCalls.value.map(c => ({ ...c, isInternal: false }))
   let unified = [...internals, ...externals]
 
-  // 1. Filtrar por barra de texto (Título, Dirección del contrato, CallID)
+  // Filtrar por barra de texto (Título, Dirección del contrato, CallID)
   const query = searchQuery.value?.toLowerCase().trim() || ''
   if (query) {
     unified = unified.filter(call => {
@@ -353,7 +353,7 @@ const searchedGlobalCalls = computed(() => {
     })
   }
 
-  // 2. Filtrar por Dirección específica del Creador (Wallet)
+  // Filtrar por Dirección específica del Creador (Wallet)
   const creatorQuery = searchCreator.value?.toLowerCase().trim() || ''
   if (creatorQuery) {
     unified = unified.filter(call => 
