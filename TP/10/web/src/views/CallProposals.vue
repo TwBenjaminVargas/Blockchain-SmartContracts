@@ -125,7 +125,29 @@
 
                     <div class="d-flex justify-end gap-2 border-top pt-3">
                       
-                      <template v-if="hasRestrictedRole">
+                      <template v-if="matchState(proposal.state, 'delivered')">
+                        <v-btn
+                          color="indigo-darken-1"
+                          variant="flat"
+                          class="rounded-lg font-weight-bold text-white shadow-sm"
+                          :loading="downloadingZipId === proposal.proposalId"
+                          @click="downloadPhysicalFiles(proposal.proposalId)"
+                        >
+                          Descargar ZIP
+                        </v-btn>
+
+                        <v-btn
+                          color="success"
+                          variant="outlined"
+                          class="rounded-lg font-weight-bold"
+                          :loading="downloadingReceiptId === proposal.proposalId"
+                          @click="downloadFinalReceipt(proposal.proposalId)"
+                        >
+                          Recibo Post-Cierre
+                        </v-btn>
+                      </template>
+
+                      <template v-else-if="hasRestrictedRole">
                         <span class="text-caption text-slate-medium my-auto italic">Vista de solo lectura para administradores/creadores</span>
                       </template>
 
@@ -136,7 +158,6 @@
                           class="rounded-lg font-weight-bold text-white shadow-sm"
                           @click="openPostClosingModal(proposal)"
                         >
-                          <v-icon icon="mdi-cloud-upload" class="me-1"></v-icon>
                           Entrega Post-Cierre
                         </v-btn>
                       </template>
@@ -166,7 +187,7 @@
                           class="rounded-lg font-weight-bold border-light text-slate-dark"
                           @click="downloadReceipt(proposal.proposalId)"
                         >
-                          Descargar Recibo
+                          Descargar Recibo Inicial
                         </v-btn>
                       </template>
 
@@ -189,7 +210,6 @@
       <v-card class="rounded-xl pa-4 bg-white panel-modal shadow-lg">
         <v-card-title class="d-flex align-center justify-space-between text-slate-dark font-weight-bold text-h6">
           <div class="d-flex align-center">
-            <v-icon icon="mdi-file-plus-outline" color="indigo-darken-1" class="me-2"></v-icon>
             Nueva Propuesta
           </div>
           <v-btn variant="text" icon="mdi-close" color="slate-medium" @click="dialogOpen = false" :disabled="submitting"></v-btn>
@@ -230,11 +250,11 @@
               @dragover.prevent
               @drop.prevent="onFilesDropped"
               :class="{ 'disabled-zone': submitting }"
+              style="border: 2px dashed #cbd5e1; cursor: pointer; transition: background 0.2s;"
+              @click="$refs.fileInputRef.click()"
             >
-              <v-icon icon="mdi-cloud-upload-outline" color="indigo-darken-1" size="48" class="mb-2"></v-icon>
               <div class="text-body-2 font-weight-bold text-slate-dark mb-1">Arrastra tus archivos aquí o haz clic para buscar</div>
               <div class="text-caption text-slate-medium mb-3">Formatos permitidos: PDF, ZIP, DOCX (Máx. 10MB c/u)</div>
-              <v-btn color="indigo-darken-1" variant="tonal" size="small" class="rounded-lg font-weight-bold" @click="$refs.fileInputRef.click()" :disabled="submitting">Seleccionar archivos</v-btn>
             </div>
 
             <div v-if="selectedFilesList.length > 0" class="mb-2">
@@ -242,13 +262,12 @@
               <v-sheet max-height="120" class="overflow-y-auto pa-2 border rounded-lg bg-slate-light-flat">
                 <div v-for="(fileItem, index) in selectedFilesList" :key="index" class="d-flex align-center justify-space-between text-caption border-bottom py-1">
                   <div class="d-flex align-center text-truncate max-w-70">
-                    <v-icon icon="mdi-paperclip" size="16" class="me-1 text-slate-medium"></v-icon>
                     <span class="text-truncate">{{ fileItem.name }}</span>
                   </div>
                   <div class="d-flex align-center">
                     <span v-if="fileItem.hashing" class="text-orange font-weight-bold me-2 text-xxs">Calculando hash...</span>
                     <span v-else class="text-success font-weight-bold me-2 text-mono text-xxs">✓ {{ fileItem.hash.substring(0,10) }}...</span>
-                    <v-btn icon="mdi-delete-outline" variant="text" density="compact" color="error" @click="removeFile(index)" :disabled="submitting"></v-btn>
+                    <v-btn variant="text" density="compact" color="error" @click.stop="removeFile(index)" :disabled="submitting"></v-btn>
                   </div>
                 </div>
               </v-sheet>
@@ -272,7 +291,6 @@
       <v-card class="rounded-xl pa-4 bg-white panel-modal shadow-lg">
         <v-card-title class="d-flex align-center justify-space-between text-slate-dark font-weight-bold text-h6">
           <div class="d-flex align-center">
-            <v-icon icon="mdi-cloud-upload-outline" color="warning" class="me-2"></v-icon>
             Entrega Post-Cierre
           </div>
           <v-btn variant="text" icon="mdi-close" color="slate-medium" @click="postClosingDialogOpen = false" :disabled="submittingPostClosing"></v-btn>
@@ -312,7 +330,6 @@
 import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { keccak256 } from 'js-sha3'
-// Importación de la tienda de wallet para validar roles
 import { useWalletStore } from '../stores/wallet'
 import { 
   getCallById, 
@@ -321,12 +338,14 @@ import {
   getClosingTime, 
   registerProposal as apiRegisterProposal,
   verifyProposalReceipt,
-  submitPostClosing 
+  submitPostClosing,
+  downloadProposalFiles,
+  getProposalReceiptPostClosing 
 } from '../services/api'
 import { ASSETS } from '../config/constants'
 
 const route = useRoute()
-const walletStore = useWalletStore() // Instancia de la tienda
+const walletStore = useWalletStore()
 const callId = ref(route.params.callId)
 const exit_svg = ASSETS.exitIcon
 const BACKGROUND_IMAGE = ASSETS.callsProposalsBg
@@ -339,6 +358,9 @@ const loadingCall = ref(true)
 const loadingProposals = ref(true)
 const submitting = ref(false)
 const isFormValid = ref(false)
+
+const downloadingZipId = ref(null)
+const downloadingReceiptId = ref(null)
 
 const callData = ref(null)
 const proposals = ref([])
@@ -368,19 +390,17 @@ const isCallClosed = computed(() => {
   return currentTime.value > new Date(closingTimeISO.value)
 })
 
-// Evalúa si el usuario actual posee restricciones por ser administrador o creador institucional
 const hasRestrictedRole = computed(() => {
   const role = walletStore.userRole?.toLowerCase()
   return role === 'admin' || role === 'creator'
 })
 
-// Limpieza de estados y comparación segura insensible a mayúsculas/minúsculas
 const matchState = (currentStatus, targetStatus) => {
   if (currentStatus === undefined || currentStatus === null) return false
   return currentStatus.toString().trim().toLowerCase() === targetStatus.trim().toLowerCase()
 }
 
-// --- ÁRBOL DE MERKLE ---
+// --- ARBOL DE MERKLE LOCAL ---
 const localProposalId = computed(() => {
   if (!formProposal.value.title || !formProposal.value.description || selectedFilesList.value.length === 0 || hashingInProgress.value) {
     return ''
@@ -433,6 +453,37 @@ const localProposalId = computed(() => {
     return ''
   }
 })
+
+const downloadPhysicalFiles = async (proposalId) => {
+  try {
+    downloadingZipId.value = proposalId
+    await downloadProposalFiles(proposalId)
+  } catch (error) {
+    console.error(error)
+    alert("No se pudieron descargar los archivos físicos de la propuesta.")
+  } finally {
+    downloadingZipId.value = null
+  }
+}
+
+const downloadFinalReceipt = async (proposalId) => {
+  try {
+    downloadingReceiptId.value = proposalId
+    const fullReceiptData = await getProposalReceiptPostClosing(proposalId)
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(fullReceiptData, null, 2))
+    const downloadAnchor = document.createElement('a')
+    downloadAnchor.setAttribute("href", dataStr)
+    downloadAnchor.setAttribute("download", `recibo_definitivo_${proposalId.substring(0, 10)}.json`)
+    document.body.appendChild(downloadAnchor)
+    downloadAnchor.click()
+    downloadAnchor.remove()
+  } catch (error) {
+    console.error(error)
+    alert("Error al descargar el recibo post-cierre definitivo.")
+  } finally {
+    downloadingReceiptId.value = null
+  }
+}
 
 const formatTimestamp = (value) => {
   if (!value) return 'Sin fecha'
@@ -490,30 +541,16 @@ const processIncomingFiles = async (files) => {
       continue
     }
     const fileIdx = selectedFilesList.value.length
-    selectedFilesList.value.push({
-      name: file.name,
-      size: file.size,
-      hash: '',
-      hashing: true
-    })
+    selectedFilesList.value.push({ name: file.name, size: file.size, hash: '', hashing: true })
     const hashResult = await calculateFileHash(file)
     selectedFilesList.value[fileIdx].hash = hashResult
     selectedFilesList.value[fileIdx].hashing = false
   }
 }
 
-const onFilesSelected = (e) => {
-  if (e.target.files) processIncomingFiles(e.target.files)
-}
-
-const onFilesDropped = (e) => {
-  if (submitting.value) return
-  if (e.dataTransfer && e.dataTransfer.files) processIncomingFiles(e.dataTransfer.files)
-}
-
-const removeFile = (index) => {
-  selectedFilesList.value.splice(index, 1)
-}
+const onFilesSelected = (e) => { if (e.target.files) processIncomingFiles(e.target.files) }
+const onFilesDropped = (e) => { if (!submitting.value && e.dataTransfer?.files) processIncomingFiles(e.dataTransfer.files) }
+const removeFile = (index) => { selectedFilesList.value.splice(index, 1) }
 
 const resetFormAndOpen = () => {
   if (hasRestrictedRole.value) return
@@ -535,7 +572,6 @@ const submitProposal = async () => {
   }
   try {
     submitting.value = true
-    fileError.value = null
     const payload = {
       callId: callId.value,
       title: formProposal.value.title,
@@ -546,9 +582,7 @@ const submitProposal = async () => {
     dialogOpen.value = false
     await loadProposals()
   } catch (error) {
-    console.error("Error al registrar propuesta:", error)
-    const backMsg = error.response?.data?.message || 'Error interno al procesar propuesta.'
-    fileError.value = `Error en el servidor: ${backMsg}`
+    fileError.value = `Error en el servidor: ${error.response?.data?.message || 'Error interno.'}`
   } finally {
     submitting.value = false
   }
@@ -560,7 +594,7 @@ const downloadReceipt = async (proposalId) => {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(receiptData, null, 2))
     const downloadAnchor = document.createElement('a')
     downloadAnchor.setAttribute("href", dataStr)
-    downloadAnchor.setAttribute("download", `recibo_propuesta_${proposalId.substring(0, 10)}.json`)
+    downloadAnchor.setAttribute("download", `recibo_inicial_${proposalId.substring(0, 10)}.json`)
     document.body.appendChild(downloadAnchor)
     downloadAnchor.click()
     downloadAnchor.remove()
@@ -570,9 +604,10 @@ const downloadReceipt = async (proposalId) => {
 }
 
 const triggerReceiptSelection = (proposalId) => {
-  if (hasRestrictedRole.value) return
-  const inputEl = document.getElementById(`receipt-input-${proposalId}`)
-  if (inputEl) inputEl.click()
+  if (!hasRestrictedRole.value) {
+    const inputEl = document.getElementById(`receipt-input-${proposalId}`)
+    if (inputEl) inputEl.click()
+  }
 }
 
 const handleReceiptUpload = (event, proposalId) => {
@@ -584,28 +619,13 @@ const handleReceiptUpload = (event, proposalId) => {
     try {
       const receiptJson = JSON.parse(e.target.result)
       const result = await verifyProposalReceipt(receiptJson)
-      if (result.valid) {
-        verificationDialog.value = {
-          open: true,
-          success: true,
-          message: result.message || 'El recibo es completamente válido y está asentado on-chain.'
-        }
-      } else {
-        verificationDialog.value = {
-          open: true,
-          success: false,
-          message: result.reason || 'La validación falló.'
-        }
+      verificationDialog.value = {
+        open: true,
+        success: result.valid,
+        message: result.valid ? (result.message || 'El recibo es válido.') : (result.reason || 'Falló la validación.')
       }
     } catch (err) {
-      console.error(err)
-      let errMsg = 'El formato del archivo JSON cargado no es válido o está corrupto.'
-      if (err.response?.data?.reason) {
-        errMsg = err.response.data.reason
-      } else if (err.response?.data?.message) {
-        errMsg = err.response.data.message
-      }
-      verificationDialog.value = { open: true, success: false, message: errMsg }
+      verificationDialog.value = { open: true, success: false, message: 'JSON inválido o corrupto.' }
     } finally {
       verifyingId.value = null
       event.target.value = '' 
@@ -625,46 +645,28 @@ const openPostClosingModal = (proposal) => {
 
 const onReceiptFileChanged = (e) => {
   const files = e.target.files || e.dataTransfer?.files
-  if (files && files.length > 0) {
-    postClosingReceiptFile.value = files[0]
-  }
+  if (files && files.length > 0) postClosingReceiptFile.value = files[0]
 }
-
 const onPostClosingFilesChanged = (e) => {
   const files = e.target.files || e.dataTransfer?.files
-  if (files) {
-    postClosingFilesList.value = Array.from(files)
-  }
+  if (files) postClosingFilesList.value = Array.from(files)
 }
 
 const submitPostClosingData = async () => {
-  if (!postClosingReceiptFile.value || postClosingFilesList.value.length === 0 || hasRestrictedRole.value) {
-    postClosingError.value = 'Faltan campos mandatorios.'
-    return
-  }
+  if (!postClosingReceiptFile.value || postClosingFilesList.value.length === 0 || hasRestrictedRole.value) return
   const reader = new FileReader()
   submittingPostClosing.value = true
-  postClosingError.value = null
   reader.onload = async (e) => {
     try {
-      const receiptString = e.target.result
       const formData = new FormData()
-      formData.append('receipt_data', receiptString)
-      postClosingFilesList.value.forEach(file => {
-        formData.append('uploaded_files', file)
-      })
+      formData.append('receipt_data', e.target.result)
+      postClosingFilesList.value.forEach(file => formData.append('uploaded_files', file))
       await submitPostClosing(formData)
       postClosingDialogOpen.value = false
-      verificationDialog.value = {
-        open: true,
-        success: true,
-        message: 'Entrega post-cierre procesada y guardada correctamente con validación on-chain.'
-      }
+      verificationDialog.value = { open: true, success: true, message: 'Entrega post-cierre procesada.' }
       await loadProposals()
     } catch (error) {
-      console.error(error)
-      const backMsg = error.response?.data?.message || error.response?.data?.reason || 'Error crítico en el guardado.'
-      postClosingError.value = `Fallo en el servidor: ${backMsg}`
+      postClosingError.value = `Fallo: ${error.response?.data?.message || 'Error crítico.'}`
     } finally {
       submittingPostClosing.value = false
     }
@@ -673,80 +675,27 @@ const submitPostClosingData = async () => {
 }
 
 onMounted(() => {
-  if (callId.value) {
-    loadCallDetails()
-    loadProposals()
-  }
-  clockInterval = setInterval(() => {
-    currentTime.value = new Date()
-  }, 1000)
+  if (callId.value) { loadCallDetails(); loadProposals(); }
+  clockInterval = setInterval(() => { currentTime.value = new Date() }, 1000)
 })
-
-onBeforeUnmount(() => {
-  if (clockInterval) clearInterval(clockInterval)
-})
+onBeforeUnmount(() => { if (clockInterval) clearInterval(clockInterval) })
 </script>
 
 <style scoped>
-.bg-container {
-  min-height: 100vh;
-  overflow: hidden;
-}
-.blur-background {
-  position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background-size: cover;
-  background-position: center;
-  filter: blur(10px) brightness(0.85);
-  transform: scale(1.05);
-  z-index: 0;
-}
-.z-index-1 {
-  z-index: 1;
-}
-.main-panel {
-  background-color: rgba(248, 250, 252, 0.92) !important;
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  height: 85vh;
-  display: flex;
-  flex-direction: column;
-}
-.bg-slate-light {
-  background-color: #ffffff !important;
-  border: 1px solid #e2e8f0;
-}
-.bg-slate-light-flat {
-  background-color: #f8fafc !important;
-}
-.border-light {
-  border: 1px solid #e2e8f0 !important;
-}
-.italic-description {
-  font-style: italic;
-  word-wrap: break-word;
-  white-space: normal;
-}
-.text-slate-dark {
-  color: #0f172a !important;
-}
-.text-slate-medium {
-  color: #475569 !important;
-}
-.text-mono {
-  font-family: 'Courier New', Courier, monospace;
-  font-weight: bold;
-}
-.proposals-scroll-containerpe {
-  overflow-y: auto;
-  flex-grow: 1;
-}
-.proposal-row {
-  background-color: #ffffff !important;
-  border: 1px solid #e2e8f0 !important;
-  transition: all 0.2s ease-in-out;
-}
-.proposal-row :deep(.v-expansion-panel-title--active) {
-  background-color: #f1f5f9 !important;
-}
+.bg-container { min-height: 100vh; overflow: hidden; }
+.blur-background { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background-size: cover; background-position: center; filter: blur(10px) brightness(0.85); transform: scale(1.05); z-index: 0; }
+.z-index-1 { z-index: 1; }
+.main-panel { background-color: rgba(248, 250, 252, 0.92) !important; backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.6); height: 85vh; display: flex; flex-direction: column; }
+.bg-slate-light { background-color: #ffffff !important; border: 1px solid #e2e8f0; }
+.bg-slate-light-flat { background-color: #f8fafc !important; }
+.border-light { border: 1px solid #e2e8f0 !important; }
+.italic-description { font-style: italic; word-wrap: break-word; white-space: normal; }
+.text-slate-dark { color: #0f172a !important; }
+.text-slate-medium { color: #475569 !important; }
+.text-mono { font-family: 'Courier New', Courier, monospace; font-weight: bold; }
+.proposals-scroll-containerpe { overflow-y: auto; flex-grow: 1; }
+.proposal-row { background-color: #ffffff !important; border: 1px solid #e2e8f0 !important; transition: all 0.2s ease-in-out; }
+.proposal-row :deep(.v-expansion-panel-title--active) { background-color: #f1f5f9 !important; }
+.text-xxs { font-size: 0.7rem; }
+.max-w-70 { max-width: 70%; }
 </style>

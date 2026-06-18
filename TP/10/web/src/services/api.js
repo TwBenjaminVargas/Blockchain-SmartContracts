@@ -225,3 +225,13 @@ export const registerProposal = async (payload) => {
     throw error
   }
 }
+
+export const getProposalReceiptPostClosing = async (proposalId) => {
+  try {
+    const response = await api.get(URL.getProposalReceiptPostClosing.replace(':proposal_id', proposalId))
+    return response.data
+  } catch (error) {
+    console.error(`Error al obtener el recibo post-cierre para la propuesta ${proposalId}:`, error)
+    throw error
+  }
+}
