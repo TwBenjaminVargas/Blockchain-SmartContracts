@@ -1095,7 +1095,7 @@ class ContractManager:
                 return False
 
             # Instanciar el contrato CFP con su dirección y el ABI correspondiente
-            cfp_contract = self.w3.eth.contract(address=Web3.to_checksum_address(cfp_address), abi=self.cfp_abi)
+            cfp_contract = self.w3.eth.contract(address=Web3.to_checksum_address(cfp_address), abi=self.cfp_abi_data)
             
             # Invocar al mapping público 'proposalData' pasándole el hash de la propuesta
             proposal_data = cfp_contract.functions.proposalData(Web3.to_bytes(hexstr=proposal_id_hex)).call()

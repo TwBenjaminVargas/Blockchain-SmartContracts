@@ -116,6 +116,24 @@
                     </div>
 
                     <div class="d-flex justify-end gap-2 border-top pt-3">
+                      <input
+                        type="file"
+                        :id="'receipt-input-' + proposal.proposalId"
+                        style="display: none"
+                        accept=".json"
+                        @change="handleReceiptUpload($event, proposal.proposalId)"
+                      />
+                      
+                      <v-btn
+                        color="indigo-darken-1"
+                        variant="outlined"
+                        class="rounded-lg font-weight-bold"
+                        :loading="verifyingId === proposal.proposalId"
+                        @click="triggerReceiptSelection(proposal.proposalId)"
+                      >
+                        Verificar Recibo
+                      </v-btn>
+
                       <v-btn
                         color="secondary"
                         variant="outlined"
@@ -277,14 +295,48 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <v-dialog v-model="verificationDialog.open" max-width="500px">
+      <v-card class="rounded-xl pa-4 bg-white text-center">
+        <v-card-title class="justify-center d-flex flex-column align-center">
+          <v-icon 
+            :icon="verificationDialog.success ? 'mdi-check-circle-outline' : 'mdi-alert-circle-outline'" 
+            :color="verificationDialog.success ? 'success' : 'error'" 
+            size="64" 
+            class="mb-2"
+          ></v-icon>
+          <span class="font-weight-bold text-slate-dark text-h6">Resultado de Verificación</span>
+        </v-card-title>
+        <v-card-text class="text-body-1 text-slate-medium pa-2">
+          {{ verificationDialog.message }}
+        </v-card-text>
+        <v-card-actions class="justify-center mt-4">
+          <v-btn 
+            color="indigo-darken-1" 
+            variant="flat" 
+            class="rounded-lg font-weight-bold px-6 text-white" 
+            @click="verificationDialog.open = false"
+          >
+            Entendido
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-container>
 </template>
 
 <script setup>
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { keccak256 } from 'js-sha3'
-import { getCallById, getProposalsByCall, getProposalReceipt, getClosingTime, registerProposal as apiRegisterProposal } from '../services/api'
+import { 
+  getCallById, 
+  getProposalsByCall, 
+  getProposalReceipt, 
+  getClosingTime, 
+  registerProposal as apiRegisterProposal,
+  verifyProposalReceipt // Nueva API añadida
+} from '../services/api'
 import { ASSETS } from '../config/constants'
 
 const route = useRoute()
@@ -309,6 +361,10 @@ const formProposal = ref({ title: '', description: '' })
 const selectedFilesList = ref([])
 const fileError = ref(null)
 
+// Estados para la lógica de verificación
+const verifyingId = ref(null)
+const verificationDialog = ref({ open: false, success: false, message: '' })
+
 const hashingInProgress = computed(() => selectedFilesList.value.some(f => f.hashing))
 
 // --- ÁRBOL DE MERKLE ---
@@ -318,12 +374,9 @@ const localProposalId = computed(() => {
   }
 
   try {
-    // Hashear Título y Descripción usando Keccak256 de forma idéntica a Python encoding utf-8
     const titleHash = '0x' + keccak256(formProposal.value.title)
     const descHash = '0x' + keccak256(formProposal.value.description)
-    const callIdNormalized = callId.value.toLowerCase().replace('0x', '')
 
-    // Preparar todas las hojas convirtiéndolas a buffers de bytes para ordenamiento estricto
     const leavesHex = [
       callId.value.toLowerCase().replace('0x', ''),
       keccak256(formProposal.value.title),
@@ -331,19 +384,15 @@ const localProposalId = computed(() => {
       ...selectedFilesList.value.map(f => f.hash.toLowerCase().replace('0x', ''))
     ]
 
-    // Ordenamiento lexicográfico equivalente al sorted([bytes]) de Python sobre cadenas hex normalizadas
     leavesHex.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
 
     const n = leavesHex.length
-    // Representamos el árbol como un arreglo lineal de 2n - 1 elementos (cada elemento es un string hex)
     const tree = new Array(2 * n - 1).fill('')
 
-    // Colocar las hojas al final del arreglo
     for (let i = 0; i < n; i++) {
       tree[2 * n - 2 - i] = leavesHex[i]
     }
 
-    // Convertir string hex par a Uint8Array para operaciones seguras de comparación binaria min/max
     const hexToBytes = (hex) => {
       const arr = new Uint8Array(hex.length / 2)
       for (let i = 0; i < arr.length; i++) {
@@ -352,11 +401,6 @@ const localProposalId = computed(() => {
       return arr
     }
 
-    const bytesToHex = (bytes) => {
-      return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')
-    }
-
-    // Calcular los nodos internos combinando los hijos correspondientes con la lógica de OpenZeppelin standard pairing
     for (let i = n - 2; i >= 0; i--) {
       const leftHex = tree[2 * i + 1]
       const rightHex = tree[2 * i + 2]
@@ -364,7 +408,6 @@ const localProposalId = computed(() => {
       const leftBytes = hexToBytes(leftHex)
       const rightBytes = hexToBytes(rightHex)
 
-      // Lógica de comparación de bytes min/max idéntica a Python
       let isLeftSmaller = true
       for (let j = 0; j < Math.min(leftBytes.length, rightBytes.length); j++) {
         if (leftBytes[j] !== rightBytes[j]) {
@@ -382,7 +425,6 @@ const localProposalId = computed(() => {
         combinedBytes.set(leftBytes, rightBytes.length)
       }
 
-      // Aplicar Keccak-256 al par combinado
       tree[i] = keccak256(combinedBytes)
     }
 
@@ -428,7 +470,6 @@ const loadProposals = async () => {
   }
 }
 
-// Criptografía: Hashear el archivo usando Keccak256 para ser compatible con la validación del Backend
 const calculateFileHash = async (file) => {
   return new Promise((resolve) => {
     const reader = new FileReader()
@@ -534,6 +575,61 @@ const downloadReceipt = async (proposalId) => {
   } catch (error) {
     alert("Error al descargar el recibo de la propuesta.")
   }
+}
+
+// --- LOGICA DE VERIFICACIÓN DE RECIBO SUBIDO ---
+const triggerReceiptSelection = (proposalId) => {
+  const inputEl = document.getElementById(`receipt-input-${proposalId}`)
+  if (inputEl) inputEl.click()
+}
+
+const handleReceiptUpload = (event, proposalId) => {
+  const file = event.target.files[0]
+  if (!file) return
+
+  verifyingId.value = proposalId
+  const reader = new FileReader()
+
+  reader.onload = async (e) => {
+    try {
+      const receiptJson = JSON.parse(e.target.result)
+
+      // Ejecutar la llamada al endpoint de verificación
+      const result = await verifyProposalReceipt(receiptJson)
+
+      if (result.valid) {
+        verificationDialog.value = {
+          open: true,
+          success: true,
+          message: result.message || 'El recibo es completamente válido y está asentado on-chain.'
+        }
+      } else {
+        verificationDialog.value = {
+          open: true,
+          success: false,
+          message: result.reason || 'La validación falló.'
+        }
+      }
+    } catch (err) {
+      console.error(err)
+      let errMsg = 'El formato del archivo JSON cargado no es válido o está corrupto.'
+      if (err.response && err.response.data && err.response.data.reason) {
+        errMsg = err.response.data.reason
+      } else if (err.response && err.response.data && err.response.data.message) {
+        errMsg = err.response.data.message
+      }
+      verificationDialog.value = {
+        open: true,
+        success: false,
+        message: errMsg
+      }
+    } finally {
+      verifyingId.value = null
+      event.target.value = '' // Limpiar input
+    }
+  }
+
+  reader.readAsText(file)
 }
 
 onMounted(() => {

@@ -1662,7 +1662,6 @@ async def get_proposal_receipt(
         return JSONResponse(
             status_code=status.HTTP_200_OK,
             content={
-                "message": Messages.OK,
                 "proposalId": proposal.proposalId,
                 "callId": proposal.callId,
                 "title": proposal.title,
