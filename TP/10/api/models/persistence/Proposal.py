@@ -1,5 +1,10 @@
 from sqlmodel import SQLModel, Field as SQLField
 from typing import Optional
+from enum import Enum
+
+class ProposalState(str, Enum):
+    CREATED= "created"
+    DELIVERED = "delivered"
 
 class Proposal(SQLModel, table=True):
     __tablename__ = "proposals"
@@ -21,4 +26,8 @@ class Proposal(SQLModel, table=True):
     filesDelivered: bool = SQLField(default=False)
     deliveryTransactionHash: Optional[str] = SQLField(default=None, nullable=True)
     deliveryBlockNumber: Optional[int] = SQLField(default=None, nullable=True)
+    
+    state: ProposalState = SQLField(
+        description="Estado de propuesta sincronizada con la blockchain"
+    )
     

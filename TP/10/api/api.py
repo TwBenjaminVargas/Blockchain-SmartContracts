@@ -2,10 +2,12 @@ from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 import logging
 import os
+import zipfile
+import io
 import sys
 from fastapi import Depends, FastAPI, HTTPException, status, Request,Path,UploadFile, File, Form
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse,FileResponse, StreamingResponse
 from services.settings import get_settings, Settings
 from listeners.BlockChainWorker import BlockchainWorker
 import messages as Messages
@@ -1965,3 +1967,99 @@ async def get_proposal_receipt(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"message": Messages.INTERNAL_ERROR}
         )
+
+
+@app.get(
+    "/calls/{call_id}/proposals",
+    status_code=status.HTTP_200_OK,
+    summary="Obtiene todas las propuestas vinculadas a una convocatoria",
+    description="Permite listar y auditar públicamente todas las propuestas y raíces de Merkle de un llamado."
+)
+async def list_proposals_by_call(
+    call_id: str = Path(..., description="El identificador / hash del llamado (0x...)")
+):
+    try:
+        db_manager = get_db_manager()
+        proposals_list = db_manager.get_proposals_by_call(call_id)
+        
+        formatted_proposals = []
+        for p in proposals_list:
+            formatted_proposals.append({
+                "proposalId": p.proposalId,
+                "callId": p.callId,
+                "title": p.title,
+                "description": p.description,
+                "state": p.state,
+            })
+
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content=formatted_proposals
+        )
+
+    except Exception as e:
+        logger.error(f"Error al listar propuestas para el llamado {call_id}: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"message": Messages.INTERNAL_ERROR}
+        )
+        
+@app.get(
+"/proposals/{proposal_id}/download",
+summary="Descarga todos los archivos físicos entregados para una propuesta",
+description="Empaqueta y descarga en un archivo ZIP todos los documentos validados post-cierre de una propuesta."
+)
+async def download_proposal_files(
+    proposal_id: str = Path(..., description="Identificador / Raíz de Merkle de la propuesta (0x...)")
+):
+    try:
+        db_manager = get_db_manager()
+        settings = get_settings()
+        
+        # Validamos si la propuesta existe y si ya entregó sus archivos
+        proposal = db_manager.getProposal(proposal_id)
+        if not proposal:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="La propuesta no existe.")
+            
+        if not proposal.filesDelivered:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, 
+                detail="Esta propuesta no posee archivos disponibles porque aún no completó la entrega post-cierre."
+            )
+
+        # Localizamos la subcarpeta en el disco del servidor
+        proposal_dir = os.path.join(settings.upload_dir, proposal_id)
+        
+        if not os.path.exists(proposal_dir) or not os.path.isdir(proposal_dir):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, 
+                detail="Los archivos físicos no fueron encontrados en el almacenamiento del servidor."
+            )
+
+        # Comprimimos la carpeta en un buffer binario en memoria para enviarlo sin saturar el disco
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+            for root, _, files in os.walk(proposal_dir):
+                for file in files:
+                    file_absolute_path = os.path.join(root, file)
+                    # arcname hace que dentro del ZIP los archivos no arrastren toda la ruta del servidor
+                    zip_file.write(file_absolute_path, arcname=file)
+                    
+        # Volvemos al inicio del buffer binario para que FastAPI pueda leerlo completo
+        zip_buffer.seek(0)
+
+        # Retorna el ZIP usando StreamingResponse
+        headers = {
+            "Content-Disposition": f"attachment; filename=propuesta_{proposal_id[:10]}.zip"
+        }
+        return StreamingResponse(zip_buffer, media_type="application/x-zip-compressed", headers=headers)
+
+    except HTTPException as he:
+        return JSONResponse(status_code=he.status_code, content={"message": he.detail})
+    except Exception as e:
+        logger.error(f"Error crítico al empaquetar archivos para propuesta {proposal_id}: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"message": Messages.INTERNAL_ERROR}
+        )
+        

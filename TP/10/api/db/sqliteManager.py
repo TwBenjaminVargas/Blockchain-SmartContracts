@@ -4,7 +4,7 @@ from services.settings import get_settings
 from sqlmodel import Session, SQLModel, create_engine,select, func
 from models.persistence.Call import Call, CallState
 from models.persistence.User import User, UserState
-from models.persistence.Proposal import Proposal
+from models.persistence.Proposal import Proposal, ProposalState
 from models.persistence.SyncState import SyncState
 import logging
 import exceptions.databaseManagerExceptions as db_exceptions
@@ -304,7 +304,8 @@ class DBManager:
             created=created,
             createdBlocknumber=blocknumber,
             sender=sender.lower(),
-            registrationTransactionHash=registration_transaction_hash
+            registrationTransactionHash=registration_transaction_hash,
+            state = ProposalState.CREATED
         )
         return self._add(new_proposal)
 
@@ -616,6 +617,25 @@ class DBManager:
             logger.error(f"Error al buscar la propuesta {proposal_id}: {str(e)}", exc_info=True)
             raise db_exceptions.DatabaseReadException("Error al consultar la propuesta en la base de datos local.")
     
+    def get_proposals_by_call(self, call_id_hex: str) -> list[Proposal]:
+        """
+        Recupera de la base de datos local todas las propuestas presentadas
+        para una convocatoria (callId) específica.
+        """
+        try:
+            logger.debug(f"Consultando propuestas para el callId: {call_id_hex}")
+            with Session(self.engine) as session:
+                statement = select(Proposal).where(
+                    func.lower(Proposal.callId) == call_id_hex.lower()
+                )
+                proposals = session.exec(statement).all()
+                logger.info(f"Se localizaron {len(proposals)} propuestas para el llamado {call_id_hex}.")
+                return list(proposals)
+                
+        except Exception as e:
+            logger.error(f"Error crítico al leer las propuestas de la DB para el call {call_id_hex}: {str(e)}", exc_info=True)
+            raise db_exceptions.DatabaseReadException("No se pudieron recuperar las propuestas del llamado.")
+        
     def mark_proposal_files_delivered(self, proposal_id_hex: str, tx_hash: str, block_number: int) -> bool:
         """
         Actualiza el estado de una propuesta local reflejando que el evento 
@@ -635,7 +655,7 @@ class DBManager:
                 proposal.filesDelivered = True
                 proposal.deliveryTransactionHash = tx_hash
                 proposal.deliveryBlockNumber = block_number
-                
+                proposal.state = ProposalState.DELIVERED
                 session.add(proposal)
                 session.commit()
                 logger.debug(f"Propuesta {proposal_id_hex} actualizada con éxito en BD.")
