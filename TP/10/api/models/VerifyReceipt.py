@@ -1,6 +1,4 @@
 from pydantic import BaseModel
-from typing import list
-
 class VerifyReceipt(BaseModel):
     callId: str
     proposalId: str

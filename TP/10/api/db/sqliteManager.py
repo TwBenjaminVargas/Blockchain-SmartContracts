@@ -302,7 +302,7 @@ class DBManager:
             filesJson=json.dumps(files),
             proofsJson=json.dumps(proofs),
             created=created,
-            blocknumber=blocknumber,
+            createdBlocknumber=blocknumber,
             sender=sender.lower(),
             registrationTransactionHash=registration_transaction_hash
         )

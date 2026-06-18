@@ -728,7 +728,7 @@ async def get_proposal_data(
                 logger.debug(f"Propuesta {proposal} y llamado encontrados localmente. Minimizando tráfico con el nodo RPC.")
                 
                 sender = proposal_record.sender
-                block_number = proposal_record.blocknumber
+                block_number = proposal_record.createdBlocknumber
                 timestamp_unix = proposal_record.created
                 
                 if closing_time_local is not None:
@@ -1668,7 +1668,7 @@ async def get_proposal_receipt(
                 "proofs": merkle_proofs,
                 "files": files_hashes,
                 "transactionHash": proposal.registrationTransactionHash,
-                "blockNumber": proposal.blocknumber,
+                "blockNumber": proposal.createdBlocknumber,
                 "timestamp": proposal.created,
                 "sender": proposal.sender
                 
@@ -1883,6 +1883,84 @@ async def submit_post_closing(
 
     except Exception as e:
         logger.error(f"Error crítico en entrega post-cierre: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"message": Messages.INTERNAL_ERROR}
+        )
+        
+
+@app.get(
+    "/proposals/{proposal_id}/reception-receipt",
+    status_code=status.HTTP_200_OK,
+    summary="Obtiene el recibo definitivo de una propuesta con su evidencia on-chain",
+    description="Permite a cualquier usuario consultar de forma pública el recibo final y el estado de entrega post-cierre de una propuesta."
+)
+async def get_proposal_receipt(
+    proposal_id: str = Path(..., description="El identificador / Raíz de Merkle de la propuesta (0x...)")
+):
+    try:
+        db_manager = get_db_manager()
+        
+        # Recuperar la propuesta de la base de datos usando tu manager
+        proposal = db_manager.getProposal(proposal_id)
+        
+        if not proposal:
+            return JSONResponse(
+                status_code=status.HTTP_404_NOT_FOUND,
+                content={"message": f"La propuesta con ID {proposal_id} no existe en el sistema."}
+            )
+
+        # Deserializar de forma segura las listas JSON persistidas en el modelo
+        try:
+            files_list = json.loads(proposal.filesJson)
+            proofs_map = json.loads(proposal.proofsJson)
+        except Exception as json_err:
+            logger.error(f"Error al deserializar JSON de la propuesta {proposal_id}: {str(json_err)}")
+            files_list = []
+            proofs_map = {}
+
+        # Mapear de forma condicional las evidencias de la Entrega Post-Cierre
+        delivery_evidence = None
+        if proposal.filesDelivered:
+            delivery_evidence = {
+                "transactionHash": proposal.deliveryTransactionHash,
+                "blockNumber": proposal.deliveryBlockNumber,
+                "status": "Mined / Confirmed"
+            }
+
+        # Construir la estructura del Recibo Definitivo Consultable Públicamente
+        receipt_response = {
+            "proposalId": proposal.proposalId,
+            "callId": proposal.callId,
+            "status": "Archivos Recibidos" if proposal.filesDelivered else "Postulación Registrada (Pendiente de Entrega)",
+            "meta": {
+                "title": proposal.title,
+                "titleHash": proposal.titleHash,
+                "description": proposal.description,
+                "descriptionHash": proposal.descriptionHash,
+                "sender": proposal.sender
+            },
+            "integrity": {
+                "files": files_list,
+                "merkleProofs": proofs_map
+            },
+            "blockchainEvidence": {
+                "registration": {
+                    "transactionHash": proposal.registrationTransactionHash,
+                    "blockNumber": proposal.createdBlocknumber,
+                    "timestamp": proposal.created
+                },
+                "delivery": delivery_evidence
+            }
+        }
+
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content=receipt_response
+        )
+
+    except Exception as e:
+        logger.error(f"Error crítico al generar recibo público para propuesta {proposal_id}: {str(e)}", exc_info=True)
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"message": Messages.INTERNAL_ERROR}

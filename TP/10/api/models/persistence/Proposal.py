@@ -14,7 +14,7 @@ class Proposal(SQLModel, table=True):
     proofsJson: str = SQLField(description="Mapa de pruebas de Merkle persistido en JSON string")
     
     created: int = SQLField(description="Timestamp Unix de confirmación on-chain")
-    blocknumber: int = SQLField(description="Número de bloque en el que se minó la transacción")
+    createdBlocknumber: int = SQLField(description="Número de bloque en el que se minó la transacción")
     registrationTransactionHash: str = SQLField(description="Hash único de la transacción en la blockchain", index=True)
     sender: str = SQLField(description="Dirección de la cuenta del servidor que envió la TX")
     
