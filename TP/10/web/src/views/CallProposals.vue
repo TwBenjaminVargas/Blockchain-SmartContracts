@@ -401,6 +401,7 @@ const matchState = (currentStatus, targetStatus) => {
 }
 
 // --- ARBOL DE MERKLE LOCAL ---
+// TODO BUG DETECTADO EN CLASE, NO HAY MECANISMO PARA TRATAR HOJAS IMPARES
 const localProposalId = computed(() => {
   if (!formProposal.value.title || !formProposal.value.description || selectedFilesList.value.length === 0 || hashingInProgress.value) {
     return ''
