@@ -400,25 +400,24 @@ const matchState = (currentStatus, targetStatus) => {
   return currentStatus.toString().trim().toLowerCase() === targetStatus.trim().toLowerCase()
 }
 
-// --- ARBOL DE MERKLE LOCAL ---
-// TODO BUG DETECTADO EN CLASE, NO HAY MECANISMO PARA TRATAR HOJAS IMPARES
+// Función para calcular la raíz de Merkle localmente
 const localProposalId = computed(() => {
   if (!formProposal.value.title || !formProposal.value.description || selectedFilesList.value.length === 0 || hashingInProgress.value) {
     return ''
   }
   try {
+    // Obtener los hashes base en formato string hexadecimal
     const leavesHex = [
       callId.value.toLowerCase().replace('0x', ''),
       keccak256(formProposal.value.title),
       keccak256(formProposal.value.description),
       ...selectedFilesList.value.map(f => f.hash.toLowerCase().replace('0x', ''))
     ]
+    
+    // Ordenar las hojas alfabética/bytes
     leavesHex.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
-    const n = leavesHex.length
-    const tree = new Array(2 * n - 1).fill('')
-    for (let i = 0; i < n; i++) {
-      tree[2 * n - 2 - i] = leavesHex[i]
-    }
+    
+    // Función auxiliar para convertir Hex String a Uint8Array
     const hexToBytes = (hex) => {
       const arr = new Uint8Array(hex.length / 2)
       for (let i = 0; i < arr.length; i++) {
@@ -426,29 +425,54 @@ const localProposalId = computed(() => {
       }
       return arr
     }
-    for (let i = n - 2; i >= 0; i--) {
-      const leftHex = tree[2 * i + 1]
-      const rightHex = tree[2 * i + 2]
-      const leftBytes = hexToBytes(leftHex)
-      const rightBytes = hexToBytes(rightHex)
-      let isLeftSmaller = true
-      for (let j = 0; j < Math.min(leftBytes.length, rightBytes.length); j++) {
-        if (leftBytes[j] !== rightBytes[j]) {
-          isLeftSmaller = leftBytes[j] < rightBytes[j]
-          break
+
+    // Convertir todas las hojas procesadas a arrays de bytes
+    let currentLevel = leavesHex.map(h => hexToBytes(h))
+
+    // Construcción del árbol subiendo nivel por nivel hasta que quede solo la raíz
+    while (currentLevel.length > 1) {
+      const nextLevel = []
+      
+      for (let i = 0; i < currentLevel.length; i += 2) {
+        const leftBytes = currentLevel[i]
+        
+        // Si hay un elemento impar al final del nivel, se empareja consigo mismo
+        const rightBytes = (i + 1 < currentLevel.length) ? currentLevel[i + 1] : leftBytes
+
+        // Lógica de ordenamiento determinista por par (min, max)
+        let isLeftSmaller = true
+        for (let j = 0; j < Math.min(leftBytes.length, rightBytes.length); j++) {
+          if (leftBytes[j] !== rightBytes[j]) {
+            isLeftSmaller = leftBytes[j] < rightBytes[j]
+            break
+          }
         }
+
+        // Combinar los bytes ordenadamente
+        const combinedBytes = new Uint8Array(leftBytes.length + rightBytes.length)
+        if (isLeftSmaller) {
+          combinedBytes.set(leftBytes, 0)
+          combinedBytes.set(rightBytes, leftBytes.length)
+        } else {
+          combinedBytes.set(rightBytes, 0)
+          combinedBytes.set(leftBytes, rightBytes.length)
+        }
+
+        // Hashear el par combinado y pasarlo al siguiente nivel en bytes
+        const parentHashHex = keccak256(combinedBytes)
+        nextLevel.push(hexToBytes(parentHashHex))
       }
-      const combinedBytes = new Uint8Array(leftBytes.length + rightBytes.length)
-      if (isLeftSmaller) {
-        combinedBytes.set(leftBytes, 0)
-        combinedBytes.set(rightBytes, leftBytes.length)
-      } else {
-        combinedBytes.set(rightBytes, 0)
-        combinedBytes.set(leftBytes, rightBytes.length)
-      }
-      tree[i] = keccak256(combinedBytes)
+      
+      // Ascendemos al siguiente nivel del árbol
+      currentLevel = nextLevel
     }
-    return '0x' + tree[0].toLowerCase()
+
+    // Convertir de nuevo el nodo raíz final de bytes a string Hex estándar para el contrato
+    const rootHex = Array.from(currentLevel[0])
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('')
+
+    return '0x' + rootHex.toLowerCase()
   } catch (err) {
     console.error('Error calculando Merkle Root local:', err)
     return ''
