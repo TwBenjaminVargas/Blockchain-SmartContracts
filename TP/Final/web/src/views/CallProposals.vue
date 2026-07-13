@@ -839,7 +839,7 @@ const submitPostClosingData = async () => {
       verificationDialog.value = { open: true, success: true, message: 'Entrega post-cierre procesada.' }
       await loadProposals()
     } catch (error) {
-      postClosingError.value = `Fallo: {error.response?.data?.message || 'Error crítico.'}`
+      postClosingError.value = `Fallo: ${error.response?.data?.message || 'Error crítico.'}`
     } finally {
       submittingPostClosing.value = false
     }
