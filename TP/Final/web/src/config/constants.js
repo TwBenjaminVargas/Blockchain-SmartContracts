@@ -41,7 +41,7 @@ export const URL = {
     getProposalsByCall: '/calls/:call_id/proposals',
     getProposalReceipt: '/proposals/:proposalId/receipt',
     submitPostClosing: '/proposals/submit-post-closing',
-    verifyProposal: '/proposals/verify',
+    verifyProposal: '/proposals/verify-receipt',
     downloadProposalFiles: '/proposals/:proposal_id/download',
     getCallById: '/calls/:call_id',
     getClosingTime: '/closing-time/:call_id',

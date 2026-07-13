@@ -1246,7 +1246,6 @@ async def get_admin_address(
             content={"message": Messages.INTERNAL_ERROR}
         )
         
-#TODO segurizar con firma del admin estos enpoints
 @app.get(
     "/creators",
     status_code=status.HTTP_200_OK,
@@ -1571,7 +1570,7 @@ async def get_global_calls_catalog(
             content={"message": Messages.INTERNAL_ERROR}
         )
         
-        
+# TODO: No verifica que pertenezca a una propuesta
 @app.post(
     "/upload-files",
     status_code=status.HTTP_201_CREATED,
@@ -1657,7 +1656,6 @@ async def get_proposal_receipt(
         except Exception:
             logger.error(f"Error al deserializar filesJson para la propuesta {proposalId}")
             files_hashes = []
-
         # Construir y retornar la estructura exacta del recibo
         return JSONResponse(
             status_code=status.HTTP_200_OK,
@@ -1689,7 +1687,7 @@ async def get_proposal_receipt(
         )
 
 @app.post(
-    "/proposals/verify",
+    "/proposals/verify-receipt",
     status_code=status.HTTP_200_OK,
     summary="Valida la integridad de un recibo y verifica su compromiso en la blockchain"
 )
@@ -1712,9 +1710,64 @@ async def verify_proposal_receipt(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 content={
                     "valid": False,
-                    "reason": "La validación criptográfica falló. Los contenidos del recibo no coinciden con el proposalId provisto."
+                    "reason": "La validación criptográfica falló. Los contenidos del recibo no coinciden con la raiz (proposalId) provisto."
                 }
             )
+        
+        # Verificar la pertenencia de los archivos solicitados por el usuario(si se proporcionaron)
+        verification_results = {}
+        all_requested_files_valid = True
+
+        if receipt.fileHashesToVerify:
+            for file_hash in receipt.fileHashesToVerify:
+                normalized_hash = file_hash.lower()
+                
+                # Comprobar si el hash a verificar fue parte de la declaración inicial del recibo
+                if normalized_hash not in [f.lower() for f in receipt.files]:
+                    verification_results[file_hash] = {
+                        "verified": False,
+                        "reason": "El hash de este archivo no se encuentra declarado en la lista de archivos de este recibo."
+                    }
+                    all_requested_files_valid = False
+                    continue
+
+                # Obtener la prueba de Merkle del mapa completo enviado por el cliente
+                leaf_proof = receipt.proofs.get(normalized_hash) or receipt.proofs.get(file_hash)
+                
+                if not leaf_proof:
+                    verification_results[file_hash] = {
+                        "verified": False,
+                        "reason": "Falta la prueba criptográfica (Proof) para este archivo en el recibo provisto."
+                    }
+                    all_requested_files_valid = False
+                    continue
+
+                try:
+                    is_proof_valid = contract_manager.verify_merkle_proof(
+                        proposal_id=receipt.proposalId,
+                        leaf=normalized_hash,
+                        proof=leaf_proof
+                    )
+
+                    if is_proof_valid:
+                        verification_results[file_hash] = {
+                            "verified": True,
+                            "message": "Pertenencia e integridad del archivo verificadas con éxito usando la prueba de Merkle."
+                        }
+                    else:
+                        verification_results[file_hash] = {
+                            "verified": False,
+                            "reason": "La prueba de Merkle de este archivo es inválida (no reconstruye el proposalId del recibo)."
+                        }
+                        all_requested_files_valid = False
+
+                except contract_exceptions.CryptographicHashingException:
+                    verification_results[file_hash] = {
+                        "verified": False,
+                        "reason": "Ocurrió un fallo en el procesamiento de bytes de los parámetros criptográficos provistos."
+                    }
+                    all_requested_files_valid = False
+        
 
         # Consultamos directamente al contrato inteligente si el compromiso existe
         try:
@@ -1733,16 +1786,27 @@ async def verify_proposal_receipt(
                 status_code=status.HTTP_200_OK,
                 content={
                     "valid": False,
-                    "reason": "El recibo es matemáticamente íntegro, pero el compromiso no existe registrado en la blockchain."
+                    "reason": "El recibo es matemáticamente íntegro, pero el compromiso no existe registrado en la blockchain.",
+                    "filesVerification": verification_results
                 }
             )
-
-        # Los datos coinciden y el estado existe on-chain
+        # Si se enviaron archivos para verificar pero alguno falló el chequeo de Merkle
+        if receipt.fileHashesToVerify and not all_requested_files_valid:
+            return JSONResponse(
+                status_code=status.HTTP_200_OK,
+                content={
+                    "valid": False,
+                    "reason": "El recibo está registrado on-chain, pero uno o más de los archivos consultados fallaron la verificación de Merkle.",
+                    "filesVerification": verification_results
+                }
+            )
+            
         return JSONResponse(
             status_code=status.HTTP_200_OK,
             content={
                 "valid": True,
-                "message": "Recibo verificado con éxito. Los datos coinciden con los hashes comprometidos y la propuesta está asentada on-chain."
+                "message": "Validación exitosa. El recibo es íntegro, corresponde con el registro on-chain y los archivos indicados pertenecen al árbol comprometido.",
+                "filesVerification": verification_results
             }
         )
 

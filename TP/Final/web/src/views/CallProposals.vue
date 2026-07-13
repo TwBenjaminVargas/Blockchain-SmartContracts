@@ -163,22 +163,13 @@
                       </template>
 
                       <template v-else-if="matchState(proposal.state, 'created') || matchState(proposal.state, 'initial') || !proposal.state">
-                        <input
-                          type="file"
-                          :id="'receipt-input-' + proposal.proposalId"
-                          style="display: none"
-                          accept=".json"
-                          @change="handleReceiptUpload($event, proposal.proposalId)"
-                        />
-                        
                         <v-btn
                           color="indigo-darken-1"
                           variant="outlined"
                           class="rounded-lg font-weight-bold"
-                          :loading="verifyingId === proposal.proposalId"
-                          @click="triggerReceiptSelection(proposal.proposalId)"
+                          @click="openVerifyReceiptModal(proposal)"
                         >
-                          Verificar Recibo
+                          Verificar con Recibo
                         </v-btn>
 
                         <v-btn
@@ -206,6 +197,7 @@
       </v-col>
     </v-row>
 
+    <!-- Nueva propuesta -->
     <v-dialog v-model="dialogOpen" max-width="600px" persistent>
       <v-card class="rounded-xl pa-4 bg-white panel-modal shadow-lg">
         <v-card-title class="d-flex align-center justify-space-between text-slate-dark font-weight-bold text-h6">
@@ -287,6 +279,7 @@
       </v-card>
     </v-dialog>
 
+    <!-- Entrega Post-Cierre -->
     <v-dialog v-model="postClosingDialogOpen" max-width="600px" persistent>
       <v-card class="rounded-xl pa-4 bg-white panel-modal shadow-lg">
         <v-card-title class="d-flex align-center justify-space-between text-slate-dark font-weight-bold text-h6">
@@ -311,13 +304,113 @@
       </v-card>
     </v-dialog>
 
+    <!-- Verificar Recibo -->
+    <v-dialog v-model="verifyReceiptDialogOpen" max-width="600px" persistent>
+      <v-card class="rounded-xl pa-4 bg-white panel-modal shadow-lg">
+        <v-card-title class="d-flex align-center justify-space-between text-slate-dark font-weight-bold text-h6">
+          <div>Verificar Propuesta con Recibo</div>
+          <v-btn variant="text" icon="mdi-close" color="slate-medium" @click="closeVerifyReceiptModal" :disabled="verifyingReceiptLoading"></v-btn>
+        </v-card-title>
+        <v-divider class="my-2"></v-divider>
+        
+        <v-card-text class="pa-2">
+          <div class="text-subtitle-2 font-weight-bold text-slate-dark mb-1">
+            1. Cargar Archivo de Recibo (.json) <span class="text-error">*</span>
+          </div>
+          <p class="text-caption text-slate-medium mb-3">Sube el recibo criptográfico en formato JSON que descargaste al registrar la propuesta.</p>
+          <v-file-input
+            label="Selecciona tu recibo JSON"
+            accept=".json"
+            variant="outlined"
+            density="comfortable"
+            color="indigo-darken-1"
+            prepend-icon="mdi-file-document-outline"
+            :disabled="verifyingReceiptLoading"
+            @change="onVerificationReceiptSelected"
+            clearable
+          ></v-file-input>
+
+          <v-divider class="my-4"></v-divider>
+          <div class="text-subtitle-2 font-weight-bold text-slate-dark mb-1">
+            2. Validar Archivo Original (Opcional)
+          </div>
+          <p class="text-caption text-slate-medium mb-3">Si deseas confirmar si un archivo físico que posees es íntegro y pertenece a este recibo, cárgalo aquí para validar su firma criptográfica localmente.</p>
+          
+          <input type="file" ref="verifyFileInputRef" style="display: none" @change="onVerifyFilesSelected" accept=".pdf,.zip,.docx" />
+          <div 
+            class="drag-drop-zone d-flex flex-column align-center justify-center pa-5 rounded-xl text-center mb-2"
+            @dragover.prevent
+            @drop.prevent="onVerifyFilesDropped"
+            :class="{ 'disabled-zone': verifyingReceiptLoading }"
+            style="border: 2px dashed #cbd5e1; cursor: pointer; transition: background 0.2s;"
+            @click="$refs.verifyFileInputRef.click()"
+          >
+            <div class="text-body-2 font-weight-bold text-slate-dark mb-1">Arrastra el archivo de prueba aquí o haz clic</div>
+            <div class="text-caption text-slate-medium">Formatos permitidos: PDF, ZIP, DOCX (Máx. 10MB)</div>
+          </div>
+
+
+          <div v-if="verifyFileList.length > 0" class="mt-2">
+            <v-sheet class="pa-3 border rounded-lg bg-slate-light-flat">
+              <div v-for="(fileItem, index) in verifyFileList" :key="index" class="d-flex align-center justify-space-between text-caption">
+                <div class="text-truncate max-w-70">
+                  <span class="font-weight-bold text-slate-dark">{{ fileItem.name }}</span>
+                </div>
+                <div class="d-flex align-center">
+                  <span v-if="fileItem.hashing" class="text-orange font-weight-bold me-2 text-xxs">Calculando Hash...</span>
+                  <span v-else class="text-success font-weight-bold text-mono text-xxs">✓ {{ fileItem.hash.substring(0, 16) }}...</span>
+                  <v-btn icon="mdi-close" variant="text" size="small" color="error" class="ms-1" @click="removeVerifyFile(index)" :disabled="verifyingReceiptLoading"></v-btn>
+                </div>
+              </div>
+            </v-sheet>
+          </div>
+
+          <v-alert v-if="verifyReceiptError" type="error" variant="tonal" class="rounded-xl mt-4 pa-2 text-caption font-weight-bold">
+            {{ verifyReceiptError }}
+          </v-alert>
+        </v-card-text>
+
+        <v-card-actions class="justify-end pa-2 border-top mt-4">
+          <v-btn variant="text" color="slate-medium" class="rounded-lg font-weight-bold px-4" @click="closeVerifyReceiptModal" :disabled="verifyingReceiptLoading">Cancelar</v-btn>
+          <v-btn 
+            color="indigo-darken-1" 
+            variant="flat" 
+            class="rounded-lg font-weight-bold px-6 text-white shadow-sm" 
+            @click="executeReceiptVerification" 
+            :loading="verifyingReceiptLoading" 
+            :disabled="!selectedVerifyReceiptJson || verifyReceiptHashingInProgress"
+          >
+            Verificar Recibo
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Resultado global del proceso -->
     <v-dialog v-model="verificationDialog.open" max-width="500px">
       <v-card class="rounded-xl pa-4 bg-white text-center">
         <v-card-title class="justify-center d-flex flex-column align-center">
           <v-icon :icon="verificationDialog.success ? 'mdi-check-circle-outline' : 'mdi-alert-circle-outline'" :color="verificationDialog.success ? 'success' : 'error'" size="64" class="mb-2"></v-icon>
           <span class="font-weight-bold text-slate-dark text-h6">Resultado del Proceso</span>
         </v-card-title>
-        <v-card-text class="text-body-1 text-slate-medium pa-2">{{ verificationDialog.message }}</v-card-text>
+        <v-card-text class="text-body-1 text-slate-medium pa-2">
+          {{ verificationDialog.message }}
+
+          <!-- Si el backend manda información del contraste de archivos -->
+          <div v-if="verificationDialog.filesVerification && Object.keys(verificationDialog.filesVerification).length > 0" class="mt-4 text-left">
+            <v-divider class="mb-3"></v-divider>
+            <div class="text-caption font-weight-bold text-slate-dark mb-2">Comprobación de Archivos Físicos:</div>
+            <v-sheet v-for="(info, filename) in verificationDialog.filesVerification" :key="filename" class="pa-2 border rounded-lg bg-slate-light-flat text-caption mb-2">
+              <div class="d-flex align-start justify-space-between">
+                <span class="text-truncate max-w-70 font-weight-bold text-mono">{{ filename.substring(0, 16) }}...</span>
+                <v-chip :color="info.verified ? 'success' : 'error'" size="x-small" variant="flat" class="font-weight-bold rounded">
+                  {{ info.verified ? 'Válido' : 'Inválido' }}
+                </v-chip>
+              </div>
+              <p class="text-xxs text-slate-medium mt-1">{{ info.message || info.reason }}</p>
+            </v-sheet>
+          </div>
+        </v-card-text>
         <v-card-actions class="justify-center mt-4">
           <v-btn color="indigo-darken-1" variant="flat" class="rounded-lg font-weight-bold px-6 text-white" @click="verificationDialog.open = false">Entendido</v-btn>
         </v-card-actions>
@@ -352,6 +445,7 @@ const BACKGROUND_IMAGE = ASSETS.callsProposalsBg
 
 const formRef = ref(null)
 const fileInputRef = ref(null)
+const verifyFileInputRef = ref(null)
 
 const dialogOpen = ref(false)
 const loadingCall = ref(true)
@@ -373,8 +467,16 @@ const formProposal = ref({ title: '', description: '' })
 const selectedFilesList = ref([])
 const fileError = ref(null)
 
-const verifyingId = ref(null)
-const verificationDialog = ref({ open: false, success: false, message: '' })
+const verificationDialog = ref({ open: false, success: false, message: '', filesVerification: null })
+
+const verifyReceiptDialogOpen = ref(false)
+const verifyingReceiptLoading = ref(false)
+const selectedVerifyReceiptJson = ref(null)
+const verifyFileList = ref([])
+const verifyReceiptError = ref(null)
+
+const verifyReceiptHashingInProgress = computed(() => verifyFileList.value.some(f => f.hashing))
+const hashingInProgress = computed(() => selectedFilesList.value.some(f => f.hashing))
 
 const postClosingDialogOpen = ref(false)
 const submittingPostClosing = ref(false)
@@ -382,8 +484,6 @@ const postClosingReceiptFile = ref(null)
 const postClosingFilesList = ref([])
 const postClosingError = ref(null)
 const selectedProposal = ref(null)
-
-const hashingInProgress = computed(() => selectedFilesList.value.some(f => f.hashing))
 
 const isCallClosed = computed(() => {
   if (!closingTimeISO.value) return false
@@ -406,7 +506,6 @@ const localProposalId = computed(() => {
     return ''
   }
   try {
-    // Obtener los hashes base en formato string hexadecimal
     const leavesHex = [
       callId.value.toLowerCase().replace('0x', ''),
       keccak256(formProposal.value.title),
@@ -414,10 +513,8 @@ const localProposalId = computed(() => {
       ...selectedFilesList.value.map(f => f.hash.toLowerCase().replace('0x', ''))
     ]
     
-    // Ordenar las hojas alfabética/bytes
     leavesHex.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
     
-    // Función auxiliar para convertir Hex String a Uint8Array
     const hexToBytes = (hex) => {
       const arr = new Uint8Array(hex.length / 2)
       for (let i = 0; i < arr.length; i++) {
@@ -426,20 +523,14 @@ const localProposalId = computed(() => {
       return arr
     }
 
-    // Convertir todas las hojas procesadas a arrays de bytes
     let currentLevel = leavesHex.map(h => hexToBytes(h))
 
-    // Construcción del árbol subiendo nivel por nivel hasta que quede solo la raíz
     while (currentLevel.length > 1) {
       const nextLevel = []
-      
       for (let i = 0; i < currentLevel.length; i += 2) {
         const leftBytes = currentLevel[i]
-        
-        // Si hay un elemento impar al final del nivel, se empareja consigo mismo
         const rightBytes = (i + 1 < currentLevel.length) ? currentLevel[i + 1] : leftBytes
 
-        // Lógica de ordenamiento determinista por par (min, max)
         let isLeftSmaller = true
         for (let j = 0; j < Math.min(leftBytes.length, rightBytes.length); j++) {
           if (leftBytes[j] !== rightBytes[j]) {
@@ -448,7 +539,6 @@ const localProposalId = computed(() => {
           }
         }
 
-        // Combinar los bytes ordenadamente
         const combinedBytes = new Uint8Array(leftBytes.length + rightBytes.length)
         if (isLeftSmaller) {
           combinedBytes.set(leftBytes, 0)
@@ -458,16 +548,12 @@ const localProposalId = computed(() => {
           combinedBytes.set(leftBytes, rightBytes.length)
         }
 
-        // Hashear el par combinado y pasarlo al siguiente nivel en bytes
         const parentHashHex = keccak256(combinedBytes)
         nextLevel.push(hexToBytes(parentHashHex))
       }
-      
-      // Ascendemos al siguiente nivel del árbol
       currentLevel = nextLevel
     }
 
-    // Convertir de nuevo el nodo raíz final de bytes a string Hex estándar para el contrato
     const rootHex = Array.from(currentLevel[0])
       .map(b => b.toString(16).padStart(2, '0'))
       .join('')
@@ -557,6 +643,7 @@ const calculateFileHash = async (file) => {
   })
 }
 
+
 const processIncomingFiles = async (files) => {
   fileError.value = null
   const maxSize = 10 * 1024 * 1024
@@ -576,6 +663,98 @@ const processIncomingFiles = async (files) => {
 const onFilesSelected = (e) => { if (e.target.files) processIncomingFiles(e.target.files) }
 const onFilesDropped = (e) => { if (!submitting.value && e.dataTransfer?.files) processIncomingFiles(e.dataTransfer.files) }
 const removeFile = (index) => { selectedFilesList.value.splice(index, 1) }
+
+
+const openVerifyReceiptModal = (proposal) => {
+  selectedProposal.value = proposal
+  selectedVerifyReceiptJson.value = null
+  verifyFileList.value = []
+  verifyReceiptError.value = null
+  verifyReceiptDialogOpen.value = true
+}
+
+const closeVerifyReceiptModal = () => {
+  if (verifyingReceiptLoading.value) return
+  verifyReceiptDialogOpen.value = false
+}
+
+const onVerificationReceiptSelected = (e) => {
+  const files = e.target.files
+  if (!files || files.length === 0) {
+    selectedVerifyReceiptJson.value = null
+    return
+  }
+  const file = files[0]
+  const reader = new FileReader()
+  reader.onload = (event) => {
+    try {
+      selectedVerifyReceiptJson.value = JSON.parse(event.target.result)
+      verifyReceiptError.value = null
+    } catch (err) {
+      selectedVerifyReceiptJson.value = null
+      verifyReceiptError.value = "El archivo cargado no es un JSON válido."
+    }
+  }
+  reader.readAsText(file)
+}
+
+
+const processVerifyFiles = async (files) => {
+  verifyReceiptError.value = null
+  const maxSize = 10 * 1024 * 1024
+  for (let file of files) {
+    if (file.size > maxSize) {
+      verifyReceiptError.value = `El archivo "${file.name}" supera el límite de 10MB.`
+      continue
+    }
+    const fileIdx = verifyFileList.value.length
+    verifyFileList.value.push({ name: file.name, size: file.size, hash: '', hashing: true })
+    const hashResult = await calculateFileHash(file)
+    verifyFileList.value[fileIdx].hash = hashResult
+    verifyFileList.value[fileIdx].hashing = false
+  }
+}
+
+const onVerifyFilesSelected = (e) => { if (e.target.files) processVerifyFiles(e.target.files) }
+const onVerifyFilesDropped = (e) => { if (!verifyingReceiptLoading.value && e.dataTransfer?.files) processVerifyFiles(e.dataTransfer.files) }
+const removeVerifyFile = (index) => { verifyFileList.value.splice(index, 1) }
+
+
+const executeReceiptVerification = async () => {
+  if (!selectedVerifyReceiptJson.value) {
+    verifyReceiptError.value = "Es obligatorio cargar un archivo de recibo (.json)"
+    return
+  }
+
+  try {
+    verifyingReceiptLoading.value = true
+    verifyReceiptError.value = null
+
+    // Generar carga útil integrando los hashes de archivos a contrastar si los hay
+    const payload = {
+      ...selectedVerifyReceiptJson.value,
+      fileHashesToVerify: verifyFileList.value.length > 0 
+        ? verifyFileList.value.map(f => f.hash) 
+        : null
+    }
+
+    const result = await verifyProposalReceipt(payload)
+
+    verificationDialog.value = {
+      open: true,
+      success: result.valid,
+      message: result.message || result.reason || 'Proceso finalizado.',
+      filesVerification: result.filesVerification || null
+    }
+
+    verifyReceiptDialogOpen.value = false // Cerrar el panel interactivo tras finalizar con éxito
+
+  } catch (err) {
+    verifyReceiptError.value = err.response?.data?.message || "Fallo en el servidor al intentar verificar el recibo."
+  } finally {
+    verifyingReceiptLoading.value = false
+  }
+}
 
 const resetFormAndOpen = () => {
   if (hasRestrictedRole.value) return
@@ -607,7 +786,7 @@ const submitProposal = async () => {
     dialogOpen.value = false
     await loadProposals()
   } catch (error) {
-    fileError.value = `Error en el servidor: ${error.response?.data?.message || 'Error interno.'}`
+    fileError.value = `Error en el servidor: {error.response?.data?.message || 'Error interno.'}`
   } finally {
     submitting.value = false
   }
@@ -626,37 +805,6 @@ const downloadReceipt = async (proposalId) => {
   } catch (error) {
     alert("Error al descargar el recibo de la propuesta.")
   }
-}
-
-const triggerReceiptSelection = (proposalId) => {
-  if (!hasRestrictedRole.value) {
-    const inputEl = document.getElementById(`receipt-input-${proposalId}`)
-    if (inputEl) inputEl.click()
-  }
-}
-
-const handleReceiptUpload = (event, proposalId) => {
-  const file = event.target.files[0]
-  if (!file) return
-  verifyingId.value = proposalId
-  const reader = new FileReader()
-  reader.onload = async (e) => {
-    try {
-      const receiptJson = JSON.parse(e.target.result)
-      const result = await verifyProposalReceipt(receiptJson)
-      verificationDialog.value = {
-        open: true,
-        success: result.valid,
-        message: result.valid ? (result.message || 'El recibo es válido.') : (result.reason || 'Falló la validación.')
-      }
-    } catch (err) {
-      verificationDialog.value = { open: true, success: false, message: 'JSON inválido o corrupto.' }
-    } finally {
-      verifyingId.value = null
-      event.target.value = '' 
-    }
-  }
-  reader.readAsText(file)
 }
 
 const openPostClosingModal = (proposal) => {
@@ -691,7 +839,7 @@ const submitPostClosingData = async () => {
       verificationDialog.value = { open: true, success: true, message: 'Entrega post-cierre procesada.' }
       await loadProposals()
     } catch (error) {
-      postClosingError.value = `Fallo: ${error.response?.data?.message || 'Error crítico.'}`
+      postClosingError.value = `Fallo: {error.response?.data?.message || 'Error crítico.'}`
     } finally {
       submittingPostClosing.value = false
     }
