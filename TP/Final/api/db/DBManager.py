@@ -174,7 +174,8 @@ class DBManager:
                 name="admin",
                 signature="0x0",
                 state=UserState.AUTHORIZED,
-                nonce=1
+                nonce=1,
+                domain="admin.local",
             )
 
             logger.debug(f"Registrando usuario admin local con la wallet: {cleaned_address}")
@@ -198,11 +199,11 @@ class DBManager:
             logger.error(f"Fallo crítico al recuperar todos los usuarios: {str(db_err)}", exc_info=True)
             raise db_exceptions.DatabaseConnectionException("Error interno al leer los usuarios del almacenamiento local.")
     
-    def createUser(self, address: str, name: str, signature: str,description: str | None = None, state: UserState = UserState.PENDING) -> User:
+    def createUser(self, address: str, name: str, signature: str,domain: str, description: str | None = None, state: UserState = UserState.PENDING) -> User:
         """
         Instancia y guarda un usuario con estado 'pending'
         """
-        inputs = {"address": address, "name": name, "signature": signature}
+        inputs = {"address": address, "name": name, "signature": signature, "domain": domain}
         for field_name, value in inputs.items():
             if not isinstance(value, str) or not value.strip():
                 logger.error(f"Parámetro inválido o vacío en createUser: {field_name}={type(value)}")
@@ -216,6 +217,7 @@ class DBManager:
             description= description.strip() if description else None,
             signature=signature.strip(),
             state=state,
+            domain=domain.strip() if domain else None,
             nonce=1
         )
 

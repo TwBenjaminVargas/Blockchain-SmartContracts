@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     db_path: str = Field(alias="CFP_DB_PATH")
     admin_address: str = Field(alias="CFP_ADMIN_ADDRESS")
     upload_dir: str = Field(alias="PROPOSALS_UPLOAD_DIR")
+    registry_address: str = Field(alias="ENS_REGISTRY_ADDRESS")
+    resolver_address: str = Field(alias="ENS_RESOLVER_ADDRESS")
 
     #carga la configuración desde el archivo .env y permite ignorar campos adicionales no definidos en esta clase
     model_config = SettingsConfigDict(env_file=".env",

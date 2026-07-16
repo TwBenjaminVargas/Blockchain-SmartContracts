@@ -26,6 +26,13 @@ class UserRegister(BaseModel):
         examples=["Desarrollador Web3 independiente"]
     )
     
+    domain: str = Field(
+        ...,
+        description="Nombre de dominio ENS del usuario registrado.",
+        pattern=r"^[a-z0-9.-]+\.[a-z]{2,}$",
+        examples=["pepe.usuarios.cfp", "benja.eth"]
+    )
+    
 
     @field_validator("name", mode="before")
     @classmethod

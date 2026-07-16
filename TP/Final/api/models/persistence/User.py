@@ -20,3 +20,4 @@ class User(SQLModel, table=True):
     nonce: int = SQLField(
         description="Valor numérico único de un solo uso para prevenir ataques de replicación, inicia en 1"
     )
+    domain: str = SQLField(description="Nombre de dominio ENS verificado del usuario")

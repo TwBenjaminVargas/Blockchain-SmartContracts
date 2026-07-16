@@ -2,7 +2,6 @@ import json
 import logging
 from functools import lru_cache
 from web3 import Web3
-from web3.providers import HTTPProvider
 from services.settings import get_settings
 from services.BlockchainConector import get_blockchainconnector
 from web3.types import BlockData
@@ -40,7 +39,7 @@ class CFPManager:
         self.contract_address = self.w3.to_checksum_address(settings.cfp_factory_address)
         
         
-        logger.debug("Inicializando CFPManager con proveedor: %s y contrato: %s", self.provider_path, self.contract_address)
+        logger.debug("Inicializando CFPManager con contrato: %s", self.contract_address)
         
         #Carga e instanciación del archivo ABI (ubicado en la carpeta de servicios)
         factory_abi_path = os.path.join(os.path.dirname(__file__), "cfp_factory_abi.json")

@@ -7,7 +7,7 @@ import io
 import sys
 from fastapi import Depends, FastAPI, HTTPException, status, Request,Path,UploadFile, File, Form
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse,FileResponse, StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from services.settings import get_settings, Settings
 from listeners.BlockChainWorker import BlockchainWorker
 import messages as Messages
@@ -21,8 +21,9 @@ from models.CallCreate import CallCreate
 from models.UserRegister import UserRegister
 from models.ProposalRegister import ProposalRegister
 from models.UserPatch import UserPatch
-from api.services.CFPManager import get_contract_manager, CFPManager
-from api.db.DBManager import DBManager, get_db_manager
+from services.CFPManager import get_contract_manager, CFPManager
+from db.DBManager import DBManager, get_db_manager
+from services.ENSManager import ENSManager, get_ENS_manager
 import re
 import json
 from models.persistence.User import UserState
@@ -269,7 +270,8 @@ async def register(
     payload: UserRegister,
     db_manager: DBManager = Depends(get_db_manager),
     contract_manager: CFPManager = Depends(get_contract_manager),
-    signer: Signer = Depends(get_signer)
+    signer: Signer = Depends(get_signer),
+    ENSmanager: ENSManager = Depends(get_ENS_manager)
 ):
     """
     Asocia localmente el nombre de un solicitante a su dirección de Ethereum.
@@ -278,6 +280,15 @@ async def register(
     try:
         if signer.is_admin_address(payload.address):
             return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"message": Messages.INVALID_ADDRESS})
+        
+        is_ens_valid = ENSmanager.resolve_bidirectional(payload.domain, payload.address)
+        if not is_ens_valid:
+            # Retorna 400 si el dominio y la wallet no coinciden de forma cruzada
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST, 
+                content={"message": Messages.INVALID_DOMAIN}
+            )
+        
         local_user = db_manager.getUser(payload.address)
         nonce = 0
         if local_user:
@@ -312,6 +323,7 @@ async def register(
         if local_user: 
             local_user.name = payload.name
             local_user.description = payload.description
+            local_user.domain = payload.domain
             local_user.signature = payload.signature
             local_user.state = determined_status
             db_manager.updateExistingUser(local_user)
@@ -322,7 +334,7 @@ async def register(
             )
         
         
-        db_manager.createUser(address=payload.address, name=payload.name, description=payload.description, signature=payload.signature, state=determined_status)
+        db_manager.createUser(address=payload.address, name=payload.name, description=payload.description, signature=payload.signature, state=determined_status, domain=payload.domain)
 
         return JSONResponse(
             status_code=status.HTTP_200_OK,
