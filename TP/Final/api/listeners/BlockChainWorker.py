@@ -2,8 +2,8 @@ import asyncio
 import logging
 from models.persistence.Call import CallState
 from models.persistence.User import UserState
-from services.contractManager import get_contract_manager
-from db.sqliteManager import get_db_manager
+from api.services.CFPManager import get_contract_manager
+from api.db.DBManager import get_db_manager
 
 logger = logging.getLogger(__name__)
 

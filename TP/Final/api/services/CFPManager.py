@@ -4,6 +4,7 @@ from functools import lru_cache
 from web3 import Web3
 from web3.providers import HTTPProvider
 from services.settings import get_settings
+from services.BlockchainConector import get_blockchainconnector
 from web3.types import BlockData
 from web3.exceptions import BadFunctionCallOutput, ContractLogicError, Web3Exception, Web3ValidationError,TimeExhausted,TransactionNotFound
 import messages as Messages
@@ -16,7 +17,7 @@ from deprecated import deprecated
 logger = logging.getLogger(__name__)
 
 
-class ContractManager:
+class CFPManager:
     
     REVERT_TO_MESSAGE_MAP = {
         #?"Convocatoria cerrada": Messages.INVALID_CLOSING_TIME,
@@ -30,26 +31,18 @@ class ContractManager:
     
     def __init__(self):
         
+        self.connector = get_blockchainconnector()
+        self.w3 = self.connector.w3
         settings = get_settings()
-        # Configuración del proveedor HTTP
-        self.provider_path = settings.web3_provider_url
-        if not self.provider_path.lower().startswith(("http://", "https://")):
-            raise ValueError(
-                f"Proveedor de red no soportado en ContractManager: {self.provider_path}. "
-                f"La URL debe comenzar con http:// o https://"
-            )
-
-        # Instancia única de Web3
-        self.w3 = Web3(HTTPProvider(self.provider_path))
-        self.chain_id = self.w3.eth.chain_id
+        self.chain_id = self.connector.chain_id
         
         #Formateo seguro de la dirección del contrato (Checksum Address)
-        self.contract_address = self.w3.to_checksum_address(settings.contract_address)
+        self.contract_address = self.w3.to_checksum_address(settings.cfp_factory_address)
         
         
-        logger.debug("Inicializando ContractManager con proveedor: %s y contrato: %s", self.provider_path, self.contract_address)
+        logger.debug("Inicializando CFPManager con proveedor: %s y contrato: %s", self.provider_path, self.contract_address)
         
-        #Carga e instanciación del archivo ABI (ubicado en la carpeta 'src/')
+        #Carga e instanciación del archivo ABI (ubicado en la carpeta de servicios)
         factory_abi_path = os.path.join(os.path.dirname(__file__), "cfp_factory_abi.json")
         try:
             with open(factory_abi_path, "r", encoding="utf-8") as f:
@@ -202,72 +195,6 @@ class ContractManager:
             "message": message
         }
 
-
-    def create_cfp_for(self, from_address: str,creator_address: str, call_id_hex: str, unix_timestamp: int) -> dict:
-        try:
-            logger.debug(f"Preparando transacción 'create' para CallId: {call_id_hex}")
-
-            
-            # Obtenemos el nonce actual de la wallet emisora directamente del nodo RPC
-            nonce = self.w3.eth.get_transaction_count(from_address)
-
-            #Construimos los parámetros base de la transacción on-chain
-            tx_params = {
-                'from': from_address,
-                'nonce': nonce,
-                'chainId': self.w3.eth.chain_id,
-                'maxFeePerGas': self.w3.eth.gas_price,
-                'maxPriorityFeePerGas': self.w3.eth.max_priority_fee,
-            }
-
-            # Invocamos la función del contrato de Solidity y preparamos el diccionario final
-            transaction_dict = self.contract.functions.createFor(
-                call_id_hex, 
-                unix_timestamp,
-                creator_address
-            ).build_transaction(tx_params)
-
-            logger.debug("Diccionario de transacción 'createFor' construido exitosamente.")
-            return transaction_dict
-        
-        except ContractLogicError as cle:
-            logger.error(f"Error de lógica en el Smart Contract al construir la transacción: {cle.message}")
-            raise cle
-    
-        except Exception as e:
-            logger.error(f"Error al construir la transacción create_cfp_for: {str(e)}")
-            raise e
-        
-    #! No podes registar a un usuario con el campo from si no se posee su clave privada
-    def register_user(self, user_address: str) -> dict:
-        try:
-            logger.debug(f"Preparando transacción 'register' para la wallet: {user_address}")
-
-            # Obtenemos el nonce actual de la wallet emisora
-            nonce = self.w3.eth.get_transaction_count(user_address)
-
-            # Construimos los parámetros base de la transacción on-chain
-            tx_params = {
-                'from': user_address,
-                'nonce': nonce,
-                'chainId': self.w3.eth.chain_id,
-                'maxFeePerGas': self.w3.eth.gas_price,
-                'maxPriorityFeePerGas': self.w3.eth.max_priority_fee,
-            }
-
-            # Invocamos la función 'register' de Solidity que no requiere parámetros
-            transaction_dict = self.contract.functions.register().build_transaction(tx_params)
-
-            logger.debug("Diccionario de transacción 'register' construido exitosamente.")
-            return transaction_dict
-        
-        except ContractLogicError as cle:
-            logger.error(f"Error de lógica en el Smart Contract al construir register: {cle.message}")
-            raise cle
-        except Exception as e:
-            logger.error(f"Error al construir la transacción register_user_tx: {str(e)}")
-            raise e
-    
     def authorize_user(self, from_address: str, user_address: str) -> dict:
         """
         Construye y retorna el diccionario de la transacción 'authorize' listo para ser firmado.
@@ -647,52 +574,7 @@ class ContractManager:
             raise cm_exceptions.BlockchainReadException(
                 "No se pudo recuperar la cantidad de llamados creados por la dirección desde la blockchain."
             )
-            
-    @deprecated(version='2.0.0', reason="Migrado al nuevo metodo de manejo de receipt")
-    def raise_revert_reason(self, tx_hash_hex: str):
-        """
-        Simula la transacción fallida en el nodo para extraer 
-        el ContractLogicError original y lanzarlo
-        """
-        try:
-            # Buscamos la transacción en la blockchain
-            tx = self.w3.eth.get_transaction(tx_hash_hex)
-
-            # Reejecutamos de forma virtual en el mismo bloque
-            self.w3.eth.call({
-                'to': tx['to'],
-                'from': tx['from'],
-                'data': tx['input'],
-                'value': tx['value']
-            }, tx['blockNumber'])
-
-        except ContractLogicError as cle:
-            logger.error(f"Revert detectado en el Smart Contract: {cle.message}")
-            raise cle
-
-        except Exception as e:
-            logger.error(f"Error inesperado al interrogar al nodo: {str(e)}")
-            raise e
-        
-    def get_revert_reason(self, tx_hash_hex):
-        try:
-            tx = self.w3.eth.get_transaction(tx_hash_hex)
-
-            self.w3.eth.call({
-                'to': tx['to'],
-                'from': tx['from'],
-                'data': tx['input'],
-                'value': tx['value']
-            }, tx['blockNumber'])
-
-        except ContractLogicError as e:
-            logger.error(f"El contrato retorno revert: {e.message}")
-            return e.message
-        
-        except Exception as e:
-            logger.error(f"Error inesperado al obtener el motivo de revert: {str(e)}")
-            raise e
-    
+                
     def map_revert_reason_to_message(self, cle_message: str) -> str:
         if not cle_message:
             return Messages.INTERNAL_ERROR
@@ -795,18 +677,6 @@ class ContractManager:
             raise cm_exceptions.BlockchainReadException(
                 "No se pudo recuperar la fecha de cierre del llamado desde la red blockchain."
             )
-    
-    def get_factory_contract_owner(self) -> str:
-        try:
-            logger.debug("Consultando on-chain al dueño del contrato factoría")
-            owner_address = self.contract.functions.owner().call()
-            
-            logger.debug(f"Dirección del dueño recuperada: {owner_address}")
-            return owner_address
-            
-        except Exception as e:
-            logger.error(f"Error al consultar el owner del contrato factoría: {str(e)}")
-            raise e
     
     def get_cfp_proposal_data(self, cfp_address: str, proposal_hex: str) -> tuple[str, int, int]:
         try:
@@ -1118,7 +988,7 @@ class ContractManager:
     def build_record_files_reception_tx(self, call_id_hex: str, proposal_id_hex: str, sender_address: str) -> dict:
         """
         Construye el diccionario de la transacción para 'recordFilesReception' sin firmar,
-        utilizando las propiedades e infraestructura de la instancia actual de ContractManager.
+        utilizando las propiedades e infraestructura de la instancia actual de CFPManager.
         
         """
         try:
@@ -1168,15 +1038,15 @@ class ContractManager:
             logger.warning(f"La EVM revirtió la simulación de la transacción: {revert_reason}")
             raise cm_exceptions.BlockchainContractLogicException(revert_reason)
         except Exception as e:
-            logger.error(f"Error al estructurar la transacción de recepción en ContractManager: {str(e)}", exc_info=True)
+            logger.error(f"Error al estructurar la transacción de recepción en CFPManager: {str(e)}", exc_info=True)
             raise cm_exceptions.BlockchainReadException("No se pudo compilar la transacción debido a una falla de red o de sincronización.")
             
                         
 @lru_cache()
-def get_contract_manager() -> ContractManager:
+def get_contract_manager() -> CFPManager:
     """
     Inyecta de forma interna la configuración del archivo .env.
     Gracias al decorador @lru_cache, la lectura del ABI y la inicialización del 
     proveedor HTTP ocurren UNA SOLA VEZ al recibir la primera petición HTTP de la API.
     """
-    return ContractManager()
+    return CFPManager()

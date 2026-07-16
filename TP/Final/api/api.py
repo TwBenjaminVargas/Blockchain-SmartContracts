@@ -21,8 +21,8 @@ from models.CallCreate import CallCreate
 from models.UserRegister import UserRegister
 from models.ProposalRegister import ProposalRegister
 from models.UserPatch import UserPatch
-from services.contractManager import get_contract_manager, ContractManager
-from db.sqliteManager import DBManager, get_db_manager
+from api.services.CFPManager import get_contract_manager, CFPManager
+from api.db.DBManager import DBManager, get_db_manager
 import re
 import json
 from models.persistence.User import UserState
@@ -187,7 +187,7 @@ async def custom_validation_exception_handler(request: Request, exc: RequestVali
         return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"message": Messages.INVALID_TITLE})
 
     return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"message": Messages.MISSING_FIELD})  
-    
+# Afectado por ENS    
 @app.post(
     "/create", 
     status_code=status.HTTP_201_CREATED,
@@ -196,7 +196,7 @@ async def custom_validation_exception_handler(request: Request, exc: RequestVali
 )
 async def create(
     payload: CallCreate,
-    manager: ContractManager = Depends(get_contract_manager),
+    manager: CFPManager = Depends(get_contract_manager),
     signer: Signer = Depends(get_signer),
     db_manager: DBManager = Depends(get_db_manager)
 ):  
@@ -258,7 +258,7 @@ async def create(
     except Exception as e:
         logger.error(f"Fallo no controlado en el flujo del endpoint: {str(e)}")
         return JSONResponse(status_code=500, content={"message": Messages.INTERNAL_ERROR})
-                            
+# Afectado por ENS                            
 @app.post(
     "/register",
     status_code=status.HTTP_200_OK,
@@ -268,7 +268,7 @@ async def create(
 async def register(
     payload: UserRegister,
     db_manager: DBManager = Depends(get_db_manager),
-    contract_manager: ContractManager = Depends(get_contract_manager),
+    contract_manager: CFPManager = Depends(get_contract_manager),
     signer: Signer = Depends(get_signer)
 ):
     """
@@ -345,7 +345,7 @@ async def register_proposal(
     payload: ProposalRegister,
     db_manager: DBManager = Depends(get_db_manager),
     signer: Signer = Depends(get_signer),
-    contract_manager: ContractManager = Depends(get_contract_manager)
+    contract_manager: CFPManager = Depends(get_contract_manager)
 ):
     try:
         try:
@@ -479,7 +479,7 @@ async def check_address_authorization(
         pattern=r"^0x[a-fA-F0-9]{40}$",
         examples=["0x3Bdd62278057288b1F486cBD775986AD042F5E4A"]
     ),
-    manager: ContractManager = Depends(get_contract_manager)
+    manager: CFPManager = Depends(get_contract_manager)
 ):
     """
     Consulta on-chain el estado de una dirección y retorna si está autorizada para crear llamados.
@@ -587,7 +587,7 @@ async def get_call(
 async def get_closing_time_by_id(
     call_id: str = Path(..., description="Hash que identifica al llamado"),
     db_manager: DBManager = Depends(get_db_manager),
-    manager: ContractManager = Depends(get_contract_manager)
+    manager: CFPManager = Depends(get_contract_manager)
 ):
     if not re.match(r"^0x[a-fA-F0-9]{64}$", call_id):
         return JSONResponse(
@@ -676,7 +676,7 @@ async def get_closing_time_by_id(
     response_description="Retorna la dirección de Ethereum del contrato principal"
 )
 async def get_factory_address(
-    manager: ContractManager = Depends(get_contract_manager)
+    manager: CFPManager = Depends(get_contract_manager)
 ):
     try:
         factory_address = manager.contract_address
@@ -698,7 +698,7 @@ async def get_proposal_data(
     call_id: str = Path(..., description="Hash identificador del llamado (0x...)"),
     proposal: str = Path(..., description="Hash raíz de Merkle de la propuesta (0x...)"),
     db_manager: DBManager = Depends(get_db_manager),
-    contract_manager: ContractManager = Depends(get_contract_manager)
+    contract_manager: CFPManager = Depends(get_contract_manager)
 ):
     try:
         if not re.match(r"^0x[a-fA-F0-9]{64}$", call_id):
@@ -804,7 +804,7 @@ async def get_proposal_data(
 async def get_registration_status(
     address: str = Path(..., description="Ethereum address (0x...)"),
     db_manager: DBManager = Depends(get_db_manager),
-    contract_manager: ContractManager = Depends(get_contract_manager)
+    contract_manager: CFPManager = Depends(get_contract_manager)
 ):
     try:
         if not re.match(r"^0x[a-fA-F0-9]{40}$", address):
@@ -879,7 +879,7 @@ async def update_registration_name(
     payload: UserPatch,
     address: str = Path(..., description="Ethereum address (0x...)"),
     db_manager: DBManager = Depends(get_db_manager),
-    contract_manager: ContractManager = Depends(get_contract_manager),
+    contract_manager: CFPManager = Depends(get_contract_manager),
     signer: Signer = Depends(get_signer)
 ):
     try:
@@ -992,7 +992,7 @@ async def authorize_address(
     address: str = Path(..., description="Dirección de la wallet que será autorizada"),
     db_manager: DBManager = Depends(get_db_manager),
     signer: Signer = Depends(get_signer),
-    contract_manager: ContractManager = Depends(get_contract_manager)
+    contract_manager: CFPManager = Depends(get_contract_manager)
 ):
     try:
         # Validar formato hexadecimal de la dirección del parámetro de ruta
@@ -1078,7 +1078,7 @@ async def unauthorize_address(
     address: str = Path(..., description="Dirección de la wallet que será desautorizada"),
     db_manager: DBManager = Depends(get_db_manager),
     signer: Signer = Depends(get_signer),
-    contract_manager: ContractManager = Depends(get_contract_manager)
+    contract_manager: CFPManager = Depends(get_contract_manager)
 ):
     try:
         # Validar formato hexadecimal de la dirección del parámetro de ruta
@@ -1165,7 +1165,7 @@ async def unauthorize_address(
 )
 async def verify_proof(
     payload: VerifyProof,
-    contract_manager: ContractManager = Depends(get_contract_manager)
+    contract_manager: CFPManager = Depends(get_contract_manager)
 ):
     try:
         is_valid = contract_manager.verify_merkle_proof(
@@ -1245,7 +1245,7 @@ async def get_admin_address(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"message": Messages.INTERNAL_ERROR}
         )
-        
+# Afectado por ENS       
 @app.get(
     "/creators",
     status_code=status.HTTP_200_OK,
@@ -1253,7 +1253,7 @@ async def get_admin_address(
     description="Lee las direcciones de creadores desde la Blockchain y las contrasta con la Base de Datos local para devolver detalles de los usuarios registrados y las direcciones faltantes."
 )
 async def get_creators_endpoint(
-    contract_manager: ContractManager = Depends(get_contract_manager),
+    contract_manager: CFPManager = Depends(get_contract_manager),
     db_manager: DBManager = Depends(get_db_manager)
 ):
     try:
@@ -1303,7 +1303,7 @@ async def get_creators_endpoint(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"message": Messages.INTERNAL_ERROR}
         )
-
+# Afectado por ENS
 @app.get(
     "/users",
     status_code=status.HTTP_200_OK,
@@ -1350,6 +1350,7 @@ async def get_all_users_endpoint(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"message": Messages.INTERNAL_ERROR}
         )
+# Afectado por ENS
 @app.get(
     "/authorization-requests",
     status_code=status.HTTP_200_OK,
@@ -1357,7 +1358,7 @@ async def get_all_users_endpoint(
     description="Devuelve dos listas: solicitudes externas (solo blockchain) y solicitudes locales (usuarios en estado pending o registered en la API)."
 )
 async def get_authorization_requests_endpoint(
-    contract_manager: ContractManager = Depends(get_contract_manager),
+    contract_manager: CFPManager = Depends(get_contract_manager),
     db_manager: DBManager = Depends(get_db_manager),
     signer: Signer = Depends(get_signer)
 ):
@@ -1418,7 +1419,8 @@ async def get_authorization_requests_endpoint(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"message": Messages.INTERNAL_ERROR}
         )
-        
+
+# Afectado por ENS        
 @app.get(
     "/calls-by/{address}",
     status_code=status.HTTP_200_OK,
@@ -1427,7 +1429,7 @@ async def get_authorization_requests_endpoint(
 async def get_user_calls(
     address: str = Path(..., description="Dirección Ethereum del creador (0x...)"),
     db_manager: DBManager = Depends(get_db_manager),
-    contract_manager: ContractManager = Depends(get_contract_manager),
+    contract_manager: CFPManager = Depends(get_contract_manager),
     signer: Signer = Depends(get_signer)
 ):
     target_address = address.strip()
@@ -1492,6 +1494,7 @@ async def get_user_calls(
             content={"message": Messages.INTERNAL_ERROR}
         )
 
+# Afectado por ENS
 @app.get(
     "/global-calls",
     status_code=status.HTTP_200_OK,
@@ -1499,7 +1502,7 @@ async def get_user_calls(
 )
 async def get_global_calls_catalog(
     db_manager: DBManager = Depends(get_db_manager),
-    contract_manager: ContractManager = Depends(get_contract_manager)
+    contract_manager: CFPManager = Depends(get_contract_manager)
 ):
     """
     Obtiene todos los Call IDs de la blockchain. Clasifica las convocatorias:
@@ -1570,7 +1573,6 @@ async def get_global_calls_catalog(
             content={"message": Messages.INTERNAL_ERROR}
         )
         
-# TODO: No verifica que pertenezca a una propuesta
 @app.post(
     "/upload-files",
     status_code=status.HTTP_201_CREATED,
@@ -1578,7 +1580,7 @@ async def get_global_calls_catalog(
 )
 async def upload_files(
     uploaded_files: list[UploadFile] = File(..., description="Archivos binarios a guardar en el servidor"),
-    contract_manager: ContractManager = Depends(get_contract_manager),
+    contract_manager: CFPManager = Depends(get_contract_manager),
     settings: Settings = Depends(get_settings)
 ):
     try:
@@ -1693,7 +1695,7 @@ async def get_proposal_receipt(
 )
 async def verify_proposal_receipt(
     receipt: VerifyReceipt,
-    contract_manager: ContractManager = Depends(get_contract_manager)
+    contract_manager: CFPManager = Depends(get_contract_manager)
 ):
     try:
         # Re-calcular el proposalID (raíz de Merkle) utilizando el generador
@@ -2040,7 +2042,7 @@ async def get_proposal_receipt(
             content={"message": Messages.INTERNAL_ERROR}
         )
 
-
+# Afectado por ENS
 @app.get(
     "/calls/{call_id}/proposals",
     status_code=status.HTTP_200_OK,

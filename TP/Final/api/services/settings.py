@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 class Settings(BaseSettings):
     web3_provider_url: str = Field(alias="WEB3_PROVIDER_URL")
-    contract_address: str = Field(alias="CFP_FACTORY_ADDRESS")
+    cfp_factory_address: str = Field(alias="CFP_FACTORY_ADDRESS")
     mnemonic_phrase: str = Field(alias="CFP_MNEMONIC")
     derivacion_path: str = Field(alias="DERIVACION_PATH")
     db_path: str = Field(alias="CFP_DB_PATH")
