@@ -9,7 +9,7 @@ from functools import lru_cache
 logger = logging.getLogger(__name__)
 
 class ENSManager:
-    def __init__(self, web3_instance):
+    def __init__(self, web3_instance:str = None):
         
         settings = get_settings()
         connector = get_blockchainconnector()

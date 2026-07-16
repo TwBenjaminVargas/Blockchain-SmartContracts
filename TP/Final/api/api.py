@@ -2164,3 +2164,25 @@ async def download_proposal_files(
             content={"message": Messages.INTERNAL_ERROR}
         )
         
+@app.get(
+    "/ens-addresses",
+    status_code=status.HTTP_200_OK,
+    summary="Obtiene la dirección de los contratos de ENS",
+    response_description="Retorna la dirección de Ethereum del contrato registry y resolver"
+)
+async def get_ens_addresses(
+    manager: ENSManager = Depends(get_ENS_manager)
+):
+    try:
+        registry_address = manager.registry_address
+        resolver_address = manager.resolver_address
+        return {
+            "registry": registry_address,
+            "resolver": resolver_address
+        }
+    except Exception as e:
+        logger.error(f"Fallo no controlado en el endpoint GET /ens-addresses: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=Messages.INTERNAL_ERROR
+        )
