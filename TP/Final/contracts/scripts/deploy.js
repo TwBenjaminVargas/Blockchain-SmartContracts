@@ -144,10 +144,16 @@ async function main() {
     const txUsuariosResolver = await registryContract.setResolver(usuariosNode, resolverAddress, { nonce: deployerNonce++ });
     await txUsuariosResolver.wait();
 
-    console.log("Desplegando FIFSRegistrar para usuarios.cfp...");
+    console.log("Desplegando Registrar para usuarios.cfp...");
     const usuariosRegistrarArtifact = getArtifact("Registrar");
     const usuariosRegistrarFactory = new ethers.ContractFactory(usuariosRegistrarArtifact.abi, usuariosRegistrarArtifact.bytecode, deployer);
-    const usuariosRegistrarContract = await usuariosRegistrarFactory.deploy(registryAddress, usuariosNode, { nonce: deployerNonce++ });
+
+    const usuariosRegistrarContract = await usuariosRegistrarFactory.deploy(
+        registryAddress, 
+        resolverAddress, 
+        usuariosNode, 
+        { nonce: deployerNonce++ }
+    );
     await usuariosRegistrarContract.waitForDeployment();
     const usuariosRegistrarAddress = await usuariosRegistrarContract.getAddress();
 
@@ -166,10 +172,17 @@ async function main() {
     const txLlamadosResolver = await registryContract.setResolver(llamadosNode, resolverAddress, { nonce: deployerNonce++ });
     await txLlamadosResolver.wait();
 
-    console.log("Desplegando FIFSRegistrar para llamados.cfp...");
+    console.log("Desplegando Registrar para llamados.cfp...");
     const llamadosRegistrarArtifact = getArtifact("Registrar");
     const llamadosRegistrarFactory = new ethers.ContractFactory(llamadosRegistrarArtifact.abi, llamadosRegistrarArtifact.bytecode, deployer);
-    const llamadosRegistrarContract = await llamadosRegistrarFactory.deploy(registryAddress, llamadosNode, { nonce: deployerNonce++ });
+
+    const llamadosRegistrarContract = await llamadosRegistrarFactory.deploy(
+        registryAddress, 
+        resolverAddress, 
+        llamadosNode, 
+        { nonce: deployerNonce++ }
+    );
+    
     await llamadosRegistrarContract.waitForDeployment();
     const llamadosRegistrarAddress = await llamadosRegistrarContract.getAddress();
 

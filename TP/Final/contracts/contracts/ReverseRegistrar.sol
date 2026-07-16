@@ -2,21 +2,19 @@
 pragma solidity ^0.8.19;
 
 import "./Registry.sol";
+import "./Resolver.sol";
 
-interface IResolver {
-    function setName(bytes32 node, string calldata _name) external;
-}
 
 contract ReverseRegistrar {
     // namehash('addr.reverse')
     bytes32 public constant ADDR_REVERSE_NODE = 0x91d1777781884d03a6757a803996e38de2a42967fb37eeaca72729271025a9e2;
 
     Registry public immutable registry;
-    IResolver public defaultResolver;
+    Resolver public defaultResolver;
 
     constructor(address _registry, address _defaultResolver) {
         registry = Registry(_registry);
-        defaultResolver = IResolver(_defaultResolver);
+        defaultResolver = Resolver(_defaultResolver);
     }
 
     /**
