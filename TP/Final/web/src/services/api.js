@@ -235,3 +235,13 @@ export const getProposalReceiptPostClosing = async (proposalId) => {
     throw error
   }
 }
+
+export const getENSAddresses = async (proposalId) => {
+  try {
+    const response = await api.get(URL.getENSAddresses)
+    return response.data
+  } catch (error) {
+    console.error(`Error al obtener las direcciones ENS`, error)
+    throw error
+  }
+}

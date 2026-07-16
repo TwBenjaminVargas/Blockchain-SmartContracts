@@ -17,9 +17,17 @@ export const ASSETS = {
 
 }
 import FactoryAbi from '../abis/CFPFactory.json'
+import RegistryAbi from '../abis/Registry.json'
+import ResolverAbi from '../abis/Resolver.json'
+import RegistrarAbi from '../abis/Registrar.json'
+import ReverseRegistrarAbi from '../abis/ReverseRegistrar.json'
 export const FILES = 
 {
-  CFP_FACTORY_ABI: FactoryAbi
+  CFP_FACTORY_ABI: FactoryAbi,
+  REGISTRY_ABI: RegistryAbi,
+  RESOLVER_ABI: ResolverAbi,
+  REGISTRAR_ABI: RegistrarAbi,
+  REVERSE_REGISTRAR_ABI: ReverseRegistrarAbi
 }
 
 export const URL = {
@@ -46,5 +54,6 @@ export const URL = {
     getCallById: '/calls/:call_id',
     getClosingTime: '/closing-time/:call_id',
     registerProposal: '/register-proposal',
-    getProposalReceiptPostClosing: '/proposals/:proposal_id/reception-receipt'
+    getProposalReceiptPostClosing: '/proposals/:proposal_id/reception-receipt',
+    getENSAddresses: '/ens-addresses'
 }
