@@ -1290,7 +1290,8 @@ async def get_creators_endpoint(
                 "name": user.name,
                 "state": user.state,
                 "description": user.description,
-                "nonce": user.nonce
+                "nonce": user.nonce,
+                "domain": user.domain
             }
             for user in existing_users
         ]
@@ -1344,7 +1345,8 @@ async def get_all_users_endpoint(
                 "name": user.name,
                 "state": user.state.value,
                 "description": user.description,
-                "nonce": user.nonce
+                "nonce": user.nonce,
+                "domain": user.domain
             }
             for user in all_users
         ]
@@ -1412,7 +1414,8 @@ async def get_authorization_requests_endpoint(
                 "name": user.name,
                 "state": user.state.value,
                 "description": user.description,
-                "nonce": user.nonce
+                "nonce": user.nonce,
+                "domain": user.domain
             })
                 
         return JSONResponse(
@@ -1488,7 +1491,8 @@ async def get_user_calls(
                 "creator": call.creator,
                 "state": call.state.value,
                 "contractAddress": call.contractAddress,
-                "closingTime": call.closingTime
+                "closingTime": call.closingTime,
+                "domain": call.domain
             })
             
         return JSONResponse(
@@ -1562,7 +1566,8 @@ async def get_global_calls_catalog(
                 "creator": local_call.creator,
                 "state": local_call.state.value,
                 "address": local_call.contractAddress,
-                "closingTime": local_call.closingTime
+                "closingTime": local_call.closingTime,
+                "domain": local_call.domain
             })
             
         #Resolver e iterar los detalles on-chain únicamente para los llamados externos
