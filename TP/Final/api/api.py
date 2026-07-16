@@ -199,9 +199,18 @@ async def create(
     payload: CallCreate,
     manager: CFPManager = Depends(get_contract_manager),
     signer: Signer = Depends(get_signer),
-    db_manager: DBManager = Depends(get_db_manager)
+    db_manager: DBManager = Depends(get_db_manager),
+    ENSmanager: ENSManager = Depends(get_ENS_manager)
 ):  
     try:
+        is_ens_valid = ENSmanager.is_claimed(payload.domain)
+        if not is_ens_valid:
+            # Retorna 400 si el dominio no fue solicitado para el llamado
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST, 
+                content={"message": Messages.INVALID_DOMAIN}
+            )
+            
         try:
             calculated_call_id = manager.generate_call_id(
                 title=payload.title, 
@@ -247,7 +256,8 @@ async def create(
             db_manager.createPendingCall(call_id=payload.callId, title=payload.title,
                                                     description=payload.description,
                                                     signature=payload.signature,
-                                                    creator_address=emisor_address)
+                                                    creator_address=emisor_address,
+                                                    domain=payload.domain)
         except db_exceptions.RecordAlreadyExistsException:
             return JSONResponse(status_code=403, content={"message": Messages.ALREADY_CREATED})
         except db_exceptions.DatabaseWriteException as db_write_err:

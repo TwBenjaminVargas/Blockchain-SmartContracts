@@ -30,3 +30,5 @@ class Call(SQLModel, table=True):
         nullable=True,
         description="Timestamp Unix que determina la fecha y hora límite de cierre de la convocatoria"
     )
+    
+    domain: str = Field(description="Nombre de dominio ENS verificado del usuario")

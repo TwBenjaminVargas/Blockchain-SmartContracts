@@ -122,6 +122,26 @@ class ENSManager:
             )
             
         return is_valid
+    
+    #Verificar si el dominio ya está tomado
+    def is_claimed(self, domain: str) -> bool:
+        """
+        Consulta en el Registry si el dominio ya tiene un dueño asignado.
+        Retorna True si el dominio ya está tomado, False si está libre.
+        """
+        try:
+            node_hash = self.get_namehash(domain)
+            owner = self.registry_contract.functions.owner(node_hash).call()
+            
+            # Si el dueño es la dirección cero, nadie lo ha reclamado aún
+            if owner == "0x0000000000000000000000000000000000000000":
+                return False
+                
+            return True
+        except Exception as e:
+            logger.error(f"Error al verificar disponibilidad (is_claimed) para {domain}: {str(e)}")
+            # Por seguridad, si falla la consulta asumimos que no está disponible
+            return True
 
                         
 @lru_cache()

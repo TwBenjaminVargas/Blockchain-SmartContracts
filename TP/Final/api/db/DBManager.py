@@ -72,7 +72,7 @@ class DBManager:
             )
             raise db_exceptions.DatabaseConnectionException("Error interno al consultar el almacenamiento local.")
 
-    def createPendingCall(self, call_id: str, title: str, description: str, signature: str, creator_address: str) -> Call:
+    def createPendingCall(self, call_id: str, title: str, description: str, signature: str, creator_address: str, domain: str) -> Call:
         """
         Instancia y persiste un nuevo objeto 'Call' con estado inicial 'PENDING'.
         
@@ -82,7 +82,7 @@ class DBManager:
             db_exceptions.DatabaseWriteException: Si el motor de base de datos falla al escribir.
         """
         # Validación preventiva
-        inputs = {"call_id": call_id, "title": title, "signature": signature, "creator_address": creator_address}
+        inputs = {"call_id": call_id, "title": title, "signature": signature, "creator_address": creator_address, "domain": domain}
         for name, value in inputs.items():
             if not isinstance(value, str) or not value.strip():
                 logger.error(f"Parámetro inválido o vacío detectado en createPendingCall: {name}={type(value)}")
@@ -95,6 +95,7 @@ class DBManager:
             description=description.strip(),
             signature=signature.strip(),
             creator=creator_address.strip(),
+            domain=domain.strip(),
             state=CallState.PENDING
         )
         

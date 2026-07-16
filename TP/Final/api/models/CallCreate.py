@@ -28,6 +28,13 @@ class CallCreate(BaseModel):
         pattern=r"^0x[a-fA-F0-9]{130}$",
         examples=["0x4355c47d63920e8a56e04d34bb4276babdda28d53d142812ba51fe3f65557ef252fec4b4c2049e59b315bab9d7962fec34d28d3615fa2fc7274092b1a16e7fb61b"]
     )
+    
+    domain: str = Field(
+        ...,
+        description="Nombre de dominio ENS del usuario registrado.",
+        pattern=r"^[a-z0-9.-]+\.[a-z]{2,}$",
+        examples=["pepe.usuarios.cfp", "benja.eth"]
+    )
 
     @field_validator("title", mode="before")
     @classmethod
