@@ -94,6 +94,8 @@
             </div>
 
             <v-expansion-panels v-else variant="accordion" class="custom-panels">
+  
+              <!-- CREADORES REGISTRADOS -->
               <v-expansion-panel
                 v-for="(creator, index) in filteredCreators.registered"
                 :key="creator.address"
@@ -105,17 +107,55 @@
                     {{ creator.name.charAt(0).toUpperCase() }}
                   </v-avatar>
                   <div class="text-left">
+                    <!-- Nombre Principal -->
                     <div class="text-subtitle-1 font-weight-bold text-slate-dark">{{ creator.name }}</div>
-                    <div class="text-caption text-mono text-grey-darken-1">{{ creator.address }}</div>
+                    <!-- NUEVO: Dominio justo debajo del nombre -->
+                    <div class="text-subtitle-2 font-weight-bold text-indigo-darken-1 d-flex align-center">
+                      <v-icon icon="mdi-dns-outline" size="14" class="me-1"></v-icon>
+                      {{ creator.domain || 'sin-dominio.eth' }}
+                    </div>
                   </div>
                 </v-expansion-panel-title>
 
-                <v-expansion-panel-text class="text-left pt-2 text-slate-medium">
-                  <div class="mb-2"><strong class="text-slate-dark">Descripción:</strong> {{ creator.description || 'Sin descripcion provista' }}</div>
-                  <div><strong class="text-slate-dark">Nonce: </strong> <span class="text-mono">{{ creator.nonce }}</span></div>
+                <!-- Detalles Técnicos del Creador -->
+                <v-expansion-panel-text class="text-left pt-2 text-slate-medium bg-slate-lighten-5">
+                  <div class="technical-details d-flex flex-column gap-3 text-body-2 text-grey-darken-3 mb-2">
+                    <div class="d-flex align-center justify-space-between bg-white pa-2 rounded-lg border">
+                      <div class="text-truncate pr-2">
+                        <v-icon icon="mdi-account-circle" size="16" class="me-2 text-indigo-darken-1"></v-icon>
+                        <strong>Address del Creador:</strong>  
+                        <span class="text-mono ms-2 text-caption text-grey-darken-1 select-all">{{ creator.address }}</span>
+                      </div>
+                      <v-btn 
+                        icon="mdi-content-copy" 
+                        variant="text" 
+                        size="x-small" 
+                        color="indigo-darken-1"
+                        title="Copiar Address"
+                        @click="copyToClipboard(creator.address, 'Address del Creador')"
+                      ></v-btn>
+                    </div>
+
+                    <!-- Descripción -->
+                    <div class="bg-white pa-3 rounded-lg border">
+                      <strong class="text-slate-dark">Descripción:</strong> 
+                      <p class="text-body-2 text-slate-medium mt-1 mb-0 italic-text">
+                        {{ creator.description || 'Sin descripción provista.' }}
+                      </p>
+                    </div>
+
+                    <!-- Nonce -->
+                    <div class="d-flex align-center bg-white pa-2 rounded-lg border text-caption">
+                      <v-icon icon="mdi-counter" size="16" class="me-2 text-indigo-darken-1"></v-icon>
+                      <strong>Nonce de Transacciones:</strong>
+                      <span class="text-mono ms-2 bg-grey-lighten-3 px-2 py-0.5 rounded">{{ creator.nonce }}</span>
+                    </div>
+
+                  </div>
                 </v-expansion-panel-text>
               </v-expansion-panel>
 
+              <!-- CREADORES EXTERNOS -->
               <v-expansion-panel
                 v-for="address in filteredCreators.external"
                 :key="address"
@@ -128,14 +168,40 @@
                   </v-avatar>
                   <div class="text-left">
                     <div class="text-subtitle-1 font-weight-bold text-grey-darken-3">Creador Externo</div>
-                    <div class="text-caption text-mono text-grey-darken-1">{{ address }}</div>
+                    <!-- Subtexto indicando que no tiene ENS registrado -->
+                    <div class="text-caption text-grey-darken-1 italic-text">Sin dominio disponible</div>
                   </div>
                 </v-expansion-panel-title>
 
-                <v-expansion-panel-text class="text-left pt-2 text-grey-darken-2 italic-text">
-                  Este creador se ha registrado por otros medios y no se posee información al respecto
+                <!-- Detalles Técnicos del Creador Externo -->
+                <v-expansion-panel-text class="text-left pt-2 text-grey-darken-2 bg-slate-lighten-5">
+                  <div class="technical-details d-flex flex-column gap-3 text-body-2 mb-2">
+                    
+                    <!-- Address con botón de copiar para externos -->
+                    <div class="d-flex align-center justify-space-between bg-white pa-2 rounded-lg border">
+                      <div class="text-truncate pr-2">
+                        <v-icon icon="mdi-account-alert-outline" size="16" class="me-2 text-amber-darken-2"></v-icon>
+                        <strong>Address (Wallet Externa):</strong>  
+                        <span class="text-mono ms-2 text-caption text-grey-darken-1 select-all">{{ address }}</span>
+                      </div>
+                      <v-btn 
+                        icon="mdi-content-copy" 
+                        variant="text" 
+                        size="x-small" 
+                        color="amber-darken-3"
+                        title="Copiar Address"
+                        @click="copyToClipboard(address, 'Address de la Wallet Externa')"
+                      ></v-btn>
+                    </div>
+
+                    <div class="bg-white pa-3 rounded-lg border text-caption italic-text">
+                      Este creador se ha registrado por otros medios (interacción directa on-chain) y no se posee información extendida en los metadatos de la API local.
+                    </div>
+
+                  </div>
                 </v-expansion-panel-text>
               </v-expansion-panel>
+
             </v-expansion-panels>
           </div>
 
