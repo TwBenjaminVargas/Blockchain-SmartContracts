@@ -93,83 +93,125 @@
               <v-img :src="question_svg" max-width="80" class="mx-auto mb-4" opacity="0.6"></v-img>
               <p class="text-subtitle-1 font-weight-medium">No se encontraron creadores que coincidan con la búsqueda</p>
             </div>
-            <v-expansion-panels v-else variant="accordion" class="custom-panels">
-              <v-expansion-panel 
-                v-for="(creator, index) in filteredCreators.registered" 
-                :key="creator.address" 
-                :class="['creator-row mb-3 rounded-lg overflow-hidden', creator.state === 'pending' ? 'archived-row' : '']" 
-                elevation="1"
-              >
-                <v-expansion-panel-title class="py-4">
-                  <v-avatar :color="creator.state === 'pending' ? 'grey' : getRandomColor(index)" size="48" class="me-4 shadow-sm text-white font-weight-bold">
-                    {{ creator.name.charAt(0).toUpperCase() }}
-                  </v-avatar>
-                  <div class="text-left w-100 d-flex justify-space-between align-center pe-4">
-                    <div>
-                      <div class="text-subtitle-1 font-weight-bold text-slate-dark">
-                        {{ creator.name }}
-                        <span v-if="isCurrentUser(creator.address)" class="text-caption text-indigo font-weight-bold ms-1">(Tú)</span>
+              <v-expansion-panels v-else variant="accordion" class="custom-panels">
+                <!-- Creadores Registrados -->
+                <v-expansion-panel 
+                  v-for="(creator, index) in filteredCreators.registered" 
+                  :key="creator.address" 
+                  :class="['creator-row mb-3 rounded-lg overflow-hidden', creator.state === 'pending' ? 'archived-row' : '']" 
+                  elevation="1"
+                >
+                  <v-expansion-panel-title class="py-4">
+                    <v-avatar :color="creator.state === 'pending' ? 'grey' : getRandomColor(index)" size="48" class="me-4 shadow-sm text-white font-weight-bold">
+                      {{ creator.name.charAt(0).toUpperCase() }}
+                    </v-avatar>
+                    <div class="text-left w-100 d-flex justify-space-between align-center pe-4">
+                      <div>
+                        <div class="text-subtitle-1 font-weight-bold text-slate-dark">
+                          {{ creator.name }}
+                          <span v-if="isCurrentUser(creator.address)" class="text-caption text-indigo font-weight-bold ms-1">(Tú)</span>
+                        </div>
+                        <!-- NUEVO: Dominio debajo del nombre -->
+                        <div class="text-caption text-indigo-darken-1 font-weight-bold d-flex align-center mt-0.5">
+                          <v-icon icon="mdi-dns-outline" size="12" class="me-1"></v-icon>
+                          {{ creator.domain || 'sin-dominio.eth' }}
+                        </div>
                       </div>
-                      <div class="text-caption text-mono text-grey-darken-1">{{ creator.address }}</div>
+                      <v-chip v-if="creator.state === 'pending'" color="grey" size="small" variant="flat" class="font-weight-bold text-uppercase">
+                        Archivado
+                      </v-chip>
                     </div>
-                    <v-chip v-if="creator.state === 'pending'" color="grey" size="small" variant="flat" class="font-weight-bold text-uppercase">
-                      Archivado
-                    </v-chip>
-                  </div>
-                </v-expansion-panel-title>
+                  </v-expansion-panel-title>
 
-                <v-expansion-panel-text class="text-left pt-2 text-slate-medium">
-                  <div class="mb-2"><strong class="text-slate-dark">Descripción:</strong> {{ creator.description || 'Sin descripcion provista' }}</div>
-                  <div class="mb-4"><strong class="text-slate-dark">Nonce: </strong> <span class="text-mono">{{ creator.nonce }}</span></div>
+                  <v-expansion-panel-text class="text-left pt-2 text-slate-medium bg-slate-lighten-5">
+                    <div class="technical-details d-flex flex-column gap-3 text-body-2 text-grey-darken-3 mb-2">
+                      
+                      <div class="d-flex align-center justify-space-between bg-white pa-2 rounded-lg border">
+                        <div class="text-truncate pr-2">
+                          <v-icon icon="mdi-account-circle" size="16" class="me-2 text-indigo-darken-1"></v-icon>
+                          <strong>Address del Creador:</strong>  
+                          <span class="text-mono ms-2 text-caption text-grey-darken-1 select-all">{{ creator.address }}</span>
+                        </div>
+                        <v-btn 
+                          icon="mdi-content-copy" 
+                          variant="text" 
+                          size="x-small" 
+                          color="indigo-darken-1"
+                          title="Copiar Address"
+                          @click="copyToClipboard(creator.address, 'Address del Creador')"
+                        ></v-btn>
+                      </div>
 
-                  <div class="text-right">
-                    <v-chip v-if="isCurrentUser(creator.address)" color="indigo-lighten-4" text-color="indigo-darken-4" size="small" class="font-weight-bold">
-                      Administrador Activo
-                    </v-chip>
-                  
-                    <v-chip 
-                      v-else-if="creator.state === 'pending'" 
-                      color="grey-darken-1" 
-                      variant="tonal"
-                      size="small" 
-                      class="font-weight-bold"
-                    >
-                      Acciones deshabilitadas (Creador Archivado)
-                    </v-chip>
-                  
-                    <v-btn 
-                      v-else
-                      color="error" 
-                      variant="tonal" 
-                      size="small" 
-                      class="font-weight-bold" 
-                      :loading="isActionLoading === creator.address" 
-                      @click="handleAction('unauthorize', creator.address)"
-                    > 
-                      Desautorizar
-                    </v-btn>
-                  </div>
-                </v-expansion-panel-text>
-              </v-expansion-panel>
-            
-              <v-expansion-panel v-for="address in filteredCreators.external" :key="address" class="creator-row external-row mb-3 rounded-lg overflow-hidden" elevation="1">
-                <v-expansion-panel-title class="py-4">
-                  <v-avatar color="grey-lighten-2" size="48" class="me-4 border-dashed text-grey-darken-2">
-                    <v-icon icon="mdi-help-outline" size="24"></v-icon>
-                  </v-avatar>
-                  <div class="text-left">
-                    <div class="text-subtitle-1 font-weight-bold text-grey-darken-3">
-                      Creador Externo
-                      <span v-if="isCurrentUser(address)" class="text-caption text-indigo font-weight-bold ms-1">(Tú)</span>
+                      <div class="bg-white pa-3 rounded-lg border">
+                        <strong class="text-slate-dark">Descripción:</strong> 
+                        <p class="text-body-2 text-slate-medium mt-1 mb-0 italic-text">{{ creator.description || 'Sin descripción provista' }}</p>
+                      </div>
+                      
+                      <div class="d-flex align-center bg-white pa-2 rounded-lg border text-caption">
+                        <v-icon icon="mdi-counter" size="16" class="me-2 text-indigo-darken-1"></v-icon>
+                        <strong>Nonce:</strong>
+                        <span class="text-mono ms-2 bg-grey-lighten-3 px-2 py-0.5 rounded">{{ creator.nonce }}</span>
+                      </div>
                     </div>
-                    <div class="text-caption text-mono text-grey-darken-1">{{ address }}</div>
-                  </div>
-                </v-expansion-panel-title>
-                <v-expansion-panel-text class="text-left pt-2 text-grey-darken-2">
-                  <p class="italic-text mb-4">Este creador se ha registrado por otros medios y no se posee información al respecto</p>
-                </v-expansion-panel-text>
-              </v-expansion-panel>
-            </v-expansion-panels>            
+
+                    <div class="text-right mt-3">
+                      <v-chip v-if="isCurrentUser(creator.address)" color="indigo-lighten-4" text-color="indigo-darken-4" size="small" class="font-weight-bold">
+                        Administrador Activo
+                      </v-chip>
+                      <v-chip v-else-if="creator.state === 'pending'" color="grey-darken-1" variant="tonal" size="small" class="font-weight-bold">
+                        Acciones deshabilitadas (Creador Archivado)
+                      </v-chip>
+                      <v-btn 
+                        v-else
+                        color="error" 
+                        variant="tonal" 
+                        size="small" 
+                        class="font-weight-bold" 
+                        :loading="isActionLoading === creator.address" 
+                        @click="handleAction('unauthorize', creator.address)"
+                      > 
+                        Desautorizar
+                      </v-btn>
+                    </div>
+                  </v-expansion-panel-text>
+                </v-expansion-panel>
+
+                <!-- Creadores Externos -->
+                <v-expansion-panel v-for="address in filteredCreators.external" :key="address" class="creator-row external-row mb-3 rounded-lg overflow-hidden" elevation="1">
+                  <v-expansion-panel-title class="py-4">
+                    <v-avatar color="grey-lighten-2" size="48" class="me-4 border-dashed text-grey-darken-2">
+                      <v-icon icon="mdi-help-outline" size="24"></v-icon>
+                    </v-avatar>
+                    <div class="text-left">
+                      <div class="text-subtitle-1 font-weight-bold text-grey-darken-3">
+                        Creador Externo
+                        <span v-if="isCurrentUser(address)" class="text-caption text-indigo font-weight-bold ms-1">(Tú)</span>
+                      </div>
+                      <div class="text-caption text-grey-darken-1 italic-text">Sin dominio disponible</div>
+                    </div>
+                  </v-expansion-panel-title>
+                  <v-expansion-panel-text class="text-left pt-2 text-grey-darken-2 bg-slate-lighten-5">
+                    <div class="technical-details d-flex flex-column gap-3 text-body-2 mb-2">
+                      <div class="d-flex align-center justify-space-between bg-white pa-2 rounded-lg border">
+                        <div class="text-truncate pr-2">
+                          <v-icon icon="mdi-account-alert-outline" size="16" class="me-2 text-amber-darken-2"></v-icon>
+                          <strong>Address (Wallet Externa):</strong>  
+                          <span class="text-mono ms-2 text-caption text-grey-darken-1 select-all">{{ address }}</span>
+                        </div>
+                        <v-btn 
+                          icon="mdi-content-copy" 
+                          variant="text" 
+                          size="x-small" 
+                          color="amber-darken-3"
+                          title="Copiar Address"
+                          @click="copyToClipboard(address, 'Address Externa')"
+                        ></v-btn>
+                      </div>
+                      <p class="italic-text mb-0 pa-2 bg-white rounded-lg border text-caption">Este creador se ha registrado por otros medios y no se posee información al respecto.</p>
+                    </div>
+                  </v-expansion-panel-text>
+                </v-expansion-panel>
+              </v-expansion-panels>      
           </div>
 
           <div v-else-if="currentTab === 'users'" class="scrollable-containerpe">
@@ -178,54 +220,84 @@
               <p class="text-subtitle-1 font-weight-medium">No hay usuarios activos que coincidan.</p>
             </div>
 
-            <v-expansion-panels v-else variant="accordion" class="custom-panels">
-              <v-expansion-panel
-                v-for="(user, index) in searchedUsers"
-                :key="user.address"
-                :class="['creator-row mb-3 rounded-lg overflow-hidden']"
-                elevation="1"
-              >
-                <v-expansion-panel-title class="py-4">
-                  <v-avatar :color="getRandomColor(index)" size="48" class="me-4 text-white font-weight-bold">
-                    {{ user.name.charAt(0).toUpperCase() }}
-                  </v-avatar>
-                  <div class="text-left w-100 d-flex justify-space-between align-center pe-4">
-                    <div>
-                      <div class="text-subtitle-1 font-weight-bold text-slate-dark">
-                        {{ user.name }}
-                        <span v-if="isCurrentUser(user.address)" class="text-caption text-indigo font-weight-bold ms-1">(Tú)</span>
+              <v-expansion-panels v-else variant="accordion" class="custom-panels">
+                <v-expansion-panel
+                  v-for="(user, index) in searchedUsers"
+                  :key="user.address"
+                  class="creator-row mb-3 rounded-lg overflow-hidden"
+                  elevation="1"
+                >
+                  <v-expansion-panel-title class="py-4">
+                    <v-avatar :color="getRandomColor(index)" size="48" class="me-4 text-white font-weight-bold">
+                      {{ user.name.charAt(0).toUpperCase() }}
+                    </v-avatar>
+                    <div class="text-left w-100 d-flex justify-space-between align-center pe-4">
+                      <div>
+                        <div class="text-subtitle-1 font-weight-bold text-slate-dark">
+                          {{ user.name }}
+                          <span v-if="isCurrentUser(user.address)" class="text-caption text-indigo font-weight-bold ms-1">(Tú)</span>
+                        </div>
+                        <div class="text-caption text-indigo-darken-1 font-weight-bold d-flex align-center mt-0.5">
+                          <v-icon icon="mdi-dns-outline" size="12" class="me-1"></v-icon>
+                          {{ user.domain || 'sin-dominio.eth' }}
+                        </div>
                       </div>
-                      <div class="text-caption text-mono text-grey-darken-1">{{ user.address }}</div>
+                      <v-chip color="success" size="small" variant="flat" class="font-weight-bold text-uppercase">
+                        {{ user.state }}
+                      </v-chip>
                     </div>
-                    <v-chip color="success" size="small" variant="flat" class="font-weight-bold text-uppercase">
-                      {{ user.state }}
-                    </v-chip>
-                  </div>
-                </v-expansion-panel-title>
-                <v-expansion-panel-text class="text-left pt-2 text-slate-medium">
-                  <div class="mb-2"><strong class="text-slate-dark">Descripción:</strong> {{ user.description || 'Sin descripcion provista' }}</div>
-                  <div class="mb-4"><strong class="text-slate-dark">Nonce: </strong> <span class="text-mono">{{ user.nonce }}</span></div>
+                  </v-expansion-panel-title>
                   
-                  <div class="text-right">
-                    <v-chip v-if="isCurrentUser(user.address)" color="indigo-lighten-4" text-color="indigo-darken-4" size="small" class="font-weight-bold">
-                      Administrador Activo (Tú)
-                    </v-chip>
+                  <v-expansion-panel-text class="text-left pt-2 text-slate-medium bg-slate-lighten-5">
+                    <div class="technical-details d-flex flex-column gap-3 text-body-2 text-grey-darken-3 mb-2">
+                      
+                      <div class="d-flex align-center justify-space-between bg-white pa-2 rounded-lg border">
+                        <div class="text-truncate pr-2">
+                          <v-icon icon="mdi-wallet" size="16" class="me-2 text-indigo-darken-1"></v-icon>
+                          <strong>Address del Usuario:</strong>  
+                          <span class="text-mono ms-2 text-caption text-grey-darken-1 select-all">{{ user.address }}</span>
+                        </div>
+                        <v-btn 
+                          icon="mdi-content-copy" 
+                          variant="text" 
+                          size="x-small" 
+                          color="indigo-darken-1"
+                          title="Copiar Address"
+                          @click="copyToClipboard(user.address, 'Address del Usuario')"
+                        ></v-btn>
+                      </div>
 
-                    <v-btn 
-                      v-else
-                      color="error" 
-                      variant="tonal" 
-                      size="small" 
-                      class="font-weight-bold" 
-                      :loading="isActionLoading === user.address" 
-                      @click="handleAction('unauthorize', user.address)"
-                    > 
-                      Desautorizar
-                    </v-btn>
-                  </div>
-                </v-expansion-panel-text>
-              </v-expansion-panel>
-            </v-expansion-panels>
+                      <div class="bg-white pa-3 rounded-lg border">
+                        <strong class="text-slate-dark">Descripción:</strong> 
+                        <p class="text-body-2 text-slate-medium mt-1 mb-0 italic-text">{{ user.description || 'Sin descripción provista' }}</p>
+                      </div>
+                      
+                      <div class="d-flex align-center bg-white pa-2 rounded-lg border text-caption">
+                        <v-icon icon="mdi-counter" size="16" class="me-2 text-indigo-darken-1"></v-icon>
+                        <strong>Nonce:</strong>
+                        <span class="text-mono ms-2 bg-grey-lighten-3 px-2 py-0.5 rounded">{{ user.nonce }}</span>
+                      </div>
+                    </div>
+                    
+                    <div class="text-right mt-3">
+                      <v-chip v-if="isCurrentUser(user.address)" color="indigo-lighten-4" text-color="indigo-darken-4" size="small" class="font-weight-bold">
+                        Administrador Activo (Tú)
+                      </v-chip>
+                      <v-btn 
+                        v-else
+                        color="error" 
+                        variant="tonal" 
+                        size="small" 
+                        class="font-weight-bold" 
+                        :loading="isActionLoading === user.address" 
+                        @click="handleAction('unauthorize', user.address)"
+                      > 
+                        Desautorizar
+                      </v-btn>
+                    </div>
+                  </v-expansion-panel-text>
+                </v-expansion-panel>
+              </v-expansion-panels>
           </div>
 
           <div v-else-if="currentTab === 'requests'" class="scrollable-containerpe">
@@ -235,6 +307,7 @@
             </div>
 
             <v-expansion-panels v-else variant="accordion" class="custom-panels">
+              <!-- Solicitudes Locales -->
               <v-expansion-panel v-for="(req, index) in filteredRequests.local" :key="req.address" class="creator-row mb-3 rounded-lg overflow-hidden" elevation="1">
                 <v-expansion-panel-title class="py-4">
                   <v-avatar :color="getRandomColor(index)" size="48" class="me-4 text-white font-weight-bold">
@@ -243,7 +316,10 @@
                   <div class="text-left w-100 d-flex justify-space-between align-center pe-4">
                     <div>
                       <div class="text-subtitle-1 font-weight-bold text-slate-dark">{{ req.name }}</div>
-                      <div class="text-caption text-mono text-grey-darken-1">{{ req.address }}</div>
+                      <div class="text-caption text-indigo-darken-1 font-weight-bold d-flex align-center mt-0.5">
+                        <v-icon icon="mdi-dns-outline" size="12" class="me-1"></v-icon>
+                        {{ req.domain || 'sin-dominio.eth' }}
+                      </div>
                     </div>
                     <v-chip 
                       :color="req.state === 'pending' ? 'warning' : req.state === 'registered' ? 'success' : 'grey'" 
@@ -255,27 +331,71 @@
                     </v-chip>
                   </div>
                 </v-expansion-panel-title>
-                <v-expansion-panel-text class="text-left pt-2 text-slate-medium">
-                  <div class="mb-4"><strong class="text-slate-dark">Descripción:</strong> {{ req.description || 'Sin descripcion provista' }}</div>
-                  <div class="d-flex justify-end gap-2">
+                
+                <v-expansion-panel-text class="text-left pt-2 text-slate-medium bg-slate-lighten-5">
+                  <div class="technical-details d-flex flex-column gap-3 text-body-2 text-grey-darken-3 mb-2">
+                    
+                    <div class="d-flex align-center justify-space-between bg-white pa-2 rounded-lg border">
+                      <div class="text-truncate pr-2">
+                        <v-icon icon="mdi-account-arrow-left" size="16" class="me-2 text-indigo-darken-1"></v-icon>
+                        <strong>Address a Autorizar:</strong>  
+                        <span class="text-mono ms-2 text-caption text-grey-darken-1 select-all">{{ req.address }}</span>
+                      </div>
+                      <v-btn 
+                        icon="mdi-content-copy" 
+                        variant="text" 
+                        size="x-small" 
+                        color="indigo-darken-1"
+                        title="Copiar Address"
+                        @click="copyToClipboard(req.address, 'Address del Solicitante')"
+                      ></v-btn>
+                    </div>
+
+                    <div class="bg-white pa-3 rounded-lg border">
+                      <strong class="text-slate-dark">Descripción de Motivo:</strong> 
+                      <p class="text-body-2 text-slate-medium mt-1 mb-0 italic-text">{{ req.description || 'Sin descripción provista' }}</p>
+                    </div>
+                  </div>
+
+                  <div class="d-flex justify-end gap-2 mt-3">
                     <v-btn color="error" variant="text" class="font-weight-bold" :disabled="isActionLoading === req.address" @click="handleAction('unauthorize', req.address)">Rechazar</v-btn>
                     <v-btn color="success" variant="flat" class="font-weight-bold" :loading="isActionLoading === req.address" @click="handleAction('authorize', req.address)">Autorizar</v-btn>
                   </div>
                 </v-expansion-panel-text>
               </v-expansion-panel>
 
-               <v-expansion-panel v-for="address in filteredRequests.external" :key="address" class="creator-row external-row mb-3 rounded-lg overflow-hidden" elevation="1">
+              <!-- Solicitudes Externas -->
+              <v-expansion-panel v-for="address in filteredRequests.external" :key="address" class="creator-row external-row mb-3 rounded-lg overflow-hidden" elevation="1">
                 <v-expansion-panel-title class="py-4">
                   <v-avatar color="grey-lighten-2" size="48" class="me-4 border-dashed text-grey-darken-2">
                     <v-icon icon="mdi-help-network-outline" size="24"></v-icon>
                   </v-avatar>
                   <div class="text-left">
                     <div class="text-subtitle-1 font-weight-bold text-grey-darken-3">Solicitud Externa</div>
-                    <div class="text-caption text-mono text-grey-darken-1">{{ address }}</div>
+                    <div class="text-caption text-grey-darken-1 italic-text">Sin dominio disponible</div>
                   </div>
                 </v-expansion-panel-title>
-                <v-expansion-panel-text class="text-left pt-2 text-grey-darken-2">
-                  <div class="mb-4"><strong class="text-slate-dark">Descripción:</strong> <span class="italic-text">Este usuario se ha registrado Onchain pero no se ha registrado en el sitema todavia</span></div>
+                <v-expansion-panel-text class="text-left pt-2 text-grey-darken-2 bg-slate-lighten-5">
+                  <div class="technical-details d-flex flex-column gap-3 text-body-2 mb-2">
+                    <div class="d-flex align-center justify-space-between bg-white pa-2 rounded-lg border">
+                      <div class="text-truncate pr-2">
+                        <v-icon icon="mdi-account-alert-outline" size="16" class="me-2 text-amber-darken-2"></v-icon>
+                        <strong>Address Solicitante Onchain:</strong>  
+                        <span class="text-mono ms-2 text-caption text-grey-darken-1 select-all">{{ address }}</span>
+                      </div>
+                      <v-btn 
+                        icon="mdi-content-copy" 
+                        variant="text" 
+                        size="x-small" 
+                        color="amber-darken-3"
+                        title="Copiar Address"
+                        @click="copyToClipboard(address, 'Address Externa')"
+                      ></v-btn>
+                    </div>
+                    <div class="pa-2 bg-white rounded-lg border text-caption italic-text">
+                      Este usuario se ha registrado Onchain pero no se ha registrado en el sistema local todavía.
+                    </div>
+                  </div>
                 </v-expansion-panel-text>
               </v-expansion-panel>
             </v-expansion-panels>
@@ -382,9 +502,19 @@
       </v-col>
     </v-row>
 
-    <v-snackbar v-model="snackbar.show" color="error" elevation="4" location="top right" :timeout="4000">
+   <v-snackbar 
+      v-model="snackbar.show" 
+      :color="snackbar.color || 'success'" 
+      elevation="4" 
+      location="top right" 
+      :timeout="4000"
+    >
       <div class="d-flex align-center">
-        <v-icon icon="mdi-alert-circle-outline" class="me-3" size="22"></v-icon>
+        <v-icon 
+          :icon="snackbar.color === 'error' ? 'mdi-alert-circle-outline' : 'mdi-check-circle-outline'" 
+          class="me-3" 
+          size="22"
+        ></v-icon>
         <span class="font-weight-medium text-body-2">{{ snackbar.message }}</span>
       </div>
     </v-snackbar>
@@ -625,6 +755,21 @@ async function loadGlobalCallsData() {
   }
 }
 
+function showSnackbar(message, color = 'error') {
+  snackbar.value = { show: true, message, color }
+}
+
+async function copyToClipboard(text, label) {
+  if (!text) return
+  try {
+    await navigator.clipboard.writeText(text)
+    showSnackbar(`¡${label} copiado al portapapeles!`, 'success')
+  } catch (err) {
+    console.error('Error al copiar:', err)
+    showSnackbar('No se pudo copiar el elemento.')
+  }
+}
+
 async function handleAction(actionType, targetAddress) {
   try {
     if (isCurrentUser(targetAddress) && actionType === 'unauthorize') {
@@ -853,5 +998,15 @@ onMounted(() => {
 }
 .scrollable-containerpe::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+.bg-slate-lighten-5 {
+  background-color: #f8fafc !important;
+}
+.gap-3 {
+  gap: 12px;
+}
+.technical-details {
+  display: flex;
+  flex-direction: column;
 }
 </style>
