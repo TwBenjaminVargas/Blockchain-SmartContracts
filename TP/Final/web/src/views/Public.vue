@@ -161,10 +161,12 @@
                   <v-row no-gutters class="align-center w-100 min-w-0">
                     <v-col cols="12" md="7" class="d-flex flex-column text-left min-w-0 pr-4">
                       <div class="d-flex align-center flex-wrap gap-2 mb-2">
-                        <span class="text-mono text-body-2 font-weight-bold text-indigo-darken-1 bg-indigo-lighten-5 px-2 py-0.5 rounded">
-                          {{ call.callId.substring(0, 10) }}...{{ call.callId.substring(call.callId.length - 4) }}
+                        <!-- MODIFICADO: Reemplazado Call ID recortado por el Dominio ENS -->
+                        <span class="text-mono text-body-2 font-weight-bold text-indigo-darken-1 bg-indigo-lighten-5 px-2 py-0.5 rounded d-inline-flex align-center">
+                          <v-icon icon="mdi-dns" size="14" class="me-1"></v-icon>
+                          {{ call.domain || 'sin-dominio.llamados.eth' }}
                         </span>
-                        
+                      
                         <v-chip v-if="call.isInternal" size="small" color="success" variant="flat" class="font-weight-bold text-caption">
                           Sincronizado
                         </v-chip>
@@ -209,23 +211,58 @@
                   
                   <v-divider class="mb-3"></v-divider>
 
-                  <div class="d-flex flex-column gap-1 text-caption text-grey-darken-2 mb-2">
-                    <div>
-                      <v-icon icon="mdi-file-sign" size="14" class="me-1"></v-icon>
-                      <strong>Address: </strong>  
-                      <span class="text-mono ms-1 select-all">{{ call.contractAddress || call.address || 'No desplegado / 0x00...' }}</span>
+                  <!-- MODIFICADO: Estructura técnica ordenada por cajas con separación por items y botones de copia -->
+                  <div class="technical-details d-flex flex-column gap-3 text-body-2 text-grey-darken-3 mb-4">
+                    <div class="d-flex align-center justify-space-between bg-white pa-2 rounded-lg border">
+                      <div class="text-truncate pr-2">
+                        <v-icon icon="mdi-file-sign" size="16" class="me-2 text-indigo-darken-1"></v-icon>
+                        <strong>Address:</strong>  
+                        <span class="text-mono ms-2 text-caption text-grey-darken-1 select-all">{{ call.contractAddress || call.address || 'No desplegado / 0x00...' }}</span>
+                      </div>
+                      <v-btn 
+                        v-if="call.contractAddress || call.address"
+                        icon="mdi-content-copy" 
+                        variant="text" 
+                        size="x-small" 
+                        color="indigo-darken-1"
+                        title="Copiar Address"
+                        @click="copyToClipboard(call.contractAddress || call.address, 'Contract Address')"
+                      ></v-btn>
                     </div>
-                    <div>
-                      <v-icon icon="mdi-account-circle" size="14" class="me-1"></v-icon>
-                      <strong>Creador (Wallet):</strong>  
-                      <span class="text-mono ms-1 select-all">{{ call.creator }}</span>
+                  
+                    <div class="d-flex align-center justify-space-between bg-white pa-2 rounded-lg border">
+                      <div class="text-truncate pr-2">
+                        <v-icon icon="mdi-account-circle" size="16" class="me-2 text-indigo-darken-1"></v-icon>
+                        <strong>Creador (Wallet):</strong>  
+                        <span class="text-mono ms-2 text-caption text-grey-darken-1 select-all">{{ call.creator }}</span>
+                      </div>
+                      <v-btn 
+                        icon="mdi-content-copy" 
+                        variant="text" 
+                        size="x-small" 
+                        color="indigo-darken-1"
+                        title="Copiar Creador"
+                        @click="copyToClipboard(call.creator, 'Wallet del Creador')"
+                      ></v-btn>
                     </div>
-                    <div>
-                      <v-icon icon="mdi-identifier" size="14" class="me-1"></v-icon>
-                      <strong>Call ID: </strong>  
-                      <span class="text-mono ms-1 select-all">{{ call.callId }}</span>
+                  
+                    <div class="d-flex align-center justify-space-between bg-white pa-2 rounded-lg border">
+                      <div class="text-truncate pr-2">
+                        <v-icon icon="mdi-identifier" size="16" class="me-2 text-indigo-darken-1"></v-icon>
+                        <strong>Call ID:</strong>  
+                        <span class="text-mono ms-2 text-caption text-grey-darken-1 select-all">{{ call.callId }}</span>
+                      </div>
+                      <v-btn 
+                        icon="mdi-content-copy" 
+                        variant="text" 
+                        size="x-small" 
+                        color="indigo-darken-1"
+                        title="Copiar Call ID"
+                        @click="copyToClipboard(call.callId, 'Call ID')"
+                      ></v-btn>
                     </div>
-                    <div v-if="call.state === 'CREATED'" class="d-flex justify-end">
+
+                    <div v-if="call.state === 'CREATED'" class="d-flex justify-end mt-2">
                       <v-btn
                         color="indigo-darken-1"
                         variant="elevated"
@@ -244,6 +281,26 @@
         </v-card>
       </v-col>
     </v-row>
+    <v-snackbar
+      v-model="snackbar.show"
+      :color="snackbar.color"
+      elevation="4"
+      location="top right"
+      :timeout="4000"
+      class="mt-4"
+    >
+      <div class="d-flex align-center">
+        <v-icon 
+          :icon="snackbar.color === 'success' ? 'mdi-check-circle-outline' : 'mdi-alert-circle-outline'" 
+          class="me-3" 
+          size="22"
+        ></v-icon>
+        <span class="font-weight-medium text-body-2">{{ snackbar.message }}</span>
+      </div>
+      <template v-slot:actions>
+        <v-btn variant="text" size="small" @click="snackbar.show = false" icon="mdi-close"></v-btn>
+      </template>
+    </v-snackbar>
   </v-container>
 </template>
 
@@ -251,6 +308,7 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import { ASSETS } from '../config/constants'
 import { getCreators, getGlobalCalls } from '../services/api'
+import {resolveDomain} from '../services/ens'
 
 const backgroundImage = ASSETS.genericBg
 const currentTab = ref('creators')
@@ -290,6 +348,15 @@ const avatarColors = [
 const panelTitle = computed(() => {
   return currentTab.value === 'creators' ? 'Listado de Creadores' : 'Catálogo Global de Convocatorias'
 })
+
+const domainLinkedStatus = ref({})
+const snackbar = ref({ show: false, message: '', color: 'error' })
+
+function showSnackbar(message, color = 'error') {
+  snackbar.value = { show: true, message, color }
+}
+
+
 
 // Vigilante para resetear filtros al permutar de pestaña
 watch(currentTab, () => {
@@ -400,6 +467,17 @@ async function loadAllData() {
   } catch (error) {
     console.error("Error al cargar los datos del panel público:", error)
     loadingCalls.value = false
+  }
+}
+
+async function copyToClipboard(text, label) {
+  if (!text) return
+  try {
+    await navigator.clipboard.writeText(text)
+    showSnackbar(`¡${label} copiado al portapapeles!`, 'success')
+  } catch (err) {
+    console.error('Error al copiar:', err)
+    showSnackbar('No se pudo copiar el elemento.')
   }
 }
 
