@@ -240,27 +240,67 @@
             Crear Convocatoria
           </v-card-title>
 
+          <!-- Indicador de pasos simple -->
+          <div class="px-6 pt-2 d-flex justify-space-between align-center text-caption font-weight-bold text-grey-darken-1">
+            <span :class="{'text-indigo-darken-1': createCallModal.step === 1}">1. Configurar Dominio ENS</span>
+            <v-icon icon="mdi-chevron-right"></v-icon>
+            <span :class="{'text-indigo-darken-1': createCallModal.step === 2}">2. Detalles del Llamado</span>
+          </div>
+          <v-divider class="mx-6 my-2"></v-divider>
+
           <v-card-text class="pt-2">
-            <v-text-field
-              v-model="createCallModal.form.title"
-              label="Título del Llamado"
-              variant="outlined"
-              color="indigo"
-              density="comfortable"
-              :rules="titleRules"
-              class="mb-2"
-            ></v-text-field>
-          
-            <v-textarea
-              v-model="createCallModal.form.description"
-              label="Descripción detallada"
-              variant="outlined"
-              color="indigo"
-              density="comfortable"
-              rows="4"
-              no-resize
-              :rules="descriptionRules"
-            ></v-textarea>
+            <!-- PASO 1: Validación y Asignación de Dominio -->
+            <div v-if="createCallModal.step === 1">
+              <p class="text-body-2 text-slate-medium mb-3">
+                Asigna un subdominio único de ENS para identificar los nodos criptográficos de esta convocatoria.
+              </p>
+              <v-text-field
+                v-model="createCallModal.form.domainLabel"
+                label="Subdominio del Llamado"
+                variant="outlined"
+                color="indigo"
+                density="comfortable"
+                placeholder="ej: licitacion-2026"
+                :suffix=" `.${ensStore.llamadosSuffix}`"
+                :rules="[v => !!v || 'El dominio es obligatorio', v => !/\s/.test(v) || 'No se permiten espacios']"
+                :disabled="createCallModal.loading"
+                class="mb-2"
+              ></v-text-field>
+
+              <v-alert
+                v-if="createCallModal.domainStatusText"
+                :type="createCallModal.domainStatusColor"
+                variant="tonal"
+                density="compact"
+                class="rounded-lg text-caption font-weight-medium mb-2"
+              >
+                {{ createCallModal.domainStatusText }}
+              </v-alert>
+            </div>
+
+            <!-- PASO 2: Datos del Metadato (Título y Descripción) -->
+            <div v-if="createCallModal.step === 2">
+              <v-text-field
+                v-model="createCallModal.form.title"
+                label="Título del Llamado"
+                variant="outlined"
+                color="indigo"
+                density="comfortable"
+                :rules="createCallModal.step === 2 ? titleRules : []"
+                class="mb-2"
+              ></v-text-field>
+            
+              <v-textarea
+                v-model="createCallModal.form.description"
+                label="Descripción detallada"
+                variant="outlined"
+                color="indigo"
+                density="comfortable"
+                rows="4"
+                no-resize
+                :rules="createCallModal.step === 2 ? descriptionRules : []"
+              ></v-textarea>
+            </div>
           </v-card-text>
         
           <v-card-actions class="justify-end gap-2 px-6 pb-4">
@@ -273,14 +313,29 @@
             >
               Cancelar
             </v-btn>
+
+            <!-- Botón dinámico Paso 1 -->
             <v-btn 
+              v-if="createCallModal.step === 1"
+              variant="flat" 
+              color="indigo-darken-1" 
+              class="font-weight-bold text-white" 
+              :loading="createCallModal.loading" 
+              @click="handleValidateAndRegisterDomain"
+            >
+              Verificar y Registrar Dominio
+            </v-btn>
+
+            <!-- Botón dinámico Paso 2 -->
+            <v-btn 
+              v-if="createCallModal.step === 2"
               variant="flat" 
               color="indigo-darken-1" 
               class="font-weight-bold text-white" 
               :loading="createCallModal.loading" 
               @click="handleCreateCall"
             >
-              Firmar y Publicar
+              Firmar y Publicar Backend
             </v-btn>
           </v-card-actions>
         </v-card>
@@ -370,9 +425,14 @@ import {
   getUserCalls,
   createCall
 } from '../services/api'
+
+import { useENSStore } from '../stores/ensStore'
+import { checkLlamadoAvailability, registerLlamadoDomain } from '../services/ens'
+
 import { createInFactory } from '../services/cfpfactory'
 
 const walletStore = useWalletStore()
+const ensStore = useENSStore()
 const loadingOnChain = ref({})
 
 // Diccionario reactivo para las fechas seleccionadas por cada callId
@@ -413,9 +473,14 @@ const editModal = ref({
 const createCallModal = ref({
   show: false,
   loading: false,
+  step: 1,
+  domainStatusText: '',
+  domainStatusColor: 'info',
   form: {
+    domainLabel: '',
     title: '',
-    description: ''
+    description: '',
+    verifiedDomain: ''
   }
 })
 
@@ -445,6 +510,57 @@ function formatUnixTimestamp(timestamp) {
     minute: '2-digit'
   })
 }
+
+async function handleValidateAndRegisterDomain() {
+  if (!createCallForm.value) return
+  const { valid } = await createCallForm.value.validate()
+  if (!valid) return
+
+  const label = createCallModal.value.form.domainLabel.trim().toLowerCase()
+
+  try {
+    createCallModal.value.loading = true
+    createCallModal.value.domainStatusText = 'Ejecutando verificación en contratos ENS...'
+    createCallModal.value.domainStatusColor = 'info'
+
+    // Verificación inteligente
+    const check = await checkLlamadoAvailability(label)
+
+    if (!check.available) {
+      createCallModal.value.domainStatusColor = 'error'
+      if (check.reason === 'taken') {
+        createCallModal.value.domainStatusText = `El dominio "${check.fullDomain}" ya se encuentra tomado por otra entidad.`
+      } else {
+        createCallModal.value.domainStatusText = `El dominio "${check.fullDomain}" ya está completamente asignado a un llamado funcional.`
+      }
+      return
+    }
+
+    // Ejecutar registro (Si es recuperable_propio saltará la tx automáticamente)
+    createCallModal.value.domainStatusText = check.reason === 'propietary' 
+      ? '¡Dominio propio detectado! Recuperando configuración...'
+      : 'Dominio libre. Por favor confirma la transacción en MetaMask...'
+    
+    const registeredDomain = await registerLlamadoDomain(label)
+    
+    // Guardamos el dominio completo verificado
+    createCallModal.value.form.verifiedDomain = registeredDomain
+    
+    showSnackbar("¡Dominio de ENS vinculado correctamente!", "success")
+    
+    // Avanzamos al siguiente paso del formulario
+    createCallModal.value.step = 2
+    createCallModal.value.domainStatusText = ''
+
+  } catch (error) {
+    console.error("Error en el paso de registro ENS:", error)
+    createCallModal.value.domainStatusColor = 'error'
+    createCallModal.value.domainStatusText = error.message || 'Error al procesar el registro en la Blockchain.'
+  } finally {
+    createCallModal.value.loading = false
+  }
+}
+
 
 // Inicializa el input datetime-local a +30 días por defecto cuando el usuario despliega el panel
 function initClosingTimeInput(call) {
@@ -507,8 +623,22 @@ function openEditModal() {
 }
 
 function openCreateCallModal() {
-  createCallModal.value.form = { title: '', description: '' }
-  if (createCallForm.value) createCallForm.value.resetValidation()
+  createCallModal.value.step = 1
+  createCallModal.value.domainStatusText = ''
+  
+  // Limpiamos la totalidad del formulario para que empiece de cero
+  createCallModal.value.form = { 
+    domainLabel: '', 
+    title: '', 
+    description: '', 
+    verifiedDomain: '' 
+  }
+  
+  // Reseteamos las validaciones visuales de Vuetify
+  if (createCallForm.value) {
+    createCallForm.value.resetValidation()
+  }
+  
   createCallModal.value.show = true
 }
 
@@ -533,6 +663,7 @@ async function handleCreateCall() {
 
     const titleStr = createCallModal.value.form.title.trim()
     const descStr = createCallModal.value.form.description.trim()
+    const fullDomain = createCallModal.value.form.verifiedDomain // Extraemos el dominio del paso 1
 
     const titleBytes = ethers.toUtf8Bytes(titleStr)
     const descBytes = ethers.toUtf8Bytes(descStr)
@@ -568,12 +699,13 @@ async function handleCreateCall() {
       callId: calculatedCallId,
       title: titleStr,
       description: descStr,
+      domain: fullDomain, 
       signature: signature
     }
 
     await createCall(payload)
 
-    showSnackbar("¡Convocatoria creada con éxito en estado PENDING!", "success")
+    showSnackbar("¡Convocatoria e ID de Dominio creados con éxito en estado PENDING!", "success")
     createCallModal.value.show = false
     await fetchUserCallsData()
 

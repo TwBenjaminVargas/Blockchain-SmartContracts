@@ -101,3 +101,74 @@ export async function registerUserDomain(label) {
     throw error 
   }
 }
+
+export async function checkLlamadoAvailability(label) {
+  const store = useENSStore()
+  const fullDomain = `${label}.${store.llamadosSuffix}`
+  const node = getNamehash(fullDomain)
+  
+  try {
+    const userAddress = await store.registryContract.runner.getAddress()
+    
+    // Consultar el dueño actual en el Registry
+    const currentOwner = await store.registryContract.owner(node)
+    
+    // Caso A: Totalmente disponible (Nadie lo ha tomado)
+    if (currentOwner === ethers.ZeroAddress) {
+      return { available: true, reason: 'available', fullDomain }
+    }
+    
+    // Caso B: Tomado por otra persona
+    if (currentOwner.toLowerCase() !== userAddress.toLowerCase()) {
+      return { available: false, reason: 'taken', fullDomain }
+    }
+    
+    // Caso C: Es del usuario actual. Validamos si tiene un registro funcional (Resolver)
+    const resolverAddress = await store.registryContract.resolver(node)
+    if (resolverAddress === ethers.ZeroAddress) {
+      // El usuario es dueño pero no tiene resolver apuntado
+      return { available: true, reason: 'propietary', fullDomain }
+    }
+    
+    // Caso D: El dominio ya está completamente asignado y en uso por un llamado activo del usuario
+    return { available: false, reason: 'assigned', fullDomain }
+
+  } catch (error) {
+    console.error("Error en la verificación inteligente de disponibilidad:", error)
+    return { available: false, reason: 'error', fullDomain }
+  }
+}
+
+/**
+ * Realiza el registro on-chain invocando al contrato registrarLlamadosContract.
+ */
+export async function registerLlamadoDomain(label) {
+  const store = useENSStore()
+  const fullDomain = `${label}.${store.llamadosSuffix}`
+
+  try {
+    const status = await checkLlamadoAvailability(label)
+    if (!status.available) {
+      throw new Error(`El dominio ${fullDomain} no está disponible para registro.`)
+    }
+
+    // Si la razón es 'propietary', saltamos el registro on-chain
+    // porque ya gastó gas en el pasado y es dueño en el Registry.
+    if (status.reason === 'propietary') {
+      console.log(`%c[ENS] El dominio ${fullDomain} ya es tuyo en el Registry. Saltando tx de registro...`, "color: #fbbf24;")
+      return fullDomain
+    }
+
+    console.log(`[ENS] Registrando subdominio de llamado: ${label} -> ${fullDomain}`)
+    
+    // Llamada al método 'register' del Smart Contract de llamados
+    const tx = await store.registrarLlamadosContract.register(label)
+    await tx.wait()
+    
+    console.log(`[ENS] ¡Dominio de llamado registrado exitosamente!`)
+    return fullDomain
+  } catch (error) {
+    console.error("Error al registrar el dominio del llamado en ENS:", error)
+    throw error
+  }
+}
