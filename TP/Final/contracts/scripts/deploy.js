@@ -102,7 +102,7 @@ async function main() {
 
     // ================= 3. DESPLIEGUE DE LA INFRAESTRUCTURA ENS (.cfp) =================
     let deployerNonce = await provider.getTransactionCount(deployer.address);
-
+    
     // Desplegar Registry
     console.log("Desplegando contrato Registry...");
     const registryArtifact = getArtifact("Registry");
@@ -111,7 +111,7 @@ async function main() {
     await registryContract.waitForDeployment();
     const registryAddress = await registryContract.getAddress();
     console.log(`-> Registry desplegado en: ${registryAddress}\n`);
-
+    
     // Desplegar Resolver Global
     console.log("Desplegando Public Resolver...");
     const resolverArtifact = getArtifact("Resolver");
@@ -124,7 +124,7 @@ async function main() {
     // Crear Dominio de Primer Nivel ".cfp"
     const cfpLabel = ethers.keccak256(ethers.toUtf8Bytes("cfp"));
     const cfpNode = getNamehash("cfp");
-
+    
     console.log("Configurando Dominio Raíz '.cfp'...");
     const txCfp = await registryContract.setSubnodeOwner(ethers.ZeroHash, cfpLabel, deployer.address, { nonce: deployerNonce++ });
     await txCfp.wait();
@@ -132,64 +132,7 @@ async function main() {
     const txCfpResolver = await registryContract.setResolver(cfpNode, resolverAddress, { nonce: deployerNonce++ });
     await txCfpResolver.wait();
     console.log("-> '.cfp' configurado y asignado al Resolver.\n");
-
-    // Crear Subdominio y FIFS Registrar para "usuarios.cfp"
-    const usuariosLabel = ethers.keccak256(ethers.toUtf8Bytes("usuarios"));
-    const usuariosNode = getNamehash("usuarios.cfp");
-
-    console.log("Configurando subdominio 'usuarios.cfp'...");
-    const txUsuarios = await registryContract.setSubnodeOwner(cfpNode, usuariosLabel, deployer.address, { nonce: deployerNonce++ });
-    await txUsuarios.wait();
-
-    const txUsuariosResolver = await registryContract.setResolver(usuariosNode, resolverAddress, { nonce: deployerNonce++ });
-    await txUsuariosResolver.wait();
-
-    console.log("Desplegando Registrar para usuarios.cfp...");
-    const usuariosRegistrarArtifact = getArtifact("Registrar");
-    const usuariosRegistrarFactory = new ethers.ContractFactory(usuariosRegistrarArtifact.abi, usuariosRegistrarArtifact.bytecode, deployer);
-
-    const usuariosRegistrarContract = await usuariosRegistrarFactory.deploy(
-        registryAddress, 
-        resolverAddress, 
-        usuariosNode, 
-        { nonce: deployerNonce++ }
-    );
-    await usuariosRegistrarContract.waitForDeployment();
-    const usuariosRegistrarAddress = await usuariosRegistrarContract.getAddress();
-
-    const txTransferUsuarios = await registryContract.setOwner(usuariosNode, usuariosRegistrarAddress, { nonce: deployerNonce++ });
-    await txTransferUsuarios.wait();
-    console.log("-> Propiedad de 'usuarios.cfp' delegada al FIFSRegistrar de usuarios con éxito.\n");
-
-    // Crear Subdominio "llamados.cfp"
-    const llamadosLabel = ethers.keccak256(ethers.toUtf8Bytes("llamados"));
-    const llamadosNode = getNamehash("llamados.cfp");
-
-    console.log("Configurando subdominio 'llamados.cfp'...");
-    const txLlamados = await registryContract.setSubnodeOwner(cfpNode, llamadosLabel, deployer.address, { nonce: deployerNonce++ });
-    await txLlamados.wait();
-
-    const txLlamadosResolver = await registryContract.setResolver(llamadosNode, resolverAddress, { nonce: deployerNonce++ });
-    await txLlamadosResolver.wait();
-
-    console.log("Desplegando Registrar para llamados.cfp...");
-    const llamadosRegistrarArtifact = getArtifact("Registrar");
-    const llamadosRegistrarFactory = new ethers.ContractFactory(llamadosRegistrarArtifact.abi, llamadosRegistrarArtifact.bytecode, deployer);
-
-    const llamadosRegistrarContract = await llamadosRegistrarFactory.deploy(
-        registryAddress, 
-        resolverAddress, 
-        llamadosNode, 
-        { nonce: deployerNonce++ }
-    );
     
-    await llamadosRegistrarContract.waitForDeployment();
-    const llamadosRegistrarAddress = await llamadosRegistrarContract.getAddress();
-
-    const txTransferLlamados = await registryContract.setOwner(llamadosNode, llamadosRegistrarAddress, { nonce: deployerNonce++ });
-    await txTransferLlamados.wait();
-    console.log("-> Propiedad de 'llamados.cfp' delegada al FIFSRegistrar de llamados con éxito.\n");
-
     // Configurar Resolución Reversa (addr.reverse)
     console.log("Configurando Infraestructura de Resolución Reversa (EIP-181)...");
     const reverseLabel = ethers.keccak256(ethers.toUtf8Bytes("reverse"));
@@ -213,6 +156,69 @@ async function main() {
     const txTransferReverse = await registryContract.setOwner(addrReverseNode, reverseRegistrarAddress, { nonce: deployerNonce++ });
     await txTransferReverse.wait();
     console.log("-> Control de 'addr.reverse' transferido al ReverseRegistrar.\n");
+
+    // Crear Subdominio y FIFS Registrar para "usuarios.cfp"
+    const usuariosLabel = ethers.keccak256(ethers.toUtf8Bytes("usuarios"));
+    const usuariosNode = getNamehash("usuarios.cfp");
+    
+    console.log("Configurando subdominio 'usuarios.cfp'...");
+    const txUsuarios = await registryContract.setSubnodeOwner(cfpNode, usuariosLabel, deployer.address, { nonce: deployerNonce++ });
+    await txUsuarios.wait();
+    
+    const txUsuariosResolver = await registryContract.setResolver(usuariosNode, resolverAddress, { nonce: deployerNonce++ });
+    await txUsuariosResolver.wait();
+    
+    console.log("Desplegando UsuariosRegistrar para usuarios.cfp...");
+    const usuariosRegistrarArtifact = getArtifact("UsuariosRegistrar");
+    const usuariosRegistrarFactory = new ethers.ContractFactory(usuariosRegistrarArtifact.abi, usuariosRegistrarArtifact.bytecode, deployer);
+
+    const usuariosRegistrarContract = await usuariosRegistrarFactory.deploy(
+        registryAddress, 
+        resolverAddress, 
+        usuariosNode, 
+        reverseRegistrarAddress,
+        "usuarios.cfp",
+        { nonce: deployerNonce++ }
+    );
+
+    await usuariosRegistrarContract.waitForDeployment();
+    const usuariosRegistrarAddress = await usuariosRegistrarContract.getAddress();
+
+    const txTransferUsuarios = await registryContract.setOwner(usuariosNode, usuariosRegistrarAddress, { nonce: deployerNonce++ });
+    await txTransferUsuarios.wait();
+    console.log("-> Propiedad de 'usuarios.cfp' delegada al FIFSRegistrar de usuarios con éxito.\n");
+
+    // Crear Subdominio "llamados.cfp"
+    const llamadosLabel = ethers.keccak256(ethers.toUtf8Bytes("llamados"));
+    const llamadosNode = getNamehash("llamados.cfp");
+
+    console.log("Configurando subdominio 'llamados.cfp'...");
+    const txLlamados = await registryContract.setSubnodeOwner(cfpNode, llamadosLabel, deployer.address, { nonce: deployerNonce++ });
+    await txLlamados.wait();
+
+    const txLlamadosResolver = await registryContract.setResolver(llamadosNode, resolverAddress, { nonce: deployerNonce++ });
+    await txLlamadosResolver.wait();
+
+    console.log("Desplegando LlamadosRegistrar para llamados.cfp...");
+    const llamadosRegistrarArtifact = getArtifact("LlamadosRegistrar");
+    const llamadosRegistrarFactory = new ethers.ContractFactory(llamadosRegistrarArtifact.abi, llamadosRegistrarArtifact.bytecode, deployer);
+
+    const llamadosRegistrarContract = await llamadosRegistrarFactory.deploy(
+        registryAddress, 
+        resolverAddress, 
+        llamadosNode, 
+        reverseRegistrarAddress, 
+        "llamados.cfp",
+        { nonce: deployerNonce++ }
+    );
+    
+    await llamadosRegistrarContract.waitForDeployment();
+    const llamadosRegistrarAddress = await llamadosRegistrarContract.getAddress();
+
+    const txTransferLlamados = await registryContract.setOwner(llamadosNode, llamadosRegistrarAddress, { nonce: deployerNonce++ });
+    await txTransferLlamados.wait();
+    console.log("-> Propiedad de 'llamados.cfp' delegada al FIFSRegistrar de llamados con éxito.\n");
+
 
 
     // ================= 4. DESPLIEGUE DE CFP_FACTORY =================
