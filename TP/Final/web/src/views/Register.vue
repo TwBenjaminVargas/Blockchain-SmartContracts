@@ -6,29 +6,27 @@
       <v-col cols="12" sm="11" md="9" lg="6" class="pa-4">
         <v-card class="main-panel pa-6 rounded-xl mx-auto" elevation="4">
           
+          <!-- Control del progreso visual -->
+          <div v-if="currentStep !== 'evaluation'" class="mb-4">
+            <div class="d-flex align-center justify-space-between px-2 mb-2">
+              <span class="text-caption font-weight-bold" :class="currentStep === 'domain' ? 'text-indigo' : 'text-grey'">1. Dominio</span>
+              <span class="text-caption font-weight-bold" :class="currentStep === 'user' ? 'text-indigo' : 'text-grey'">2. Usuario</span>
+              <span class="text-caption font-weight-bold" :class="currentStep === 'blockchain' ? 'text-indigo' : 'text-grey'">3. Blockchain</span>
+            </div>
+            <v-progress-linear :model-value="progressValue" color="indigo" class="rounded" height="6"></v-progress-linear>
+          </div>
+
           <v-window v-model="currentStep" touchless>
             
-            <v-window-item value="form">
+            <!-- REGISTRO/VERIFICACIÓN DE DOMINIO -->
+            <v-window-item value="domain">
               <div class="text-center mb-6">
-                <v-icon icon="mdi-account-plus-outline" color="indigo-darken-1" size="48" class="mb-2"></v-icon>
-                <h2 class="text-h5 font-weight-bold text-slate-dark">Registro en el Sistema</h2>
-                <p class="text-caption text-grey-darken-1 mt-1">Completa tu perfil para enviar la solicitud de acceso</p>
+                <v-icon icon="mdi-web" color="indigo-darken-1" size="48" class="mb-2"></v-icon>
+                <h2 class="text-h5 font-weight-bold text-slate-dark">Elige tu Identidad Web3</h2>
+                <p class="text-caption text-grey-darken-1 mt-1">Este subdominio será tu dirección única en la red</p>
               </div>
 
-              <v-form ref="formRef" v-model="isFormValid" @submit.prevent="handleSystemRegister">
-                <div class="text-subtitle-2 font-weight-bold text-slate-dark mb-2">Nombre del Solicitante *</div>
-                <v-text-field
-                  v-model="formData.name"
-                  :rules="rules.nameRules"
-                  placeholder="Ej: Benjamín Solana"
-                  variant="outlined"
-                  density="comfortable"
-                  color="indigo"
-                  class="mb-2 rounded-lg"
-                  bg-color="white"
-                  required
-                ></v-text-field>
-
+              <v-form ref="domainFormRef" v-model="isDomainFormValid" @submit.prevent="submitDomainStep">
                 <div class="text-subtitle-2 font-weight-bold text-slate-dark mb-2">Tu Dirección ENS (.usuarios.cfp) *</div>
                 <v-text-field
                   ref="nicknameRef"
@@ -39,11 +37,56 @@
                   variant="outlined"
                   density="comfortable"
                   color="indigo"
-                  class="mb-2 rounded-lg"
+                  class="mb-4 rounded-lg"
                   bg-color="white"
                   suffix=".usuarios.cfp"
                   persistent-hint
                   :messages="domainMessage"
+                  required
+                ></v-text-field>
+
+                <v-alert v-if="errorMessage" type="error" variant="tonal" closable class="mb-4 rounded-lg text-caption" @click:close="errorMessage = ''">
+                  {{ errorMessage }}
+                </v-alert>
+
+                <v-btn
+                  type="submit"
+                  block
+                  size="large"
+                  variant="flat"
+                  color="indigo-darken-1"
+                  class="font-weight-bold text-white rounded-lg"
+                  :loading="uiLoading"
+                  :disabled="!isDomainFormValid || !isDomainValidAndFree || isCheckingDomain"
+                >
+                  Registrar Dominio
+                  <v-icon end icon="mdi-arrow-right"></v-icon>
+                </v-btn>
+              </v-form>
+            </v-window-item>
+
+            <!-- REGISTRO DE DATOS DEL USUARIO (FIRMA DIGITAL) -->
+            <v-window-item value="user">
+              <div class="text-center mb-6">
+                <v-icon icon="mdi-account-card-details-outline" color="indigo-darken-1" size="48" class="mb-2"></v-icon>
+                <h2 class="text-h5 font-weight-bold text-slate-dark">Información del Perfil</h2>
+                <p class="text-caption text-grey-darken-1 mt-1">Completa los datos para tu postulación en el sistema</p>
+                <v-chip size="small" color="indigo-lighten-5" class="text-indigo font-weight-medium mt-2">
+                  Dominio: {{ confirmedDomain }}
+                </v-chip>
+              </div>
+
+              <v-form ref="userFormRef" v-model="isUserFormValid" @submit.prevent="handleSystemRegister">
+                <div class="text-subtitle-2 font-weight-bold text-slate-dark mb-2">Nombre del Solicitante *</div>
+                <v-text-field
+                  v-model="formData.name"
+                  :rules="rules.nameRules"
+                  placeholder="Ej: Benjamín Solana"
+                  variant="outlined"
+                  density="comfortable"
+                  color="indigo"
+                  class="mb-2 rounded-lg"
+                  bg-color="white"
                   required
                 ></v-text-field>
 
@@ -61,53 +104,32 @@
                   no-resize
                 ></v-textarea>
 
-                <v-alert
-                  v-if="statusMessage"
-                  type="info"
-                  variant="tonal"
-                  color="indigo-darken-1"
-                  class="mb-4 rounded-lg text-caption text-left"
-                >
-                  <template #prepend>
-                    <v-progress-circular indeterminate size="16" width="2" class="me-2"></v-progress-circular>
-                  </template>
-                  {{ statusMessage }}
-                </v-alert>
-
-                <v-alert
-                  v-if="errorMessage"
-                  type="error"
-                  variant="tonal"
-                  closable
-                  class="mb-4 rounded-lg text-caption"
-                  @click:close="errorMessage = ''"
-                >
+                <v-alert v-if="errorMessage" type="error" variant="tonal" closable class="mb-4 rounded-lg text-caption" @click:close="errorMessage = ''">
                   {{ errorMessage }}
                 </v-alert>
 
-                <v-btn
-                  type="submit"
-                  block
-                  size="large"
-                  variant="flat"
-                  color="indigo-darken-1"
-                  class="font-weight-bold text-white rounded-lg mb-6"
-                  :loading="uiLoading"
-                  :disabled="!isFormValid || !isDomainValidAndFree || isCheckingDomain"
-                >
-                  <v-icon start icon="mdi-fountain-pen-tip"></v-icon>
-                  Firmar y Registrarse
-                </v-btn>
-
-                <v-divider class="mb-4"></v-divider>
-                <div class="d-flex align-center justify-space-between px-2">
-                  <span class="text-caption font-weight-bold text-indigo">Paso 1: Sistema</span>
-                  <v-progress-linear color="indigo" model-value="50" class="mx-4 rounded" height="6"></v-progress-linear>
-                  <span class="text-caption text-grey">Paso 2: Blockchain</span>
+                <div class="d-flex gap-2">
+                  <v-btn v-if="!hasExistingDomain" variant="outlined" color="grey-darken-1" class="rounded-lg font-weight-bold" size="large" @click="currentStep = 'domain'">
+                    Atrás
+                  </v-btn>
+                  <v-btn
+                    type="submit"
+                    block
+                    size="large"
+                    variant="flat"
+                    color="indigo-darken-1"
+                    class="font-weight-bold text-white rounded-lg flex-grow-1"
+                    :loading="uiLoading"
+                    :disabled="!isUserFormValid"
+                  >
+                    <v-icon start icon="mdi-fountain-pen-tip"></v-icon>
+                    Firmar y Guardar Perfil
+                  </v-btn>
                 </div>
               </v-form>
             </v-window-item>
 
+            <!-- REGISTRO EN LA BLOCKCHAIN -->
             <v-window-item value="blockchain">
               <v-row dense>
                 <v-col cols="12">
@@ -120,6 +142,9 @@
                             {{ walletStore.registration.status }}
                           </v-chip>
                         </div>
+                        <p class="text-body-2 text-indigo-darken-2 font-weight-medium mb-1">
+                          Dominio Vinculado: {{ confirmedDomain }}
+                        </p>
                         <p class="text-body-2 text-slate-medium mb-0">
                           {{ walletStore.registration.description || 'Sin descripción provista.' }}
                         </p>
@@ -154,6 +179,7 @@
               </v-row>
             </v-window-item>
 
+            <!-- PANTALLA DE EVALUACIÓN -->
             <v-window-item value="evaluation">
               <div class="text-center py-6">
                 <img :src="clockIconImage" alt="Evaluando solicitud" class="mb-4 pulse-animation clock-icon-svg" />
@@ -168,6 +194,9 @@
                           {{ walletStore.registration.status }}
                         </v-chip>
                       </div>
+                      <p class="text-body-2 text-indigo-darken-2 font-weight-medium mb-1">
+                        Dominio: {{ confirmedDomain }}
+                      </p>
                       <p class="text-body-2 text-slate-medium mb-0">{{ walletStore.registration.description || 'Sin descripción provista.' }}</p>
                     </div>
                     
@@ -193,6 +222,7 @@
       </v-col>
     </v-row>
 
+    <!-- Dialogo de edición -->
     <v-dialog v-model="editDialog" max-width="500" persistent>
       <v-card class="rounded-xl pa-4">
         <v-card-title class="text-h6 font-weight-bold text-slate-dark">Editar Postulación</v-card-title>
@@ -221,7 +251,7 @@ import { useContractStore } from '../stores/cfpfactory'
 import { useRouter } from 'vue-router'
 import { registerUser, getContractAddress, updateRegistration } from '../services/api'
 import { useENSStore } from '../stores/ensStore'
-import { registerUserDomain, isDomainAvailable } from '../services/ens'
+import { registerUserDomain, isDomainAvailable, reverseResolveAddress } from '../services/ens'
 
 const walletStore = useWalletStore()
 const contractStore = useContractStore()
@@ -232,20 +262,25 @@ const backgroundImage = ASSETS.registerBg
 const clockIconImage = ASSETS.clockIcon
 const pencilIcon = ASSETS.pencilIcon
 
-const formRef = ref(null)
-const nicknameRef = ref(null) // NUEVO: Ref para manipular el input del nickname directamente
+const domainFormRef = ref(null)
+const userFormRef = ref(null)
+const nicknameRef = ref(null)
 const editFormRef = ref(null)
-const isFormValid = ref(false)
+
+const isDomainFormValid = ref(false)
+const isUserFormValid = ref(false)
 const isEditFormValid = ref(false)
+
 const uiLoading = ref(false)
 const errorMessage = ref('')
-const statusMessage = ref('')
-const currentStep = ref('form')
+const currentStep = ref('domain') 
 const editDialog = ref(false)
 
 const isCheckingDomain = ref(false)
 const isDomainValidAndFree = ref(false)
 const domainMessage = ref('')
+const hasExistingDomain = ref(false) 
+const confirmedDomain = ref('')
 
 const formData = ref({
   name: '',
@@ -256,6 +291,13 @@ const formData = ref({
 const editData = ref({
   name: '',
   description: ''
+})
+
+const progressValue = computed(() => {
+  if (currentStep.value === 'domain') return 33
+  if (currentStep.value === 'user') return 66
+  if (currentStep.value === 'blockchain') return 100
+  return 0
 })
 
 const rules = {
@@ -277,6 +319,8 @@ const rules = {
 
 let timeoutId = null
 watch(() => formData.value.nickname, (newVal) => {
+  if (hasExistingDomain.value) return 
+
   isDomainValidAndFree.value = false
   domainMessage.value = ''
   
@@ -313,6 +357,7 @@ watch(() => formData.value.nickname, (newVal) => {
 })
 
 const getStatusColor = computed(() => {
+  if (!walletStore.registration || !walletStore.registration.status) return 'grey'
   switch (walletStore.registration.status) {
     case 'pending': return 'warning'
     case 'registered': return 'info'
@@ -328,40 +373,99 @@ async function loadCurrentRegistrationState() {
   }
   try {
     uiLoading.value = true
+    const currentAddress = walletStore.account.toLowerCase().trim()
+    
+    // Intentamos resolver el dominio de forma inversa
+    try {
+      const detectedDomain = await reverseResolveAddress(currentAddress)
+
+      // Si el dominio existe y apunta a la estructura correcta de usuarios (.usuarios.cfp)
+      if (detectedDomain && detectedDomain.endsWith('.usuarios.cfp')) {
+        
+        // Verificamos que realmente no esté disponible 
+        const isAvailable = await isDomainAvailable(detectedDomain)
+        
+        if (!isAvailable) {
+          const label = detectedDomain.replace('.usuarios.cfp', '')
+          formData.value.nickname = label
+          confirmedDomain.value = detectedDomain
+          isDomainValidAndFree.value = true
+          hasExistingDomain.value = true
+          currentStep.value = 'user' // salta directo al Registro en sistema
+        }
+      }
+    } catch (ensErr) {
+      console.warn("No se pudo autodetectar el dominio actual por ENS:", ensErr)
+    }
+
+    // Carga del estado del formulario en la API
     const reg = await walletStore.refreshRegistration()
     if (reg) {
       formData.value.name = reg.name || ''
       formData.value.description = reg.description || ''
+      
+      if (reg.domain) {
+        confirmedDomain.value = reg.domain
+      }
+
       if (reg.name && reg.name.trim() !== '') {
         if (reg.status === 'pending') currentStep.value = 'blockchain'
         else if (reg.status === 'registered') currentStep.value = 'evaluation'
       }
     }
   } catch (error) {
-    console.error(error)
+    console.error("Error cargando el estado inicial de la postulación:", error)
   } finally {
     uiLoading.value = false
   }
 }
 
-async function handleSystemRegister() {
-  if (!isFormValid.value || !isDomainValidAndFree.value) return
+// Registro de Dominio en ENS
+async function submitDomainStep() {
+  if (!isDomainFormValid.value || !isDomainValidAndFree.value) return
 
   try {
     uiLoading.value = true
     errorMessage.value = ''
-    statusMessage.value = 'Por favor, confirma los pasos en MetaMask para configurar tu dominio...'
 
     if (!window.ethereum) {
       throw new Error('MetaMask no está disponible en este navegador.')
     }
 
     const cleanLabel = formData.value.nickname.toLowerCase().trim()
-    const fullRegisteredDomain = `${cleanLabel}.usuarios.cfp`
+    const targetDomain = `${cleanLabel}.usuarios.cfp`
     
-    await registerUserDomain(cleanLabel)
+    if (!hasExistingDomain.value) {
+      // La ejecución se detiene aquí de forma asíncrona hasta que la blockchain confirme el minado
+      await registerUserDomain(cleanLabel)
+      confirmedDomain.value = targetDomain
+    }
     
-    statusMessage.value = '¡Dominio reservado con éxito! Firmando credenciales para el servidor...'
+    // Solo pasa al paso 2 tras la confirmación exitosa del await anterior
+    currentStep.value = 'user'
+  } catch (error) {
+    console.error(error)
+    if (error.code === 'ACTION_REJECTED') {
+      errorMessage.value = 'Transacción rechazada en MetaMask.'
+    } else {
+      errorMessage.value = error.message || 'Error al registrar el dominio en la Blockchain.'
+    }
+  } finally {
+    uiLoading.value = false
+  }
+}
+
+// Firma Digital y API backend
+async function handleSystemRegister() {
+  if (!isUserFormValid.value) return
+
+  try {
+    uiLoading.value = true
+    errorMessage.value = ''
+
+    if (!window.ethereum) {
+      throw new Error('MetaMask no está disponible en este navegador.')
+    }
 
     const factoryAddress = await getContractAddress()
     const mappedAddress = typeof factoryAddress === 'string' ? factoryAddress : factoryAddress.address
@@ -409,7 +513,7 @@ async function handleSystemRegister() {
       address: checksumUserAddress,
       name: cleanedName,
       signature: signature,
-      domain: fullRegisteredDomain,
+      domain: confirmedDomain.value, // Enviamos el dominio confirmado estático
       description: formData.value.description && formData.value.description.trim() !== '' 
         ? formData.value.description.trim() 
         : null
@@ -434,16 +538,16 @@ async function handleSystemRegister() {
     if (error.response && error.response.data && error.response.data.message) {
       errorMessage.value = `Error: ${error.response.data.message}`
     } else if (error.code === 'ACTION_REJECTED') {
-      errorMessage.value = 'Transacción o firma rechazada en MetaMask.'
+      errorMessage.value = 'Firma rechazada en MetaMask.'
     } else {
-      errorMessage.value = error.message || 'Ocurrió un error inesperado al procesar el registro.'
+      errorMessage.value = error.message || 'Ocurrió un error al procesar el registro.'
     }
   } finally {
     uiLoading.value = false
-    statusMessage.value = ''
   }
 }
 
+// Ejecuta la transacción final de CFP Factory on-chain
 async function handleBlockchainRegister() {
   try {
     uiLoading.value = true
@@ -545,9 +649,13 @@ async function checkStatusAgain() {
   }
 }
 
-onMounted(() => {
-  loadCurrentRegistrationState()
-  ensStore.initializeStore().catch(err => console.warn(err))
+onMounted(async () => {
+  try {
+    await ensStore.initializeStore()
+    await loadCurrentRegistrationState()
+  } catch (err) {
+    console.warn(err)
+  }
 })
 </script>
 
@@ -557,60 +665,26 @@ onMounted(() => {
   min-height: 100vh;
   background-color: #1e1e2f;
 }
-
 .blur-background {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  filter: blur(12px) brightness(0.7);
-  transform: scale(1.05);
-  z-index: 0;
+  top: 0; left: 0; width: 100%; height: 100%;
+  background-size: cover; background-position: center; background-repeat: no-repeat;
+  filter: blur(12px) brightness(0.7); transform: scale(1.05); z-index: 0;
 }
-
-.z-index-1 {
-  position: relative;
-  z-index: 1;
-}
-
+.z-index-1 { position: relative; z-index: 1; }
 .main-panel {
   background-color: rgba(248, 250, 252, 0.93) !important;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.5);
 }
-
-.text-slate-dark {
-  color: #0f172a !important;
-}
-
-.text-slate-medium {
-  color: #475569 !important;
-}
-
+.text-slate-dark { color: #0f172a !important; }
+.text-slate-medium { color: #475569 !important; }
 .clock-icon-svg {
-  width: 76px;
-  height: 76px;
+  width: 76px; height: 76px;
   filter: invert(34%) sepia(87%) saturate(1476%) hue-rotate(214deg) brightness(81%) contrast(85%);
 }
-
-.line-height-relaxed {
-  line-height: 1.6 !important;
-}
-
-.pulse-animation {
-  animation: pulse 2.5s infinite ease-in-out;
-  display: inline-block;
-}
-
-.gap-2 {
-  gap: 8px;
-}
-
+.line-height-relaxed { line-height: 1.6 !important; }
+.pulse-animation { animation: pulse 2.5s infinite ease-in-out; display: inline-block; }
+.gap-2 { gap: 8px; }
 @keyframes pulse {
   0% { transform: scale(1); opacity: 0.85; }
   50% { transform: scale(1.06); opacity: 1; }

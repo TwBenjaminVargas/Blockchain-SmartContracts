@@ -80,7 +80,8 @@ export async function registerUserDomain(label) {
   const store = useENSStore()
   await store.initializeStore()
 
-  const fullDomain = `${label}.usuarios.cfp`
+  const rootSuffix = store.usuariosSuffix
+  const fullDomain = `${label}${rootSuffix}`
 
   try {
     const available = await isDomainAvailable(fullDomain)
@@ -89,20 +90,13 @@ export async function registerUserDomain(label) {
     }
 
     const userAddress = await store.registryContract.runner.getAddress()
-    
-    const labelHash = ethers.id(label)
 
-    console.log(`Registrando subdominio: ${fullDomain}...`)
+    console.log(`Iniciando registro para: ${fullDomain}...`)
     
-    const txRegister = await store.registrarUsuariosContract.register(labelHash, userAddress)
+    const txRegister = await store.registrarUsuariosContract.register(label)
     await txRegister.wait()
 
-    console.log(`Dominio registrado y configurado. Configurando resolución reversa para ${userAddress}...`)
-
-    const txReverse = await store.reverseRegistrarContract.setName(fullDomain)
-    await txReverse.wait()
-
-    console.log(`¡Proceso completado con éxito! ${fullDomain} es ahora el dominio de ${userAddress}`)
+    console.log(`¡Proceso completado con éxito en una sola transacción! ${fullDomain} es ahora el dominio de ${userAddress}`)
     return fullDomain
   } catch (error) {
     console.error("Error en registro de usuario:", error)

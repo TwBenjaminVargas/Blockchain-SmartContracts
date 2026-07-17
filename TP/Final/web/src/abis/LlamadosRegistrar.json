@@ -15,6 +15,16 @@
           "internalType": "bytes32",
           "name": "node",
           "type": "bytes32"
+        },
+        {
+          "internalType": "address",
+          "name": "reverseRegistrarAddr",
+          "type": "address"
+        },
+        {
+          "internalType": "string",
+          "name": "_rootSuffix",
+          "type": "string"
         }
       ],
       "stateMutability": "nonpayable",
@@ -25,7 +35,7 @@
       "name": "defaultResolver",
       "outputs": [
         {
-          "internalType": "address",
+          "internalType": "contract Resolver",
           "name": "",
           "type": "address"
         }
@@ -49,19 +59,27 @@
     {
       "inputs": [
         {
-          "internalType": "bytes32",
+          "internalType": "string",
           "name": "label",
-          "type": "bytes32"
-        },
-        {
-          "internalType": "address",
-          "name": "_owner",
-          "type": "address"
+          "type": "string"
         }
       ],
       "name": "register",
       "outputs": [],
       "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "reverseRegistrar",
+      "outputs": [
+        {
+          "internalType": "contract ReverseRegistrar",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
       "type": "function"
     },
     {
@@ -75,6 +93,37 @@
         }
       ],
       "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "rootSuffix",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "",
+          "type": "string"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "label",
+          "type": "string"
+        },
+        {
+          "internalType": "address",
+          "name": "targetContract",
+          "type": "address"
+        }
+      ],
+      "name": "setupRecords",
+      "outputs": [],
+      "stateMutability": "nonpayable",
       "type": "function"
     }
   ]

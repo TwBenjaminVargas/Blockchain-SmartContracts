@@ -19,15 +19,23 @@ export const ASSETS = {
 import FactoryAbi from '../abis/CFPFactory.json'
 import RegistryAbi from '../abis/Registry.json'
 import ResolverAbi from '../abis/Resolver.json'
-import RegistrarAbi from '../abis/Registrar.json'
+import UsuariosRegistrarAbi from '../abis/UsuariosRegistrar.json'
+import LlamadosRegistrarAbi from '../abis/LlamadosRegistrar.json'
 import ReverseRegistrarAbi from '../abis/ReverseRegistrar.json'
 export const FILES = 
 {
   CFP_FACTORY_ABI: FactoryAbi,
   REGISTRY_ABI: RegistryAbi,
   RESOLVER_ABI: ResolverAbi,
-  REGISTRAR_ABI: RegistrarAbi,
+  USUARIOS_REGISTRAR_ABI: UsuariosRegistrarAbi,
+  LLAMADOS_REGISTRAR_ABI: LlamadosRegistrarAbi,
   REVERSE_REGISTRAR_ABI: ReverseRegistrarAbi
+}
+
+export const ENSDomains = {
+  usuarios: 'usuarios.cfp',
+  llamados: 'llamados.cfp',
+  addrReverse: 'addr.reverse'
 }
 
 export const URL = {
