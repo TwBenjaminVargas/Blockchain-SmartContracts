@@ -102,10 +102,12 @@
                     <v-row no-gutters class="align-center w-100 min-w-0">
                       <v-col cols="12" md="8" class="d-flex flex-column text-left min-w-0 pr-4">
                         <div class="d-flex align-center flex-wrap gap-2 mb-2">
-                          <span class="text-mono text-body-2 font-weight-bold text-indigo-darken-1 bg-indigo-lighten-5 px-2 py-0.5 rounded">
-                            {{ call.callId.substring(0, 10) }}...{{ call.callId.substring(call.callId.length - 4) }}
+                          <!-- MODIFICADO: Se muestra el Domain en la cabecera en lugar del CallID -->
+                          <span class="text-mono text-body-2 font-weight-bold text-indigo-darken-1 bg-indigo-lighten-5 px-2 py-0.5 rounded d-inline-flex align-center">
+                            <v-icon icon="mdi-dns" size="14" class="me-1"></v-icon>
+                            {{ call.domain || 'sin-dominio.llamados.eth' }}
                           </span>
-                          
+                        
                           <v-chip
                             v-if="call.isInternal"
                             size="small"
@@ -124,7 +126,7 @@
                           >
                             Blockchain Pura
                           </v-chip>
-
+                        
                           <v-chip
                             v-if="call.isInternal && call.state"
                             size="small"
@@ -135,12 +137,12 @@
                             {{ call.state }}
                           </v-chip>
                         </div>
-                        
+                      
                         <div class="text-subtitle-1 font-weight-bold text-slate-dark text-truncate w-100">
                           {{ call.title || 'Convocatoria Externa (Sin metadatos)' }}
                         </div>
                       </v-col>
-
+                    
                       <v-col cols="12" md="4" class="text-md-right mt-2 mt-md-0">
                         <span class="text-body-2 font-weight-medium text-slate-medium">
                           <v-icon icon="mdi-clock-outline" size="16" class="me-1 text-grey-darken-1"></v-icon>
@@ -151,54 +153,78 @@
                   </v-expansion-panel-title>
 
                   <v-expansion-panel-text class="bg-slate-lighten-5 pa-2 text-left">
-                    <div class="py-2">
-                      <h4 class="text-subtitle-1 font-weight-bold text-slate-dark mb-1">
-                        {{ call.title || 'Convocatoria Externa' }}
-                      </h4>
-                      <p class="text-body-2 text-slate-medium mb-3">
-                        {{ call.description || 'Este llamado reside únicamente en los nodos de la Blockchain y no cuenta con metadatos extendidos guardados en la base de datos de la API.' }}
-                      </p>
-                      
-                      <v-divider class="mb-3"></v-divider>
-                      
-                      <div class="d-flex flex-column gap-1 text-caption text-grey-darken-2 mb-4">
-                        <div>
-                          <v-icon icon="mdi-file-sign" size="14" class="me-1"></v-icon>
-                          <strong>Address: </strong>  
-                          <span class="text-mono ms-1 select-all">{{ call.contractAddress || 'No desplegado / 0x00...' }}</span>
+                    <div class="technical-details d-flex flex-column gap-3 text-body-2 text-grey-darken-3 mb-4">
+                      <div class="d-flex align-center justify-space-between bg-white pa-2 rounded-lg border">
+                        <div class="text-truncate pr-2">
+                          <v-icon icon="mdi-file-sign" size="16" class="me-2 text-indigo-darken-1"></v-icon>
+                          <strong>Address:</strong>  
+                          <span class="text-mono ms-2 text-caption text-grey-darken-1 select-all">{{ call.contractAddress || 'No desplegado / 0x00...' }}</span>
                         </div>
-                        <div>
-                          <v-icon icon="mdi-account-circle" size="14" class="me-1"></v-icon>
+                        <v-btn 
+                          v-if="call.contractAddress"
+                          icon="mdi-content-copy" 
+                          variant="text" 
+                          size="x-small" 
+                          color="indigo-darken-1"
+                          title="Copiar Address"
+                          @click="copyToClipboard(call.contractAddress, 'Contract Address')"
+                        ></v-btn>
+                      </div>
+                    
+                      <div class="d-flex align-center justify-space-between bg-white pa-2 rounded-lg border">
+                        <div class="text-truncate pr-2">
+                          <v-icon icon="mdi-account-circle" size="16" class="me-2 text-indigo-darken-1"></v-icon>
                           <strong>Creador (Wallet):</strong>  
-                          <span class="text-mono ms-1">{{ call.creator || walletStore.account }}</span>
+                          <span class="text-mono ms-2 text-caption text-grey-darken-1">{{ call.creator || walletStore.account }}</span>
                         </div>
-                        <div>
-                          <v-icon icon="mdi-identifier" size="14" class="me-1"></v-icon>
-                          <strong>Call ID: </strong>  
-                          <span class="text-mono ms-1 select-all">{{ call.callId }}</span>
+                        <v-btn 
+                          icon="mdi-content-copy" 
+                          variant="text" 
+                          size="x-small" 
+                          color="indigo-darken-1"
+                          title="Copiar Creador"
+                          @click="copyToClipboard(call.creator || walletStore.account, 'Wallet del Creador')"
+                        ></v-btn>
+                      </div>
+                    
+                      <div class="d-flex align-center justify-space-between bg-white pa-2 rounded-lg border">
+                        <div class="text-truncate pr-2">
+                          <v-icon icon="mdi-identifier" size="16" class="me-2 text-indigo-darken-1"></v-icon>
+                          <strong>Call ID:</strong>  
+                          <span class="text-mono ms-2 text-caption text-grey-darken-1 select-all">{{ call.callId }}</span>
                         </div>
+                        <v-btn 
+                          icon="mdi-content-copy" 
+                          variant="text" 
+                          size="x-small" 
+                          color="indigo-darken-1"
+                          title="Copiar Call ID"
+                          @click="copyToClipboard(call.callId, 'Call ID')"
+                        ></v-btn>
                       </div>
 
                       <div v-if="call.isInternal && call.state === 'PENDING'" class="mt-4 border pa-4 rounded-xl bg-white elevation-1">
                         <div class="text-subtitle-2 font-weight-bold text-slate-dark mb-2">
                           Configuración de Cierre On-Chain
                         </div>
-                        
+
                         <v-row class="align-center" dense>
-                          <v-col cols="12" sm="6">
+                          <v-col cols="12" sm="auto" style="min-width: 280px;">
                             <v-text-field
                               v-model="closingInputs[call.callId]"
-                              label="Fecha y hora límite de cierre"
+                              label="Fecha y hora límite"
                               type="datetime-local"
                               variant="outlined"
-                              density="comfortable"
+                              density="compact"
                               color="indigo"
                               hide-details
                               prepend-inner-icon="mdi-calendar-clock"
                             ></v-text-field>
                           </v-col>
-                          
-                          <v-col cols="12" sm="6" class="text-right mt-2 mt-sm-0">
+
+                          <v-spacer class="d-none d-sm-block"></v-spacer>
+
+                          <v-col cols="12" sm="auto" class="text-right mt-2 mt-sm-0">
                             <v-btn
                               color="indigo-darken-1"
                               variant="flat"
@@ -212,7 +238,7 @@
                             </v-btn>
                           </v-col>
                         </v-row>
-                      </div>
+                    </div>
 
                       <div v-else-if="call.state === 'CREATED'" class="d-flex justify-end">
                         <v-btn
@@ -520,6 +546,16 @@ function formatUnixTimestamp(timestamp) {
     hour: '2-digit',
     minute: '2-digit'
   })
+}
+async function copyToClipboard(text, label) {
+  if (!text) return
+  try {
+    await navigator.clipboard.writeText(text)
+    showSnackbar(`¡${label} copiado al portapapeles!`, 'success')
+  } catch (err) {
+    console.error('Error al copiar:', err)
+    showSnackbar('No se pudo copiar el elemento.')
+  }
 }
 
 async function handleValidateAndRegisterDomain() {
@@ -989,6 +1025,9 @@ onMounted(() => {
 .gap-2 {
   gap: 8px;
 }
+.gap-3 {
+  gap: 12px;
+}
 
 .shadow-sm {
   box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
@@ -1009,4 +1048,5 @@ onMounted(() => {
 .call-panel-item:hover {
   background-color: rgba(241, 245, 249, 0.4);
 }
+
 </style>
