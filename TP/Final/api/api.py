@@ -845,7 +845,8 @@ async def get_registration_status(
                         "status": local_user.state.value,
                         "name": local_user.name,
                         "description": local_user.description,
-                        "nonce": local_user.nonce
+                        "nonce": local_user.nonce,
+                        "domain": local_user.domain
                     }
                 )
             else:

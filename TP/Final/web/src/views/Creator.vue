@@ -13,6 +13,7 @@
                 {{ creatorData.name ? creatorData.name.charAt(0).toUpperCase() : 'C' }}
               </v-avatar>
               <div class="text-left truncate-container">
+                <!-- NOMBRE -->
                 <div class="d-flex align-center">
                   <h3 class="text-h5 font-weight-bold text-slate-dark text-truncate max-w-text">
                     {{ creatorData.name || 'Creador sin Nombre' }}
@@ -34,9 +35,19 @@
                     Editar
                   </v-btn>
                 </div>
+
+                <!-- DOMINIO ENS DEL CREADOR -->
+                <div class="text-subtitle-2 font-weight-bold text-indigo-darken-1 text-truncate mt-0.5">
+                  <v-icon icon="mdi-dns-outline" size="16" class="me-1"></v-icon>
+                  {{ creatorData.domain || 'sin-dominio.eth' }}
+                </div>
+
+                <!-- ADDRESS (Wallet) -->
                 <div class="text-caption text-mono text-grey-darken-1 text-truncate mb-1">
                   {{ walletStore.account || '0x0000...' }}
                 </div>
+
+                <!-- DESCRIPCIÓN -->
                 <p class="text-body-2 text-slate-medium text-wrap italic-description">
                   {{ creatorData.description || 'Sin descripción provista. ¡Haz clic en el lápiz para añadir una!' }}
                 </p>
@@ -212,7 +223,7 @@
                         >
                           Ver propuestas
                         </v-btn>
-                    </div>
+                      </div>
 
                     </div>
                   </v-expansion-panel-text>
@@ -605,7 +616,8 @@ async function fetchCreatorProfile() {
         name: profile.name || '',
         description: profile.description || '',
         nonce: profile.nonce !== undefined ? profile.nonce : 0,
-        status: profile.status || ''
+        status: profile.status || '',
+        domain: profile.domain || ''
       }
     }
   } catch (error) {
