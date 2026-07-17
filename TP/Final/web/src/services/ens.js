@@ -172,3 +172,19 @@ export async function registerLlamadoDomain(label) {
     throw error
   }
 }
+
+export async function setupLlamadoRecords(label, targetContract) {
+  const store = useENSStore()
+  try {
+    console.log(`[ENS] Configurando records para subdominio: ${label} -> Contrato: ${targetContract}`)
+    
+    const tx = await store.registrarLlamadosContract.setupRecords(label, targetContract)
+    await tx.wait()
+    
+    console.log(`[ENS] ¡Registros vinculados en Blockchain con éxito!`)
+    return true
+  } catch (error) {
+    console.error("Error al ejecutar setupRecords en ENS:", error)
+    throw error
+  }
+}

@@ -102,7 +102,6 @@
                     <v-row no-gutters class="align-center w-100 min-w-0">
                       <v-col cols="12" md="8" class="d-flex flex-column text-left min-w-0 pr-4">
                         <div class="d-flex align-center flex-wrap gap-2 mb-2">
-                          <!-- MODIFICADO: Se muestra el Domain en la cabecera en lugar del CallID -->
                           <span class="text-mono text-body-2 font-weight-bold text-indigo-darken-1 bg-indigo-lighten-5 px-2 py-0.5 rounded d-inline-flex align-center">
                             <v-icon icon="mdi-dns" size="14" class="me-1"></v-icon>
                             {{ call.domain || 'sin-dominio.llamados.eth' }}
@@ -135,6 +134,16 @@
                             class="font-weight-bold text-caption"
                           >
                             {{ call.state }}
+                          </v-chip>
+                          <v-chip
+                            v-if="call.domain"
+                            size="small"
+                            :color="domainLinkedStatus[call.callId] ? 'success' : 'error'"
+                            variant="tonal"
+                            class="font-weight-bold text-caption"
+                          >
+                            <v-icon :icon="domainLinkedStatus[call.callId] ? 'mdi-cloud-check' : 'mdi-cloud-alert'" size="14" class="me-1"></v-icon>
+                            {{ domainLinkedStatus[call.callId] ? 'ENS Vinculado' : 'ENS No Vinculado' }}
                           </v-chip>
                         </div>
                       
@@ -240,7 +249,21 @@
                         </v-row>
                     </div>
 
-                      <div v-else-if="call.state === 'CREATED'" class="d-flex justify-end">
+                      <div v-else-if="call.state === 'CREATED'" class="d-flex justify-space-between align-center flex-wrap gap-2 mt-4 pt-2 border-top">
+                        <div>
+                          <v-btn
+                            v-if="call.contractAddress && call.domain && !domainLinkedStatus[call.callId]"
+                            color="amber-darken-3"
+                            variant="outlined"
+                            class="rounded-lg font-weight-bold"
+                            :loading="!!loadingOnChain[call.callId]"
+                            :disabled="!walletStore.account"
+                            @click="handleLinkDomainToContract(call)"
+                          >
+                            <v-icon icon="mdi-link-variant" class="me-2"></v-icon>
+                            Vincular Dominio con Contrato
+                          </v-btn>
+                        </div>
                         <v-btn
                           color="indigo-darken-1"
                           variant="elevated"
@@ -289,7 +312,7 @@
             <!-- PASO 1: Validación y Asignación de Dominio -->
             <div v-if="createCallModal.step === 1">
               <p class="text-body-2 text-slate-medium mb-3">
-                Asigna un subdominio único de ENS para identificar los nodos criptográficos de esta convocatoria.
+                Asigna un subdominio único de ENS para identificar esta convocatoria.
               </p>
               <v-text-field
                 v-model="createCallModal.form.domainLabel"
@@ -464,13 +487,14 @@ import {
 } from '../services/api'
 
 import { useENSStore } from '../stores/ensStore'
-import { checkLlamadoAvailability, registerLlamadoDomain } from '../services/ens'
+import { checkLlamadoAvailability, registerLlamadoDomain, setupLlamadoRecords, resolveDomain } from '../services/ens'
 
 import { createInFactory } from '../services/cfpfactory'
 
 const walletStore = useWalletStore()
 const ensStore = useENSStore()
 const loadingOnChain = ref({})
+const domainLinkedStatus = ref({})
 
 // Diccionario reactivo para las fechas seleccionadas por cada callId
 const closingInputs = ref({})
@@ -626,6 +650,35 @@ function initClosingTimeInput(call) {
   }
 }
 
+async function verifyDomainResolutions() {
+  if (!window.ethereum || allCalls.value.length === 0) return
+  
+  try {
+    
+    // Evaluamos en paralelo todos los llamados que posean un dominio asignado
+    await Promise.all(allCalls.value.map(async (call) => {
+      if (!call.domain) return
+      
+      try {
+        const resolvedAddress = await resolveDomain(call.domain)
+        
+        // Si el dominio resuelve y coincide con el address del contrato, está vinculado
+        if (resolvedAddress && call.contractAddress && 
+            resolvedAddress.toLowerCase() === call.contractAddress.toLowerCase()) {
+          domainLinkedStatus.value[call.callId] = true
+        } else {
+          domainLinkedStatus.value[call.callId] = false
+        }
+      } catch (err) {
+        console.warn(`No se pudo resolver el dominio ${call.domain}:`, err)
+        domainLinkedStatus.value[call.callId] = false
+      }
+    }))
+  } catch (error) {
+    console.error("Error en la verificación masiva de dominios ENS:", error)
+  }
+}
+
 async function fetchUserCallsData() {
   if (!walletStore.account) return
   try {
@@ -635,6 +688,7 @@ async function fetchUserCallsData() {
       localCallsList.value = data.local_calls || []
       externalCallsList.value = data.external_calls || []
     }
+    await verifyDomainResolutions()
   } catch (error) {
     console.error("Error al recuperar llamados:", error)
     showSnackbar("Error al sincronizar el catálogo de convocatorias.")
@@ -770,6 +824,43 @@ async function handleCreateCall() {
     showSnackbar(alertMsg)
   } finally {
     createCallModal.value.loading = false
+  }
+}
+
+async function handleLinkDomainToContract(call) {
+  if (!call.domain || !call.contractAddress) {
+    showSnackbar("Datos incompletos para realizar la vinculación.")
+    return
+  }
+
+  try {
+    loadingOnChain.value[call.callId] = true
+
+    // Extraer el 'label' limpio (ej: de "licitacion-2026.llamados.eth" extrae "licitacion-2026")
+    const suffix = ensStore.llamadosSuffix // "llamados.eth"
+    const label = call.domain.replace(`.${suffix}`, '').trim()
+
+    console.log(`[ENS Link] Preparando setupRecords para el label: "${label}" hacia ${call.contractAddress}`)
+
+    // Transacción contra el Smart Contract Registrador de llamados
+    await setupLlamadoRecords(label, call.contractAddress)
+
+    showSnackbar("¡Estructura de registros ENS actualizada correctamente en Blockchain!", "success")
+    await fetchUserCallsData() // Refrescar el estado actual
+
+  } catch (error) {
+    console.error("Error al vincular el dominio en Blockchain:", error)
+    let alertMsg = 'Ocurrió un error al procesar la vinculación en ENS.'
+    
+    if (error.code === 'ACTION_REJECTED') {
+      alertMsg = 'Transacción rechazada en MetaMask por el usuario.'
+    } else if (error.message) {
+      alertMsg = error.message
+    }
+    
+    showSnackbar(alertMsg)
+  } finally {
+    loadingOnChain.value[call.callId] = false
   }
 }
 
