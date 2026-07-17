@@ -12,7 +12,7 @@ export function getNamehash(domain) {
  */
 export async function isDomainAvailable(domain) {
   const store = useENSStore()
-  await store.initializeStore()
+
 
   try {
     const node = getNamehash(domain)
@@ -28,8 +28,6 @@ export async function isDomainAvailable(domain) {
 // Resolución Directa (domain -> wallet)
 export async function resolveDomain(domain) {
   const store = useENSStore()
-  await store.initializeStore() 
-
   try {
     const node = getNamehash(domain)
     const resolverAddress = await store.registryContract.resolver(node)
@@ -50,7 +48,7 @@ export async function resolveDomain(domain) {
  */
 export async function reverseResolveAddress(address) {
   const store = useENSStore()
-  await store.initializeStore()
+
 
   try {
     // Formatear la dirección bajo el estándar EIP-181
@@ -68,6 +66,7 @@ export async function reverseResolveAddress(address) {
 
     // Consultamos al resolvedor el nombre guardado para ese nodo inverso
     const domain = await store.resolverContract.name(finalReverseNode)
+    console.log(`Dirección ${address} resuelta a dominio: ${domain}`)
     return domain || null
   } catch (error) {
     console.error(`Error en resolución inversa para ${address}:`, error)
@@ -78,7 +77,6 @@ export async function reverseResolveAddress(address) {
 // Registro de Usuario con Validación de Colisión
 export async function registerUserDomain(label) {
   const store = useENSStore()
-  await store.initializeStore()
 
   const rootSuffix = store.usuariosSuffix
   const fullDomain = `${label}${rootSuffix}`
@@ -96,7 +94,7 @@ export async function registerUserDomain(label) {
     const txRegister = await store.registrarUsuariosContract.register(label)
     await txRegister.wait()
 
-    console.log(`¡Proceso completado con éxito en una sola transacción! ${fullDomain} es ahora el dominio de ${userAddress}`)
+    console.log(`¡Proceso completado con éxito! ${fullDomain} es ahora el dominio de ${userAddress}`)
     return fullDomain
   } catch (error) {
     console.error("Error en registro de usuario:", error)

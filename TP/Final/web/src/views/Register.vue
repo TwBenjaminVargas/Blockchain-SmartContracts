@@ -373,44 +373,62 @@ async function loadCurrentRegistrationState() {
   }
   try {
     uiLoading.value = true
+    errorMessage.value = ''
+
+    // 1. RESETEO TOTAL DE ESTADO (Evita que se filtren datos de la wallet anterior)
+    hasExistingDomain.value = false
+    confirmedDomain.value = ''
+    isDomainValidAndFree.value = false
+    formData.value.nickname = ''
+    formData.value.name = ''
+    formData.value.description = ''
+
     const currentAddress = walletStore.account.toLowerCase().trim()
     
-    // Intentamos resolver el dominio de forma inversa
+    // 2. RESOLUCIÓN REVERSA (La única fuente de verdad para el dominio)
     try {
       const detectedDomain = await reverseResolveAddress(currentAddress)
 
-      // Si el dominio existe y apunta a la estructura correcta de usuarios (.usuarios.cfp)
+      // Verificamos si la wallet ya posee un dominio válido del sistema
       if (detectedDomain && detectedDomain.endsWith('.usuarios.cfp')) {
-        
-        // Verificamos que realmente no esté disponible 
         const isAvailable = await isDomainAvailable(detectedDomain)
         
+        // Si NO está disponible, significa que ya está tomado (y le pertenece a esta wallet)
         if (!isAvailable) {
           const label = detectedDomain.replace('.usuarios.cfp', '')
+          
+          // Sincronizamos las variables del dominio de forma segura
           formData.value.nickname = label
           confirmedDomain.value = detectedDomain
           isDomainValidAndFree.value = true
           hasExistingDomain.value = true
-          currentStep.value = 'user' // salta directo al Registro en sistema
+          
+          // Saltamos el paso 1 ya que tiene dominio
+          currentStep.value = 'user'
         }
       }
     } catch (ensErr) {
       console.warn("No se pudo autodetectar el dominio actual por ENS:", ensErr)
     }
 
-    // Carga del estado del formulario en la API
+    // 3. CARGA DE DATOS DESDE LA API (Solo para el perfil: Nombre, Descripción y Estado)
     const reg = await walletStore.refreshRegistration()
     if (reg) {
       formData.value.name = reg.name || ''
       formData.value.description = reg.description || ''
       
-      if (reg.domain) {
-        confirmedDomain.value = reg.domain
-      }
-
+      // Manejo de la navegación según el estado de la API, respetando si ya hay dominio
       if (reg.name && reg.name.trim() !== '') {
-        if (reg.status === 'pending') currentStep.value = 'blockchain'
-        else if (reg.status === 'registered') currentStep.value = 'evaluation'
+        if (reg.status === 'pending') {
+          currentStep.value = 'blockchain'
+        } else if (reg.status === 'registered') {
+          currentStep.value = 'evaluation'
+        }
+      }
+    } else {
+      // Si la API no devuelve registro y tampoco detectamos dominio por ENS, va al paso 1
+      if (!hasExistingDomain.value) {
+        currentStep.value = 'domain'
       }
     }
   } catch (error) {
@@ -651,7 +669,6 @@ async function checkStatusAgain() {
 
 onMounted(async () => {
   try {
-    await ensStore.initializeStore()
     await loadCurrentRegistrationState()
   } catch (err) {
     console.warn(err)

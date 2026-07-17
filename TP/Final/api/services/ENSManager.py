@@ -41,18 +41,14 @@ class ENSManager:
     def get_namehash(self, domain: str) -> bytes:
         if not domain:
             return b'\x00' * 32
-        parts = domain.split(".")
-        node = b'\x00' * 32
-        for part in reversed(parts):
-            label_hash = self.w3.keccak(text=part)
-            node = self.w3.solidity_keccak(["bytes32", "bytes32"], [node, label_hash])
-        return node
+        return self.w3.ens.namehash(domain)
     
     # Resolución Directa: Traduce nombre -> wallet
     def resolve(self, domain: str) -> str:
         """Obtiene la dirección de la wallet (addr) asignada a un dominio ENS."""
         try:
             node_hash = self.get_namehash(domain)
+            logger.debug(f"Resolviendo dominio {domain} con namehash {node_hash.hex()}")
             # Verificar si tiene un Resolver asignado en el Registry
             resolver_assigned = self.registry_contract.functions.resolver(node_hash).call()
             if resolver_assigned == "0x0000000000000000000000000000000000000000":
@@ -80,11 +76,9 @@ class ENSManager:
         try:
             # Formateo de dirección según exige el estándar EIP-181 (sin '0x' y en minúsculas)
             clean_address = address.lower().replace("0x", "")
-            address_label_hash = self.w3.keccak(text=clean_address)
-            
-            # Construccion del nodo reverso de forma secuencial: reverse -> addr.reverse -> [address].addr.reverse
-            addr_reverse_node = self.get_namehash("addr.reverse")
-            final_reverse_node = self.w3.solidity_keccak(["bytes32", "bytes32"], [addr_reverse_node, address_label_hash])
+            reverse_domain = f"{clean_address}.addr.reverse"
+            final_reverse_node = self.get_namehash(reverse_domain)
+            logger.debug(f"Resolviendo reverso para la wallet {address} con namehash {final_reverse_node.hex()}")
 
             # consultar al Resolver por el nombre asociado a ese nodo
             name = self.resolver_contract.functions.name(final_reverse_node).call()

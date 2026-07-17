@@ -54,13 +54,15 @@
 <script setup>
 import { computed, onMounted } from 'vue'
 import { useWalletStore } from './stores/wallet'
+import { useENSStore } from './stores/ensStore' 
 import { useRouter, useRoute } from 'vue-router'
 
 const walletStore = useWalletStore()
+const ensStore = useENSStore()
 const router = useRouter()
 const route = useRoute()
 
-// Recorta la dirección de la wallet para mostrar (ej: 0xf39f...2266)
+// Recortar la dirección de la wallet para mostrar (ej: 0xf39f...2266)
 const truncatedAddress = computed(() => {
   if (!walletStore.account) return ''
   return `${walletStore.account.substring(0, 6)}...${walletStore.account.substring(walletStore.account.length - 4)}`
@@ -68,6 +70,7 @@ const truncatedAddress = computed(() => {
 
 // Limpia el estado de autenticación y redirige a la Landing
 function handleDisconnect() {
+  ensStore.resetStore()
   walletStore.disconnect()
   walletStore.userRole = null
   router.push({ name: 'landing' })
@@ -83,23 +86,45 @@ async function handleConnectFromBar() {
   }
 }
 
-// Configura escuchadores para eventos de MetaMask
-onMounted(() => {
-  if (window.ethereum) {
-    // Maneja cambio de cuenta o desconexión
-    window.ethereum.on('accountsChanged', (accounts) => {
+onMounted(async () => {
+  // Carga inicial: Cuando se refresca o entra por primera vez a la página
+  try {
+    if (window.ethereum) {
+      const accounts = await window.ethereum.request({ method: 'eth_accounts' })
       if (accounts.length > 0) {
         walletStore.account = accounts[0]
-        walletStore.checkUserRole(accounts[0])
+        await ensStore.refreshStore()
+        await walletStore.checkUserRole(accounts[0])
+      }
+    }
+  } catch (err) {
+    console.error("Error en inicialización al cargar la página:", err)
+  }
+
+  //Escucha dinámica: Cuando el usuario cambia de cuenta activamente en MetaMask
+  if (window.ethereum) {
+    window.ethereum.on('accountsChanged', async (accounts) => {
+      if (accounts.length > 0) {
+        walletStore.account = accounts[0]
         
-        if (walletStore.userRole === 'admin') router.push({ name: 'admin' })
-        else if (walletStore.userRole === 'creator') router.push({ name: 'creator' })
+        console.log("Cambio de cuenta detectado. Reseteando estados y redirigiendo a la página inicial...")
+        
+        // Ejecuta el refresco total de contratos con el nuevo Signer
+        await ensStore.refreshStore()
+        
+        // Verifica el rol de la nueva cuenta para tener el estado listo
+        await walletStore.checkUserRole(accounts[0])
+        
+        // Redirige forzosamente a la landing/primera página
+        router.push({ name: 'landing' }) 
+        
       } else {
+        // Si desconecta todas las cuentas de MetaMask
         handleDisconnect()
       }
     })
 
-    // Recarga la página si cambia la red
+    // Recarga estructural en caso de cambio de red blockchain
     window.ethereum.on('chainChanged', () => {
       window.location.reload()
     })

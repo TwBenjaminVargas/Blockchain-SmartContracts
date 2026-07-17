@@ -29,10 +29,23 @@ export const useENSStore = defineStore('ens', {
   }),
 
   actions: {
-    async initializeStore() {
-      // Si ya está inicializado, evitamos repetir la operación
-      if (this.isInitialized) return
+    resetStore() {
+      this.registryAddress = null
+      this.resolverAddress = null
+      this.registrarUsuariosAddress = null
+      this.registrarLlamadosAddress = null
+      this.reverseRegistrarAddress = null
 
+      this.registryContract = null
+      this.resolverContract = null
+      this.registrarUsuariosContract = null
+      this.registrarLlamadosContract = null
+      this.reverseRegistrarContract = null
+
+      this.isInitialized = false
+      console.log("¡Store de ENS reseteado y vaciado con éxito!")
+    },
+    async refreshStore() {
       this.loading = true
       try {
         if (!window.ethereum) {
