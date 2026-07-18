@@ -413,14 +413,31 @@
             </div>
 
             <v-expansion-panels v-else variant="accordion" class="custom-panels">
-              <v-expansion-panel v-for="call in searchedGlobalCalls" :key="call.callId" :class="['creator-row mb-3 rounded-lg overflow-hidden', !call.isInternal ? 'external-row' : '']" elevation="1">
+              <v-expansion-panel 
+                v-for="call in searchedGlobalCalls" 
+                :key="call.callId" 
+                :class="['creator-row mb-3 rounded-lg overflow-hidden', !call.isInternal ? 'external-row' : '']" 
+                elevation="1"
+              >
                 <v-expansion-panel-title class="py-4">
                   <v-row no-gutters class="align-center w-100 min-w-0">
                     <v-col cols="12" md="7" class="d-flex flex-column text-left min-w-0 pr-4">
                       <div class="d-flex align-center flex-wrap gap-2 mb-2">
-                        <span class="text-mono text-body-2 font-weight-bold text-indigo-darken-1 bg-indigo-lighten-5 px-2 py-0.5 rounded">
-                          {{ call.callId.substring(0, 10) }}...{{ call.callId.substring(call.callId.length - 4) }}
+                        <!-- Badge de Dominio ENS del llamado (Solo lectura) -->
+                        <span v-if="call.domain" class="text-mono text-body-2 font-weight-bold text-indigo-darken-1 bg-indigo-lighten-5 px-2 py-0.5 rounded d-inline-flex align-center">
+                          <v-icon icon="mdi-dns" size="14" class="me-1"></v-icon>
+                          {{ call.domain }}
                         </span>
+                        <v-chip
+                          v-if="call.domain"
+                          size="small"
+                          :color="domainLinkedStatus[call.callId] ? 'success' : 'error'"
+                          variant="tonal"
+                          class="font-weight-bold text-caption"
+                        >
+                          <v-icon :icon="domainLinkedStatus[call.callId] ? 'mdi-cloud-check' : 'mdi-cloud-alert'" size="14" class="me-1"></v-icon>
+                          {{ domainLinkedStatus[call.callId] ? 'ENS Vinculado' : 'ENS No Vinculado' }}
+                        </v-chip>
                         
                         <v-chip v-if="call.isInternal" size="small" color="success" variant="flat" class="font-weight-bold text-caption">
                           Sincronizado
@@ -456,7 +473,7 @@
                   </v-row>
                 </v-expansion-panel-title>
 
-                <v-expansion-panel-text class="text-left pt-2 text-slate-medium">
+                <v-expansion-panel-text class="text-left pt-2 text-slate-medium bg-slate-lighten-5">
                   <h4 class="text-subtitle-1 font-weight-bold text-slate-dark mb-1">
                     {{ call.title || 'Convocatoria Externa' }}
                   </h4>
@@ -466,24 +483,58 @@
                   
                   <v-divider class="mb-3"></v-divider>
 
-                  <div class="d-flex flex-column gap-1 text-caption text-grey-darken-2 mb-2">
-                    <div>
-                      <v-icon icon="mdi-file-sign" size="14" class="me-1"></v-icon>
-                      <strong>Address: </strong>  
-                      <span class="text-mono ms-1 select-all">{{ call.contractAddress || call.address || 'No desplegado / 0x00...' }}</span>
+                  <div class="technical-details d-flex flex-column gap-3 text-body-2 text-grey-darken-3 mb-4">
+                    <div class="d-flex align-center justify-space-between bg-white pa-2 rounded-lg border">
+                      <div class="text-truncate pr-2">
+                        <v-icon icon="mdi-file-sign" size="16" class="me-2 text-indigo-darken-1"></v-icon>
+                        <strong>Contract Address:</strong>  
+                        <span class="text-mono ms-2 text-caption text-grey-darken-1 select-all">{{ call.contractAddress || call.address || '0x0000000000000000000000000000000000000000' }}</span>
+                      </div>
+                      <v-btn 
+                        icon="mdi-content-copy" 
+                        variant="text" 
+                        size="x-small" 
+                        color="indigo-darken-1"
+                        title="Copiar Contract Address"
+                        @click="copyToClipboard(call.contractAddress || call.address || '0x0000000000000000000000000000000000000000', 'Contract Address')"
+                      ></v-btn>
                     </div>
-                    <div>
-                      <v-icon icon="mdi-account-circle" size="14" class="me-1"></v-icon>
-                      <strong>Creador (Wallet):</strong>  
-                      <span class="text-mono ms-1">{{ call.creator }}</span>
+                  
+                    <div class="d-flex align-center justify-space-between bg-white pa-2 rounded-lg border">
+                      <div class="text-truncate pr-2">
+                        <v-icon icon="mdi-account-circle" size="16" class="me-2 text-indigo-darken-1"></v-icon>
+                        <strong>Creador (Wallet):</strong>  
+                        <span class="text-mono ms-2 text-caption text-grey-darken-1 select-all">{{ call.creator }}</span>
+                      </div>
+                      <v-btn 
+                        icon="mdi-content-copy" 
+                        variant="text" 
+                        size="x-small" 
+                        color="indigo-darken-1"
+                        title="Copiar Creador"
+                        @click="copyToClipboard(call.creator, 'Wallet del Creador')"
+                      ></v-btn>
                     </div>
-                    <div>
-                      <v-icon icon="mdi-identifier" size="14" class="me-1"></v-icon>
-                      <strong>Call ID: </strong>  
-                      <span class="text-mono ms-1 select-all">{{ call.callId }}</span>
+                  
+                    <div class="d-flex align-center justify-space-between bg-white pa-2 rounded-lg border">
+                      <div class="text-truncate pr-2">
+                        <v-icon icon="mdi-identifier" size="16" class="me-2 text-indigo-darken-1"></v-icon>
+                        <strong>Call ID:</strong>  
+                        <span class="text-mono ms-2 text-caption text-grey-darken-1 select-all">{{ call.callId }}</span>
+                      </div>
+                      <v-btn 
+                        icon="mdi-content-copy" 
+                        variant="text" 
+                        size="x-small" 
+                        color="indigo-darken-1"
+                        title="Copiar Call ID"
+                        @click="copyToClipboard(call.callId, 'Call ID')"
+                      ></v-btn>
                     </div>
                   </div>
-                  <div v-if="call.isInternal && call.state === 'CREATED'" class="d-flex justify-end">
+
+                  <!-- BOTÓN ÚNICO DE NAVEGACIÓN -->
+                  <div class="d-flex justify-end mt-4 pt-2 border-top">
                       <v-btn
                         color="indigo-darken-1"
                         variant="elevated"
@@ -537,6 +588,7 @@ import {
   getGlobalCalls
 } from '../services/api' 
 
+import {resolveDomain } from '../services/ens'
 const walletStore = useWalletStore()
 
 const backgroundImage = ASSETS.adminBg
@@ -579,7 +631,7 @@ const externalRequests = ref([])
 
 const internalGlobalCalls = ref([])
 const externalGlobalCalls = ref([])
-
+const domainLinkedStatus = ref({})
 const totalRequests = computed(() => localRequests.value.length + externalRequests.value.length)
 
 const panelTitle = computed(() => {
@@ -714,6 +766,31 @@ function formatUnixTimestamp(timestamp) {
   })
 }
 
+async function verifyDomainResolutions() {
+  const calls = [...internalGlobalCalls.value, ...externalGlobalCalls.value]
+  if (!window.ethereum || calls.length === 0) return
+  
+  try {
+    await Promise.all(calls.map(async (call) => {
+      if (!call.domain) return
+      try {
+        const resolvedAddress = await resolveDomain(call.domain)
+        if (resolvedAddress && call.address && 
+            resolvedAddress.toLowerCase() === call.address.toLowerCase()) {
+          domainLinkedStatus.value[call.callId] = true
+        } else {
+          domainLinkedStatus.value[call.callId] = false
+        }
+      } catch (err) {
+        console.warn(`No se pudo resolver el dominio ${call.domain}:`, err)
+        domainLinkedStatus.value[call.callId] = false
+      }
+    }))
+  } catch (error) {
+    console.error("Error en la verificación masiva de dominios ENS:", error)
+  }
+}
+
 async function loadAllData() {
   try {
     if (currentTab.value === 'calls') {
@@ -743,6 +820,7 @@ async function loadGlobalCallsData() {
     if (callsCatalog) {
       internalGlobalCalls.value = callsCatalog.internal || []
       externalGlobalCalls.value = callsCatalog.external || []
+      await verifyDomainResolutions()
     }
   } catch (error) {
     console.error("Error al recuperar llamados globales:", error)
