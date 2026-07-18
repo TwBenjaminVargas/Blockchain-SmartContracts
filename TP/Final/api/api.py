@@ -569,7 +569,8 @@ async def get_call(
                 content={
                     "title": call_record.title,
                     "description": call_record.description,
-                    "status": "pending"
+                    "status": "pending",
+                    "domain": call_record.domain
                 }
             )
             
@@ -581,7 +582,8 @@ async def get_call(
                     "cfp": call_record.contractAddress if call_record.contractAddress else "0x0000000000000000000000000000000000000000",
                     "title": call_record.title,
                     "description": call_record.description,
-                    "status": "created"
+                    "status": "created",
+                    "domain": call_record.domain
                 }
             )
             
