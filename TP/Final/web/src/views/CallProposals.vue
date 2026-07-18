@@ -37,9 +37,35 @@
                 {{ callData.description }}
               </p>
               <v-divider class="mb-3"></v-divider>
+              
+              <div v-if="callData.domain" class="d-flex align-center gap-2 mb-2 text-caption text-slate-medium">
+                <strong>Dominio ENS:</strong>
+                <v-chip size="small" color="indigo-lighten-5" class="text-indigo-darken-2 font-weight-bold rounded-lg text-mono">
+                  {{ callData.domain }}
+                </v-chip>
+                <v-btn
+                  icon="mdi-content-copy"
+                  variant="text"
+                  density="compact"
+                  color="indigo-darken-1"
+                  title="Copiar Dominio"
+                  @click="copyToClipboard(callData.domain)"
+                ></v-btn>
+              </div>
+
               <div class="d-flex justify-space-between align-center flex-wrap gap-2">
-                <div class="text-caption text-slate-medium">
-                  <strong>ID Convocatoria:</strong> <span class="text-mono">{{ callId }}</span>
+                <div class="text-caption text-slate-medium d-flex align-center gap-1">
+                  <strong>Call ID:</strong> 
+                  <span class="text-mono">{{ callId }}</span>
+                  <v-btn
+                    icon="mdi-content-copy"
+                    variant="text"
+                    density="compact"
+                    color="slate-medium"
+                    title="Copiar ID"
+                    class="ms-1"
+                    @click="copyToClipboard(callId)"
+                  ></v-btn>
                 </div>
                 <v-chip :color="isCallClosed ? 'grey-darken-1' : 'error'" size="small" variant="flat" class="font-weight-bold rounded-lg">
                     {{ isCallClosed ? 'Cerrado' : 'Cierre' }}: {{ formatTimestamp(closingTimeISO) }}
@@ -847,6 +873,16 @@ const submitPostClosingData = async () => {
   reader.readAsText(postClosingReceiptFile.value)
 }
 
+const copyToClipboard = async (text) => {
+  try {
+    await navigator.clipboard.writeText(text)
+    // Opcional: Podrías disparar un snackbar/alerta breve aquí. Un alert simple por ahora:
+    // alert("Copiado al portapapeles")
+  } catch (err) {
+    console.error('Error al intentar copiar al portapapeles:', err)
+  }
+}
+
 onMounted(() => {
   if (callId.value) { loadCallDetails(); loadProposals(); }
   clockInterval = setInterval(() => { currentTime.value = new Date() }, 1000)
@@ -871,4 +907,6 @@ onBeforeUnmount(() => { if (clockInterval) clearInterval(clockInterval) })
 .proposal-row :deep(.v-expansion-panel-title--active) { background-color: #f1f5f9 !important; }
 .text-xxs { font-size: 0.7rem; }
 .max-w-70 { max-width: 70%; }
+.gap-2 { gap: 8px; }
+.gap-1 { gap: 4px; }
 </style>
