@@ -231,15 +231,35 @@ async function main() {
     console.log(`-> CFPFactory desplegado en: ${contractAddress}\n`);
 
 
-    // ================= 5. CONFIGURACIÓN FINAL / CONSOLA =================
+    // ================= 5. DESPLIEGUE DE TOKENs =================
+    console.log("Desplegando contrato BENCOIN...");
+    
+    // Definimos la tasa inicial (ej. 1 ETH = 1000 BEN)
+    const initialRate = 1000;
+    
+    // Obtenemos el artefacto generado por Hardhat
+    const bencoinArtifact = getArtifact("BENCOIN");
+    
+    // Usamos deployer como propietario inicial
+    const bencoinFactory = new ethers.ContractFactory(bencoinArtifact.abi, bencoinArtifact.bytecode, deployer);
+    
+    // Pasamos initialRate como argumento del constructor
+    const bencoinContract = await bencoinFactory.deploy(initialRate, { nonce: deployerNonce++ });
+    await bencoinContract.waitForDeployment();
+    
+    const bencoinAddress = await bencoinContract.getAddress();
+    console.log(`-> BENCOIN desplegado en: ${bencoinAddress}\n`);
+
+    // ================= 6. CONFIGURACIÓN FINAL / CONSOLA =================
     console.log("\n================= DESPLIEGUE FINALIZADO CON ÉXITO =================");
     console.log(`CFP_FACTORY_ADDRESS="${contractAddress}"`);
     console.log(`REGISTRY_ADDRESS="${registryAddress}"`);
     console.log(`RESOLVER_ADDRESS="${resolverAddress}"`);
-    console.log(`REGISTRAR_USUARIOS_ADDRESS="${usuariosRegistrarAddress}"`);
-    console.log(`REVERSE_REGISTRAR_ADDRESS="${reverseRegistrarAddress}"`);
-    console.log(`LLAMADOS_REGISTRAR_ADDRESS="${llamadosRegistrarAddress}"`);
+    //console.log(`REGISTRAR_USUARIOS_ADDRESS="${usuariosRegistrarAddress}"`);
+    //console.log(`REVERSE_REGISTRAR_ADDRESS="${reverseRegistrarAddress}"`);
+    //console.log(`LLAMADOS_REGISTRAR_ADDRESS="${llamadosRegistrarAddress}"`);
     console.log(`CFP_MNEMONIC="${testMnemonicPhrase}"`);
+    console.log(`TOKEN_ADDRESS= ${bencoinAddress}\n`);
     console.log("====================================================================\n");
 
     console.log("================ CONFIGURACIÓN DE TESTS (API) ================");
