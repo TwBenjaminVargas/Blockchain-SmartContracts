@@ -188,7 +188,7 @@ async def custom_validation_exception_handler(request: Request, exc: RequestVali
         return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"message": Messages.INVALID_TITLE})
 
     return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"message": Messages.MISSING_FIELD})  
-# Afectado por ENS    
+    
 @app.post(
     "/create", 
     status_code=status.HTTP_201_CREATED,
@@ -269,7 +269,7 @@ async def create(
     except Exception as e:
         logger.error(f"Fallo no controlado en el flujo del endpoint: {str(e)}")
         return JSONResponse(status_code=500, content={"message": Messages.INTERNAL_ERROR})
-# Afectado por ENS                            
+                            
 @app.post(
     "/register",
     status_code=status.HTTP_200_OK,
@@ -1270,7 +1270,7 @@ async def get_admin_address(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"message": Messages.INTERNAL_ERROR}
         )
-# Afectado por ENS       
+       
 @app.get(
     "/creators",
     status_code=status.HTTP_200_OK,
@@ -1329,7 +1329,7 @@ async def get_creators_endpoint(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"message": Messages.INTERNAL_ERROR}
         )
-# Afectado por ENS
+
 @app.get(
     "/users",
     status_code=status.HTTP_200_OK,
@@ -1377,7 +1377,7 @@ async def get_all_users_endpoint(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"message": Messages.INTERNAL_ERROR}
         )
-# Afectado por ENS
+
 @app.get(
     "/authorization-requests",
     status_code=status.HTTP_200_OK,
@@ -1448,7 +1448,7 @@ async def get_authorization_requests_endpoint(
             content={"message": Messages.INTERNAL_ERROR}
         )
 
-# Afectado por ENS        
+        
 @app.get(
     "/calls-by/{address}",
     status_code=status.HTTP_200_OK,
@@ -1523,7 +1523,7 @@ async def get_user_calls(
             content={"message": Messages.INTERNAL_ERROR}
         )
 
-# Afectado por ENS
+
 @app.get(
     "/global-calls",
     status_code=status.HTTP_200_OK,
@@ -2072,7 +2072,7 @@ async def get_proposal_receipt(
             content={"message": Messages.INTERNAL_ERROR}
         )
 
-# Afectado por ENS
+
 @app.get(
     "/calls/{call_id}/proposals",
     status_code=status.HTTP_200_OK,
