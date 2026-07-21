@@ -445,6 +445,15 @@
                         <v-chip v-else size="small" color="amber-darken-2" variant="flat" class="font-weight-bold text-caption">
                           Blockchain Pura
                         </v-chip>
+                        <v-chip
+                          size="small"
+                          :color="formatGuaranteeDisplay(call.guarantee) === 'Sin costo' ? 'grey-darken-1' : 'deep-purple-accent-3'"
+                          variant="tonal"
+                          class="font-weight-bold text-caption"
+                        >
+                          <v-icon icon="mdi-shield-lock-outline" size="14" class="me-1"></v-icon>
+                          Garantía: {{ formatGuaranteeDisplay(call.guarantee) }}
+                        </v-chip>
 
                         <v-chip v-if="call.isInternal && call.state" size="small" color="indigo-lighten-1" variant="outlined" class="font-weight-bold text-caption">
                           {{ call.state }}
@@ -531,6 +540,17 @@
                         @click="copyToClipboard(call.callId, 'Call ID')"
                       ></v-btn>
                     </div>
+
+                    <div class="d-flex align-center justify-space-between bg-white pa-2 rounded-lg border">
+                        <div class="text-truncate pr-2">
+                          <v-icon icon="mdi-shield-check-outline" size="16" class="me-2 text-indigo-darken-1"></v-icon>
+                          <strong>Garantía Exigida:</strong>  
+                          <span class="ms-2 font-weight-bold text-indigo-darken-2">
+                            {{ formatGuaranteeDisplay(call.guarantee) }}
+                          </span>
+                        </div>
+                    </div>
+
                   </div>
 
                   <!-- BOTÓN ÚNICO DE NAVEGACIÓN -->
@@ -670,6 +690,19 @@ const filteredCreators = computed(() => {
 
   return { registered: regFiltered, external: extFiltered }
 })
+
+function formatGuaranteeDisplay(rawGuarantee) {
+  if (!rawGuarantee || rawGuarantee === '0' || rawGuarantee === 0) {
+    return 'Sin costo'
+  }
+  try {
+    // Convierte las unidades mínimas (wei/18 decimales) a tokens enteros/decimales legibles
+    const formatted = ethers.formatEther(rawGuarantee.toString())
+    return `${formatted} BEN`
+  } catch {
+    return 'Sin costo'
+  }
+}
 
 // FILTRADO DINÁMICO: PESTAÑA USUARIOS
 const searchedUsers = computed(() => {
