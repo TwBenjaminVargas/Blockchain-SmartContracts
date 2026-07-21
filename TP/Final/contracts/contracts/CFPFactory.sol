@@ -2,6 +2,7 @@
 pragma solidity ^0.8.19;
 
 import "./CFP.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract CFPFactory {
     // Evento que se emite cuando se crea un llamado a presentación de propuestas
@@ -60,6 +61,8 @@ contract CFPFactory {
 
 
     address public owner;
+
+    IERC20 public defaultToken;
     
     mapping(bytes32 => CallForProposals) public calls;
     
@@ -75,7 +78,7 @@ contract CFPFactory {
     
 
 
-    constructor() {owner = msg.sender;}
+    constructor(address _defaultToken) {owner = msg.sender; defaultToken = IERC20(_defaultToken);}
 
     // Devuelve la cantidad de cuentas que han creado llamados.
     function creatorsCount() public view returns (uint256) {return creators.length;}
@@ -117,12 +120,12 @@ contract CFPFactory {
      *  Si ya existe un llamado con ese identificador, revierte con el mensaje de error "El llamado ya existe"
      *  Si el emisor no está autorizado a crear llamados, revierte con el mensaje "No autorizado"
      */
-    function create(bytes32 callId, uint256 timestamp) public
+    function create(bytes32 callId, uint256 timestamp, uint256 guarantee) public
     callDoesNotExist(callId)
     onlyAuthorized()
     returns (CFP)
     {
-        CFP cfp = new CFP(callId, timestamp);
+        CFP cfp = new CFP(callId, timestamp, msg.sender, guarantee, defaultToken);
         calls[callId] = CallForProposals(msg.sender, cfp);
         if (createdByMap[msg.sender].length == 0) {
             creators.push(msg.sender);
@@ -136,6 +139,7 @@ contract CFPFactory {
     /**
      * Crea un llamado, estableciendo a `creator` como creador del mismo.
      * Sólo puede ser invocada por el dueño de la factoría.
+     * Solo puede ser usado para crear llamados sin garantias
      * Se comporta en todos los demás aspectos como `createFor(bytes32 callId, uint timestamp)`
      */
     function createFor(bytes32 callId,uint timestamp,address creator) public 
@@ -144,7 +148,7 @@ contract CFPFactory {
     addressIsAuthorized(creator)
     returns (CFP)
     {
-        CFP cfp = new CFP(callId, timestamp);
+        CFP cfp = new CFP(callId, timestamp, creator, 0, defaultToken);
         calls[callId] = CallForProposals(creator, cfp);
         if (createdByMap[creator].length == 0) {
             creators.push(creator);

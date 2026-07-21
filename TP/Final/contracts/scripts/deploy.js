@@ -219,19 +219,7 @@ async function main() {
     await txTransferLlamados.wait();
     console.log("-> Propiedad de 'llamados.cfp' delegada al FIFSRegistrar de llamados con éxito.\n");
 
-
-
-    // ================= 4. DESPLIEGUE DE CFP_FACTORY =================
-    console.log("Desplegando CFPFactory usando la cuenta Owner de pruebas...");
-    const factoryArtifact = getArtifact("CFPFactory");
-    const factory = new ethers.ContractFactory(factoryArtifact.abi, factoryArtifact.bytecode, ownerWallet);
-    const contract = await factory.deploy();
-    await contract.waitForDeployment();
-    const contractAddress = await contract.getAddress();
-    console.log(`-> CFPFactory desplegado en: ${contractAddress}\n`);
-
-
-    // ================= 5. DESPLIEGUE DE TOKENs =================
+    // ================= DESPLIEGUE DE TOKENs =================
     console.log("Desplegando contrato BENCOIN...");
     
     // Definimos la tasa inicial (ej. 1 ETH = 1000 BEN)
@@ -249,6 +237,18 @@ async function main() {
     
     const bencoinAddress = await bencoinContract.getAddress();
     console.log(`-> BENCOIN desplegado en: ${bencoinAddress}\n`);
+
+
+    // ================= 4. DESPLIEGUE DE CFP_FACTORY =================
+    console.log("Desplegando CFPFactory usando la cuenta Owner de pruebas...");
+    const factoryArtifact = getArtifact("CFPFactory");
+    const factory = new ethers.ContractFactory(factoryArtifact.abi, factoryArtifact.bytecode, ownerWallet);
+    const contract = await factory.deploy(bencoinAddress);
+    await contract.waitForDeployment();
+    const contractAddress = await contract.getAddress();
+    console.log(`-> CFPFactory desplegado en: ${contractAddress}\n`);
+
+
 
     // ================= 6. CONFIGURACIÓN FINAL / CONSOLA =================
     console.log("\n================= DESPLIEGUE FINALIZADO CON ÉXITO =================");
