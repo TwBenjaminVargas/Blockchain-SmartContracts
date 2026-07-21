@@ -36,6 +36,13 @@ class CallCreate(BaseModel):
         examples=["pepe.usuarios.cfp", "benja.eth"]
     )
 
+    guaranteeAmount: int = Field(
+        default=0,
+        ge=0,
+        description="Costo de la garantía en unidades de token ERC-20 (en wei/unidades mínimas). 0 indica sin costo.",
+        examples=[1000000000000000000]
+    )
+
     @field_validator("title", mode="before")
     @classmethod
     def clean_title(cls, value: str) -> str:

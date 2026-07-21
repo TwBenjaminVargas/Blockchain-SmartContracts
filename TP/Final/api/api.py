@@ -257,7 +257,8 @@ async def create(
                                                     description=payload.description,
                                                     signature=payload.signature,
                                                     creator_address=emisor_address,
-                                                    domain=payload.domain)
+                                                    domain=payload.domain,
+                                                    guaranteeAmount=payload.guaranteeAmount)
         except db_exceptions.RecordAlreadyExistsException:
             return JSONResponse(status_code=403, content={"message": Messages.ALREADY_CREATED})
         except db_exceptions.DatabaseWriteException as db_write_err:
@@ -570,7 +571,8 @@ async def get_call(
                     "title": call_record.title,
                     "description": call_record.description,
                     "status": "pending",
-                    "domain": call_record.domain
+                    "domain": call_record.domain,
+                    "guarantee": call_record.guaranteeAmount
                 }
             )
             
@@ -1495,7 +1497,8 @@ async def get_user_calls(
                 "state": call.state.value,
                 "contractAddress": call.contractAddress,
                 "closingTime": call.closingTime,
-                "domain": call.domain
+                "domain": call.domain,
+                "guarantee": call.guaranteeAmount
             })
             
         return JSONResponse(
@@ -1570,7 +1573,8 @@ async def get_global_calls_catalog(
                 "state": local_call.state.value,
                 "address": local_call.contractAddress,
                 "closingTime": local_call.closingTime,
-                "domain": local_call.domain
+                "domain": local_call.domain,
+                "guarantee": local_call.guaranteeAmount
             })
             
         #Resolver e iterar los detalles on-chain únicamente para los llamados externos
