@@ -226,7 +226,7 @@
                 <v-expansion-panel-title class="py-4">
                   <v-row no-gutters class="align-center w-100 min-w-0">
                     <v-col cols="12" md="7" class="d-flex flex-column text-left min-w-0 pr-4">
-                      <div class="d-flex align-center flex-wrap gap-2 mb-2">
+                      <div class="d-flex align-center flex-wrap ga-2  mb-2">
                         <!-- MODIFICADO: Reemplazado Call ID recortado por el Dominio ENS -->
                         <span class="text-mono text-body-2 font-weight-bold text-indigo-darken-1 bg-indigo-lighten-5 px-2 py-0.5 rounded d-inline-flex align-center">
                           <v-icon icon="mdi-dns" size="14" class="me-1"></v-icon>
@@ -239,12 +239,22 @@
                         <v-chip v-else size="small" color="amber-darken-2" variant="flat" class="font-weight-bold text-caption">
                           Blockchain Pura
                         </v-chip>
-
+                        
+                        <v-chip
+                              size="small"
+                              :color="formatGuaranteeDisplay(call.guarantee) === 'Sin costo' ? 'grey-darken-1' : 'deep-purple-accent-3'"
+                              variant="tonal"
+                              class="font-weight-bold text-caption"
+                            >
+                              <v-icon icon="mdi-shield-lock-outline" size="14" class="me-1"></v-icon>
+                              Garantía: {{ formatGuaranteeDisplay(call.guarantee) }}
+                        </v-chip>
                         <v-chip v-if="call.isInternal && call.state" size="small" color="indigo-lighten-1" variant="outlined" class="font-weight-bold text-caption">
                           {{ call.state }}
                         </v-chip>
                       </div>
 
+                      
                       <div class="text-subtitle-1 font-weight-bold text-slate-dark text-truncate w-100">
                         {{ call.title || 'Convocatoria Externa (Sin metadatos)' }}
                       </div>
@@ -327,6 +337,15 @@
                         @click="copyToClipboard(call.callId, 'Call ID')"
                       ></v-btn>
                     </div>
+                    <div class="d-flex align-center justify-space-between bg-white pa-2 rounded-lg border">
+                        <div class="text-truncate pr-2">
+                          <v-icon icon="mdi-shield-check-outline" size="16" class="me-2 text-indigo-darken-1"></v-icon>
+                          <strong>Garantía Exigida:</strong>  
+                          <span class="ms-2 font-weight-bold text-indigo-darken-2">
+                            {{ formatGuaranteeDisplay(call.guarantee) }}
+                          </span>
+                        </div>
+                    </div>
 
                     <div v-if="call.state === 'CREATED'" class="d-flex justify-end mt-2">
                       <v-btn
@@ -375,6 +394,7 @@ import { ref, onMounted, computed, watch } from 'vue'
 import { ASSETS } from '../config/constants'
 import { getCreators, getGlobalCalls } from '../services/api'
 import {resolveDomain} from '../services/ens'
+import { ethers } from 'ethers'
 
 const backgroundImage = ASSETS.genericBg
 const currentTab = ref('creators')
@@ -453,6 +473,19 @@ function formatUnixTimestamp(timestamp) {
     hour: '2-digit',
     minute: '2-digit'
   })
+}
+
+function formatGuaranteeDisplay(rawGuarantee) {
+  if (!rawGuarantee || rawGuarantee === '0' || rawGuarantee === 0) {
+    return 'Sin costo'
+  }
+  try {
+    // Convierte las unidades mínimas (wei/18 decimales) a tokens enteros/decimales legibles
+    const formatted = ethers.formatEther(rawGuarantee.toString())
+    return `${formatted} BEN`
+  } catch {
+    return 'Sin costo'
+  }
 }
 
 // FILTRADO DINÁMICO: PESTAÑA CREADORES
