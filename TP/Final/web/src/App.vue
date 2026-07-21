@@ -25,6 +25,17 @@
         {{ walletStore.account ? 'METAMASK CONECTADO' : 'METAMASK DESCONECTADO' }}
       </v-chip>
 
+      <v-chip
+        v-if="walletStore.account && userDomain"
+        color="indigo-lighten-5"
+        variant="flat"
+        class="me-3 font-weight-bold text-indigo-darken-2 border"
+        size="small"
+      >
+        <v-icon icon="mdi-dns" size="14" class="me-1 text-indigo-darken-1"></v-icon>
+        {{ userDomain }}
+      </v-chip>
+
       <span v-if="walletStore.account" class="text-body-2 me-4 bg-slate-light pa-2 rounded-lg font-weight-medium text-slate-dark border">
         {{ truncatedAddress }}
       </span>
@@ -52,15 +63,17 @@
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
+import { ref,computed, onMounted } from 'vue'
 import { useWalletStore } from './stores/wallet'
 import { useENSStore } from './stores/ensStore' 
 import { useRouter, useRoute } from 'vue-router'
+import { reverseResolveAddress } from './services/ens'
 
 const walletStore = useWalletStore()
 const ensStore = useENSStore()
 const router = useRouter()
 const route = useRoute()
+const userDomain = ref('')
 
 // Recortar la dirección de la wallet para mostrar (ej: 0xf39f...2266)
 const truncatedAddress = computed(() => {
@@ -73,16 +86,32 @@ function handleDisconnect() {
   ensStore.resetStore()
   walletStore.disconnect()
   walletStore.userRole = null
+  userDomain.value = ''
   router.push({ name: 'landing' })
 }
 
 // Lógica de conexión desde la barra y redirección según rol
 async function handleConnectFromBar() {
   const success = await walletStore.connectMetaMask()
-  if (success) {
-    if (walletStore.userRole === 'admin') router.push({ name: 'admin' })
-    else if (walletStore.userRole === 'pending') router.push({ name: 'register' })
-    else if (walletStore.userRole === 'creator') router.push({ name: 'creator' })
+  if (success && walletStore.account) {
+    // Refresca el rol y el estado de ENS para la nueva cuenta conectada
+    await ensStore.refreshStore()
+    await walletStore.checkUserRole(walletStore.account)
+    await fetchUserDomain(walletStore.account)
+  }
+}
+
+async function fetchUserDomain(address) {
+  if (!address) {
+    userDomain.value = ''
+    return
+  }
+  try {
+    const domain = await reverseResolveAddress(address)
+    userDomain.value = domain || ''
+  } catch (error) {
+    console.error("No se pudo obtener el dominio inverso del usuario:", error)
+    userDomain.value = ''
   }
 }
 
@@ -95,6 +124,7 @@ onMounted(async () => {
         walletStore.account = accounts[0]
         await ensStore.refreshStore()
         await walletStore.checkUserRole(accounts[0])
+        await fetchUserDomain(accounts[0])
       }
     }
   } catch (err) {
@@ -114,6 +144,8 @@ onMounted(async () => {
         
         // Verifica el rol de la nueva cuenta para tener el estado listo
         await walletStore.checkUserRole(accounts[0])
+
+        await fetchUserDomain(accounts[0])
         
         // Redirige forzosamente a la landing/primera página
         router.push({ name: 'landing' }) 
