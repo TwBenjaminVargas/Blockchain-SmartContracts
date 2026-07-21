@@ -22,6 +22,8 @@ import ResolverAbi from '../abis/Resolver.json'
 import UsuariosRegistrarAbi from '../abis/UsuariosRegistrar.json'
 import LlamadosRegistrarAbi from '../abis/LlamadosRegistrar.json'
 import ReverseRegistrarAbi from '../abis/ReverseRegistrar.json'
+import CfpAbi from '../abis/CFP.json'
+import Token from '../abis/BENCOIN.json'
 export const FILES = 
 {
   CFP_FACTORY_ABI: FactoryAbi,
@@ -29,7 +31,9 @@ export const FILES =
   RESOLVER_ABI: ResolverAbi,
   USUARIOS_REGISTRAR_ABI: UsuariosRegistrarAbi,
   LLAMADOS_REGISTRAR_ABI: LlamadosRegistrarAbi,
-  REVERSE_REGISTRAR_ABI: ReverseRegistrarAbi
+  REVERSE_REGISTRAR_ABI: ReverseRegistrarAbi,
+  BENCOIN_ABI: Token,
+  CFP_ABI: CfpAbi
 }
 
 export const ENSDomains = {
