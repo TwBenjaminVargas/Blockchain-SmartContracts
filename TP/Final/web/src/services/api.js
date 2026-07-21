@@ -236,9 +236,28 @@ export const getProposalReceiptPostClosing = async (proposalId) => {
   }
 }
 
-export const getENSAddresses = async (proposalId) => {
+export const getENSAddresses = async () => {
   try {
     const response = await api.get(URL.getENSAddresses)
+    return response.data
+  } catch (error) {
+    console.error(`Error al obtener las direcciones ENS`, error)
+    throw error
+  }
+}
+
+export const getTokenAddress = async () => {
+  try {
+    const response = await api.get(URL.getTokenAddress)
+    return response.data
+  } catch (error) {
+    console.error(`Error al obtener las direcciones ENS`, error)
+    throw error
+  }
+}
+export const getCallContractAdress = async (callid) => {
+  try {
+    const response = await api.get(URL.getCallContractAddress.replace(':call_id', callid))
     return response.data
   } catch (error) {
     console.error(`Error al obtener las direcciones ENS`, error)
