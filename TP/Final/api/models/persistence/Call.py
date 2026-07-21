@@ -34,8 +34,8 @@ class Call(SQLModel, table=True):
     domain: str = Field(description="Nombre de dominio ENS verificado del usuario")
     
     
-    guaranteeAmount: int = Field(
-        default=0, 
+    guaranteeAmount: str = Field(
+        default="0", 
         nullable=False, 
-        description="Costo/Monto de la garantía requerida en tokens ERC-20 (0 si no requiere)"
+        description="Costo/Monto de la garantía requerida en Wei (0 si no requiere)"
     )

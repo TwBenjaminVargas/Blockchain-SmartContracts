@@ -36,12 +36,23 @@ class CallCreate(BaseModel):
         examples=["pepe.usuarios.cfp", "benja.eth"]
     )
 
-    guaranteeAmount: int = Field(
-        default=0,
-        ge=0,
-        description="Costo de la garantía en unidades de token ERC-20 (en wei/unidades mínimas). 0 indica sin costo.",
-        examples=[1000000000000000000]
+    guaranteeAmount: str = Field(
+        default="0",
+        description="Costo de la garantía en unidades de token ERC-20 en Wei (expresado en string para evitar desbordamiento numérico).",
+        examples=["1000000000000000000"]
     )
+
+    @field_validator("guaranteeAmount", mode="before")
+    @classmethod
+    def validate_guarantee(cls, value) -> str:
+        # Convertir a string si llega como número desde el JSON
+        str_val = str(value).strip() if value is not None else "0"
+        
+        # Validar que sea puramente un número entero positivo
+        if not str_val.isdigit():
+            raise ValueError("El monto de la garantía debe ser un entero positivo o cero.")
+            
+        return str_val
 
     @field_validator("title", mode="before")
     @classmethod
