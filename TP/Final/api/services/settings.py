@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     upload_dir: str = Field(alias="PROPOSALS_UPLOAD_DIR")
     registry_address: str = Field(alias="ENS_REGISTRY_ADDRESS")
     resolver_address: str = Field(alias="ENS_RESOLVER_ADDRESS")
+    token_address: str = Field(alias="TOKEN_ADDRESS")
 
     #carga la configuración desde el archivo .env y permite ignorar campos adicionales no definidos en esta clase
     model_config = SettingsConfigDict(env_file=".env",

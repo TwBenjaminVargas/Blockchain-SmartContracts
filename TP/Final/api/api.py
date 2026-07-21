@@ -2193,3 +2193,116 @@ async def get_ens_addresses(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=Messages.INTERNAL_ERROR
         )
+
+
+@app.get(
+    "/calls/{call_id}/contract",
+    status_code=status.HTTP_200_OK,
+    summary="Obtiene la dirección del contrato inteligente CFP desplegado para un llamado",
+    response_description="Retorna la dirección física del contrato en la red blockchain"
+)
+async def get_call_contract_address(
+    call_id: str = Path(..., description="Hash identificador del llamado (0x...)"),
+    db_manager: DBManager = Depends(get_db_manager),
+    manager: CFPManager = Depends(get_contract_manager)
+):
+    """
+    Busca la dirección del contrato inteligente (CFP) asociado a un callId.
+    Intenta resolver primero en la base de datos local y, si no se encuentra o el llamado 
+    está en estado PENDING, consulta de forma de respaldo directamente a la blockchain.
+    """
+    # Validación estricta del formato del callId (32 bytes hex con prefijo 0x)
+    if not re.match(r"^0x[a-fA-F0-9]{64}$", call_id):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"message": Messages.INVALID_CALLID}
+        )
+
+    cfp_address = None
+
+    # Intento de resolución vía Base de Datos Local
+    try:
+        call_record = db_manager.getCall(call_id)
+        if call_record and call_record.state == CallState.CREATED and call_record.contractAddress:
+            cfp_address = call_record.contractAddress
+    except db_exceptions.DatabaseConnectionException as db_err:
+        logger.error(f"Error al consultar BD local para contract-address de {call_id}: {str(db_err)}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"message": Messages.INTERNAL_ERROR}
+        )
+
+    # On-Chain en caso de no encontrarse en BD
+    if not cfp_address:
+        try:
+            _, contract_chain_address = manager.get_call_details(call_id_hex=call_id)
+            address_zero = "0x" + "0" * 40
+            
+            if not contract_chain_address or contract_chain_address == address_zero:
+                return JSONResponse(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    content={"message": Messages.CALLID_NOT_FOUND}
+                )
+                
+            cfp_address = contract_chain_address
+
+        except (contract_exceptions.InvalidContractAddressException, contract_exceptions.BlockchainReadException) as chain_err:
+            logger.error(f"Error al leer contrato on-chain para callId {call_id}: {str(chain_err)}")
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content={"message": Messages.INTERNAL_ERROR}
+            )
+        except Exception as e:
+            logger.error(f"Fallo inesperado al consultar la blockchain para callId {call_id}: {str(e)}")
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content={"message": Messages.INTERNAL_ERROR}
+            )
+
+    # Retorno exitoso de la dirección
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={"address": cfp_address}
+    )
+    
+
+@app.get(
+    "/token-address",
+    status_code=status.HTTP_200_OK,
+    summary="Obtiene la dirección del token ERC-20/ERC-20-like configurado en el sistema",
+    response_description="Retorna la dirección pública del contrato del token actual"
+)
+async def get_token_address(settings: Settings = Depends(get_settings)):
+    """
+    Devuelve la dirección del contrato del token utilizada por la plataforma,
+    extraída desde la configuración global del sistema (Settings/Config/Env).
+    """
+    try:
+        # Se obtiene la dirección desde el módulo/objeto de settings de la app
+
+        # Validación en caso de que la variable esté vacía o no definida
+        if not token_address:
+            logger.error("La dirección del token no está configurada en los settings de la aplicación.")
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content={"message": Messages.INTERNAL_ERROR}
+            )
+
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={"address": token_address}
+        )
+
+    except AttributeError:
+        # En caso de que la propiedad TOKEN_ADDRESS no exista en el objeto settings
+        logger.error("La propiedad 'TOKEN_ADDRESS' no existe en la configuración.")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"message": Messages.INTERNAL_ERROR}
+        )
+    except Exception as e:
+        logger.error(f"Error inesperado al obtener la dirección del token desde settings: {str(e)}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"message": Messages.INTERNAL_ERROR}
+        )
