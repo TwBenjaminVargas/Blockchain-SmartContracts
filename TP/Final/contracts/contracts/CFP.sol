@@ -223,6 +223,9 @@ contract CFP {
         usersAuthorizedToWithdrawGuarantee.push(usuario);
         isAuthorizedToWithdrawGuarantee[usuario] = true;
 
+        bool success = token.approve(usuario, guarantee);
+        require(success, "Fallo el otorgamiento de allowance al usuario");
+        
         emit guaranteeWithdrawAuthorized(usuario);
     }
 
