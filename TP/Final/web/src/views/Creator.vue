@@ -125,6 +125,16 @@
                           >
                             Blockchain Pura
                           </v-chip>
+                         
+                          <v-chip
+                            size="small"
+                            :color="formatGuaranteeDisplay(call.guarantee) === 'Sin costo' ? 'grey-darken-1' : 'deep-purple-accent-3'"
+                            variant="tonal"
+                            class="font-weight-bold text-caption"
+                          >
+                            <v-icon icon="mdi-shield-lock-outline" size="14" class="me-1"></v-icon>
+                            Garantía: {{ formatGuaranteeDisplay(call.guarantee) }}
+                          </v-chip>
                         
                           <v-chip
                             v-if="call.isInternal && call.state"
@@ -210,6 +220,15 @@
                           title="Copiar Call ID"
                           @click="copyToClipboard(call.callId, 'Call ID')"
                         ></v-btn>
+                      </div>
+                      <div class="d-flex align-center justify-space-between bg-white pa-2 rounded-lg border">
+                        <div class="text-truncate pr-2">
+                          <v-icon icon="mdi-shield-check-outline" size="16" class="me-2 text-indigo-darken-1"></v-icon>
+                          <strong>Garantía Exigida:</strong>  
+                          <span class="ms-2 font-weight-bold text-indigo-darken-2">
+                            {{ formatGuaranteeDisplay(call.guarantee) }}
+                          </span>
+                        </div>
                       </div>
 
                       <div v-if="call.isInternal && call.state === 'PENDING'" class="mt-4 border pa-4 rounded-xl bg-white elevation-1">
@@ -360,6 +379,29 @@
                 no-resize
                 :rules="createCallModal.step === 2 ? descriptionRules : []"
               ></v-textarea>
+              <v-checkbox
+                v-model="createCallModal.form.hasGuarantee"
+                label="¿Requiere depósito de garantía en tokens?"
+                color="indigo"
+                density="compact"
+                hide-details
+                class="mt-1"
+              ></v-checkbox>
+
+              <v-text-field
+                v-if="createCallModal.form.hasGuarantee"
+                v-model="createCallModal.form.guarantee"
+                label="Costo de la Garantía (en BEN tokens)"
+                variant="outlined"
+                color="indigo"
+                density="comfortable"
+                type="number"
+                placeholder="Ej: 50"
+                suffix="BEN"
+                prepend-inner-icon="mdi-shield-dollar"
+                :rules="[v => !createCallModal.form.hasGuarantee || (v > 0) || 'Ingrese un monto mayor a 0']"
+                class="mt-2"
+              ></v-text-field>
             </div>
           </v-card-text>
         
@@ -560,6 +602,19 @@ function showSnackbar(message, color = 'error') {
   snackbar.value = { show: true, message, color }
 }
 
+function formatGuaranteeDisplay(rawGuarantee) {
+  if (!rawGuarantee || rawGuarantee === '0' || rawGuarantee === 0) {
+    return 'Sin costo'
+  }
+  try {
+    // Convierte las unidades mínimas (wei/18 decimales) a tokens enteros/decimales legibles
+    const formatted = ethers.formatEther(rawGuarantee.toString())
+    return `${formatted} BEN`
+  } catch {
+    return 'Sin costo'
+  }
+}
+
 function formatUnixTimestamp(timestamp) {
   if (!timestamp) return 'No definido / Pendiente on-chain'
   const date = new Date(Number(timestamp) * 1000)
@@ -728,15 +783,15 @@ function openCreateCallModal() {
   createCallModal.value.step = 1
   createCallModal.value.domainStatusText = ''
   
-  // Limpiamos la totalidad del formulario para que empiece de cero
   createCallModal.value.form = { 
     domainLabel: '', 
     title: '', 
     description: '', 
-    verifiedDomain: '' 
+    verifiedDomain: '',
+    hasGuarantee: false, // Control de casilla de verificación
+    guarantee: ''        // Valor ingresado por el usuario
   }
   
-  // Reseteamos las validaciones visuales de Vuetify
   if (createCallForm.value) {
     createCallForm.value.resetValidation()
   }
@@ -767,10 +822,16 @@ async function handleCreateCall() {
     const descStr = createCallModal.value.form.description.trim()
     const fullDomain = createCallModal.value.form.verifiedDomain // Extraemos el dominio del paso 1
 
+    let guaranteeInWei = '0'
+    if (createCallModal.value.form.hasGuarantee && createCallModal.value.form.guarantee) {
+      guaranteeInWei = ethers.parseEther(createCallModal.value.form.guarantee.toString()).toString()
+    }
+
     const titleBytes = ethers.toUtf8Bytes(titleStr)
     const descBytes = ethers.toUtf8Bytes(descStr)
     const rlpEncoded = ethers.encodeRlp([titleBytes, descBytes]) 
     const calculatedCallId = ethers.keccak256(rlpEncoded)
+
 
     const domain = {
       name: "CFP API",
@@ -802,7 +863,8 @@ async function handleCreateCall() {
       title: titleStr,
       description: descStr,
       domain: fullDomain, 
-      signature: signature
+      signature: signature,
+      guaranteeAmount: guaranteeInWei
     }
 
     await createCall(payload)
@@ -978,15 +1040,18 @@ async function handleCreateOnChain(call) {
   try {
     loadingOnChain.value[call.callId] = true
 
-    console.log(`[On-Chain] Enviando a Blockchain -> callId: ${call.callId}, closingTime seleccionado: ${closingTimestamp}`)
+    const guaranteeValue = call.guarantee ? call.guarantee.toString() : '0'
+
+    console.log(`[On-Chain] Enviando a Blockchain -> callId: ${call.callId}, closingTime: ${closingTimestamp}, guarantee: ${guaranteeValue}`)
+
 
     // Ejecución contra MetaMask y la Blockchain
-    const receipt = await createInFactory(call.callId, closingTimestamp)
+    const receipt = await createInFactory(call.callId, closingTimestamp,guaranteeValue)
     console.log("[On-Chain] Transacción confirmada con éxito:", receipt)
 
     showSnackbar("¡Transacción confirmada! Refrescando catálogo en 3 segundos...", "success")
     
-    // REQUISITO: Esperar 3 segundos (3000ms) antes de realizar el refresco de los llamados
+    //Esperar 3 segundos (3000ms) antes de realizar el refresco de los llamados
     setTimeout(async () => {
       await fetchUserCallsData()
       // Limpiar el input local del diccionario una vez procesado
