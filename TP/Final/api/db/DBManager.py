@@ -72,7 +72,7 @@ class DBManager:
             )
             raise db_exceptions.DatabaseConnectionException("Error interno al consultar el almacenamiento local.")
 
-    def createPendingCall(self, call_id: str, title: str, description: str, signature: str, creator_address: str, domain: str) -> Call:
+    def createPendingCall(self, call_id: str, title: str, description: str, signature: str, creator_address: str, domain: str,guaranteeAmount: int) -> Call:
         """
         Instancia y persiste un nuevo objeto 'Call' con estado inicial 'PENDING'.
         
@@ -96,7 +96,8 @@ class DBManager:
             signature=signature.strip(),
             creator=creator_address.strip(),
             domain=domain.strip(),
-            state=CallState.PENDING
+            state=CallState.PENDING,
+            guaranteeAmount=guaranteeAmount
         )
         
         return self._add(nuevo_llamado)

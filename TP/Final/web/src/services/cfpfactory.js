@@ -29,8 +29,8 @@ export async function registerInFactory() {
 /**
  * Crea una nueva instancia CFP en la Factory
  */
-export async function createInFactory(callId, timestamp, guarantee) {
-  const contract = await getFactoryContractInstance()
+export async function createInFactory(callId, timestamp, guarantee = '0') {
+  const contract = await getContractInstance()
   
   const formattedCallId = callId.startsWith('0x') ? callId : `0x${callId}`
   const bigIntTimestamp = BigInt(timestamp)

@@ -79,7 +79,7 @@ export async function registerUserDomain(label) {
   const store = useENSStore()
 
   const rootSuffix = store.usuariosSuffix
-  const fullDomain = `${label}${rootSuffix}`
+  const fullDomain = `${label}.${rootSuffix}`
 
   try {
     const available = await isDomainAvailable(fullDomain)
