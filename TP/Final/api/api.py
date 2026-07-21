@@ -2279,7 +2279,7 @@ async def get_token_address(settings: Settings = Depends(get_settings)):
     """
     try:
         # Se obtiene la dirección desde el módulo/objeto de settings de la app
-
+        token_address = settings.token_address
         # Validación en caso de que la variable esté vacía o no definida
         if not token_address:
             logger.error("La dirección del token no está configurada en los settings de la aplicación.")
