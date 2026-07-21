@@ -39,3 +39,17 @@ export async function createInFactory(callId, timestamp) {
   // Esperamos a que la transacción se mine en la red
   return await tx.wait()
 }
+
+/**
+ * Crea una nueva instancia CFP en la Factory
+ */
+export async function createInFactory(callId, timestamp, guarantee) {
+  const contract = await getFactoryContractInstance()
+  
+  const formattedCallId = callId.startsWith('0x') ? callId : `0x${callId}`
+  const bigIntTimestamp = BigInt(timestamp)
+  const bigIntGuarantee = ethers.parseUnits(guarantee.toString(), 18) // el token tiene 18 decimales
+
+  const tx = await contract.create(formattedCallId, bigIntTimestamp, bigIntGuarantee)
+  return await tx.wait()
+}
