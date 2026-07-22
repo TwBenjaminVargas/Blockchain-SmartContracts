@@ -12,7 +12,7 @@ const routes = [
   { path: '/', name: 'landing', component: Landing },
   { path: '/admin', name: 'admin', component: Admin, meta: { requiresRole: 'admin' } },
   { path: '/creator', name: 'creator', component: Creator, meta: { requiresRole: 'creator' } },
-  { path: '/public', name: 'public', component: Public, meta: { requiresRole: 'guest' } },
+  { path: '/public', name: 'public', component: Public},
   { path: '/register', name: 'register', component: Register },
   { 
     path: '/calls/:callId/proposals', 
