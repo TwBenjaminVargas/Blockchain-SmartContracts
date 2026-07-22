@@ -379,7 +379,9 @@
                         </template>
                         
                         <template v-if="matchState(proposal.state, 'delivered')">
+                          <!-- Botón Descargar ZIP -->
                           <v-btn
+                            v-if="canDownloadZip(proposal)"
                             color="indigo-darken-1"
                             variant="flat"
                             class="rounded-lg font-weight-bold text-white shadow-sm"
@@ -389,7 +391,9 @@
                             Descargar ZIP
                           </v-btn>
 
+                          <!-- Botón Recibo Post-Cierre -->
                           <v-btn
+                            v-if="canDownloadPostClosingReceipt(proposal)"
                             color="success"
                             variant="outlined"
                             class="rounded-lg font-weight-bold"
@@ -830,6 +834,37 @@ const canWithdrawGuarantee = ref(false)
 const withdrawingGuarantee = ref(false)
 
 const closingFileSubmission = ref(false)
+
+/**
+ * Evalúa si el usuario actual es el Creador de la Convocatoria/Llamado.
+ */
+const isCallCreator = computed(() => {
+  if (!walletStore.account || !callData.value?.creator) return false
+  return walletStore.account.toLowerCase() === callData.value.creator.toLowerCase()
+})
+
+/**
+ * Regla: El botón "Descargar ZIP" sólo puede ser visto por:
+ * 1. El Creador del Llamado.
+ * 2. El Creador de la Propuesta específica.
+ * 3. Cualquier usuario si la garantía del llamado es 0 (guaranteeAmount == 0).
+ */
+const canDownloadZip = (proposal) => {
+  if (Number(guaranteeAmount.value) === 0) return true
+  return isCallCreator.value || isProposalOwner(proposal)
+}
+
+/**
+ *El botón "Recibo Post-Cierre" sólo debe ser visto por:
+ * 1. El Creador de la Propuesta específica.
+ * 2. Cualquier Creador de Propuesta si la garantía del llamado es 0 (guaranteeAmount == 0).
+ * (Nota: No es de interés para el creador del llamado).
+ */
+const canDownloadPostClosingReceipt = (proposal) => {
+  if (Number(guaranteeAmount.value) === 0) return true
+  return isProposalOwner(proposal)
+}
+
 
 const isCallClosed = computed(() => {
   if (!closingTimeISO.value) return false
