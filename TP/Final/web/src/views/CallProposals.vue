@@ -202,7 +202,20 @@
               </h3>
               <p class="text-body-2 text-slate-medium mb-0">
                 El período de recepción de propuestas ha terminado. El creador del llamado se encuentra evaluando las postulaciones recibidas.
+                Si cargaste tus archivos en tiempo y forma, el creador te proporcionara un metodo para recuperar la garantía.
               </p>
+              <!-- Botón Retirar Garantía (Se habilita solo si canWithdrawGuarantee es true) -->
+              <v-btn
+                v-if="canWithdrawGuarantee"
+                color="teal-darken-2"
+                variant="flat"
+                class="rounded-lg font-weight-bold text-white shadow-sm m-3"
+                :loading="withdrawingGuarantee"
+                @click="handleWithdrawGuarantee"
+              >
+                <v-icon icon="mdi-cash-refund" class="me-1" size="20"></v-icon>
+                Retirar Garantía ({{ formatTokenAmount(guaranteeAmount) }} BEN)
+              </v-btn>
             </v-card>
             <div v-if="!showEvaluatingNotice">
               <div class="d-flex justify-space-between align-center mb-4 flex-wrap gap-3 flex-shrink-0">
@@ -754,6 +767,9 @@ const userBalance = ref(BigInt(0))
 const chainStatusMap = ref({})
 
 
+const canWithdrawGuarantee = ref(false)
+const withdrawingGuarantee = ref(false)
+
 const isCallClosed = computed(() => {
   if (!closingTimeISO.value) return false
   return currentTime.value > new Date(closingTimeISO.value)
@@ -831,6 +847,67 @@ const checkProposalsOnChainStatus = async () => {
 
   await Promise.all(checks)
 }
+/*
+* Consulta en el Smart Contract si el usuario actual tiene saldo de garantía disponible para retirar
+ */
+const checkWithdrawableGuarantee = async () => {
+  if (!walletStore.account || !callId.value) {
+    canWithdrawGuarantee.value = false
+    return
+  }
+  try {
+    const isAuthorized = await cfpService.isAuthorizedToWithdrawGuarantee(callId.value, walletStore.account)
+    canWithdrawGuarantee.value = Boolean(isAuthorized)
+  } catch (err) {
+    console.error("Error al consultar autorización de retiro de garantía:", err)
+    canWithdrawGuarantee.value = false
+  }
+}
+
+/**
+ * Ejecuta la transferencia de los tokens autorizados desde la dirección
+ * del contrato hacia la billetera del usuario conectado.
+ */
+const handleWithdrawGuarantee = async () => {
+  if (!walletStore.account || !canWithdrawGuarantee.value || !cfpContractAddress.value) return
+
+  try {
+    withdrawingGuarantee.value = true
+
+    // Transferir tokens desde el contrato del llamado hacia la cuenta del usuario
+    await tokenService.transferFrom(
+      cfpContractAddress.value, // Origen: Dirección del contrato del llamado
+      walletStore.account,      // Destino: Billetera del usuario
+      guaranteeAmount.value     // Monto de la garantía
+    )
+
+    // Notificación de éxito
+    verificationDialog.value = {
+      open: true,
+      success: true,
+      message: `¡Garantía de ${formatTokenAmount(guaranteeAmount.value)} BEN transferida con éxito a tu billetera!`,
+      filesVerification: null
+    }
+
+    // Actualizar estados
+    await checkWithdrawableGuarantee()
+    await checkAllowanceAndGuarantee()
+
+  } catch (err) {
+    console.error("Error al transferir la garantía:", err)
+    verificationDialog.value = {
+      open: true,
+      success: false,
+      message: err.message?.includes('user rejected') 
+        ? "Transacción cancelada por el usuario en MetaMask." 
+        : `Error en la transferencia: ${err.message || "No se pudo transferir la garantía desde la cuenta del contrato."}`,
+      filesVerification: null
+    }
+  } finally {
+    withdrawingGuarantee.value = false
+  }
+}
+
 
 // Calcular la raíz de Merkle localmente
 const localProposalId = computed(() => {

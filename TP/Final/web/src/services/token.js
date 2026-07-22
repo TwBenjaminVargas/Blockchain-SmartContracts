@@ -104,7 +104,24 @@ export class TokenService {
     const tx = await contract.sell(tokensInBaseUnits)
     return await tx.wait()
   }
+
+  /**
+   * Permite transferir tokens desde una cuenta origen (from) hacia una cuenta destino (to)
+   * aprovechando una autorización previa.
+   */
+  async transferFrom(from, to, amount) {
+    const contract = await this._getContractInstance()
+    const formattedFrom = ethers.getAddress(from)
+    const formattedTo = ethers.getAddress(to)
+    const bigIntAmount = typeof amount === 'bigint' ? amount : BigInt(amount.toString())
+
+    const tx = await contract.transferFrom(formattedFrom, formattedTo, bigIntAmount)
+    return await tx.wait()
 }
+}
+
+
+
 
 // Exportamos una única instancia (Singleton)
 export const tokenService = new TokenService()
