@@ -29,7 +29,7 @@
           </div>
 
           <template v-else>
-            <v-card v-if="callData" variant="flat" class="bg-slate-light pa-4 rounded-xl mb-6 shadow-sm border-light">
+            <v-card v-if="callData" variant="flat" class="bg-slate-light pa-4 rounded-xl mb-6 shadow-sm border-light flex-shrink-0">
               <div class="d-flex align-center mb-2">
                 <h3 class="text-h6 font-weight-bold text-slate-dark">{{ callData.title }}</h3>
               </div>
@@ -97,8 +97,100 @@
                 </v-chip>
               </div>
             </v-card>
+            <v-alert
+              v-if="Number(guaranteeAmount) > 0"
+              type="warning"
+              variant="tonal"
+              class="rounded-xl mb-4 flex-shrink-0 border-light d-flex align-center"
+              icon="mdi-shield-alert-outline"
+            >
+              <div class="d-flex align-center justify-space-between w-100 flex-wrap gap-2">
+                <span class="text-body-2 font-weight-bold text-slate-dark">
+                  Este es un llamado que exige pago de garantía.
+                </span>
+                <v-btn
+                  color="amber-darken-4"
+                  variant="text"
+                  density="compact"
+                  class="font-weight-bold text-none pa-0"
+                  @click="guaranteeDetailsDialogOpen = true"
+                >
+                  Más detalles
+                </v-btn>
+              </div>
+            </v-alert>
 
-            <div class="d-flex justify-space-between align-center mb-4 flex-wrap gap-3">
+            <!-- Diálogo / Modal "Más detalles de la Garantía" -->
+            <v-dialog v-model="guaranteeDetailsDialogOpen" max-width="500px">
+              <v-card class="rounded-xl pa-5 bg-white shadow-lg">
+                <v-card-title class="d-flex align-center justify-space-between text-slate-dark font-weight-bold text-h6 pa-0 mb-3">
+                  <div class="d-flex align-center gap-2">
+                    <v-icon color="amber-darken-3" icon="mdi-information-outline"></v-icon>
+                    Requisitos de Garantía
+                  </div>
+                  <v-btn 
+                    variant="text" 
+                    icon="mdi-close" 
+                    color="slate-medium" 
+                    density="compact"
+                    @click="guaranteeDetailsDialogOpen = false"
+                  ></v-btn>
+                </v-card-title>
+                
+                <v-divider class="mb-4"></v-divider>
+
+                <v-card-text class="pa-0 text-slate-dark">
+                  <p class="text-body-2 mb-3">
+                    Este es un llamado de pago de garantía. Para poder cargar propuestas, deberás tener:
+                  </p>
+
+                  <v-list density="compact" class="bg-transparent pa-0 mb-3">
+                    <v-list-item class="px-0 py-1">
+                      <template v-slot:prepend>
+                        <v-icon color="indigo-darken-1" icon="mdi-check-circle" class="me-2" size="20"></v-icon>
+                      </template>
+                      <v-list-item-title class="text-body-2 font-weight-medium text-wrap">
+                        Tu cuenta de MetaMask abierta.
+                      </v-list-item-title>
+                    </v-list-item>
+
+                    <v-list-item class="px-0 py-1">
+                      <template v-slot:prepend>
+                        <v-icon color="indigo-darken-1" icon="mdi-check-circle" class="me-2" size="20"></v-icon>
+                      </template>
+                      <v-list-item-title class="text-body-2 font-weight-medium text-wrap">
+                        Un dominio ENS vinculado a tu cuenta.
+                      </v-list-item-title>
+                    </v-list-item>
+
+                    <v-list-item class="px-0 py-1">
+                      <template v-slot:prepend>
+                        <v-icon color="indigo-darken-1" icon="mdi-check-circle" class="me-2" size="20"></v-icon>
+                      </template>
+                      <v-list-item-title class="text-body-2 font-weight-medium text-wrap">
+                        Luego autorizar al contrato para la extracción de tus tokens por un valor igual a la garantía.
+                      </v-list-item-title>
+                    </v-list-item>
+                  </v-list>
+
+                  <v-alert type="info" variant="tonal" class="rounded-lg text-caption pa-3 mt-2">
+                    <strong>Nota importante:</strong> En caso de que quieras registrar más propuestas, deberás autorizar al contrato a extraer de nuevo.
+                  </v-alert>
+                </v-card-text>
+
+                <v-card-actions class="justify-end pa-0 mt-5">
+                  <v-btn 
+                    color="indigo-darken-1" 
+                    variant="flat" 
+                    class="rounded-lg font-weight-bold px-5 text-white"
+                    @click="guaranteeDetailsDialogOpen = false"
+                  >
+                    Entendido
+                  </v-btn>
+                </v-card-actions>
+              </v-card>
+            </v-dialog>
+            <div class="d-flex justify-space-between align-center mb-4 flex-wrap gap-3 flex-shrink-0">
               <h4 class="text-subtitle-1 font-weight-bold text-slate-dark">
                 Listado de Postulaciones ({{ proposals.length }})
               </h4>
@@ -618,6 +710,8 @@ let clockInterval = null
 const formProposal = ref({ title: '', description: '' })
 const selectedFilesList = ref([])
 const fileError = ref(null)
+
+const guaranteeDetailsDialogOpen = ref(false)
 
 const verificationDialog = ref({ open: false, success: false, message: '', filesVerification: null })
 
