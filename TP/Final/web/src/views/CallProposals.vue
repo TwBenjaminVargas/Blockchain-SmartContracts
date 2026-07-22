@@ -190,192 +190,207 @@
                 </v-card-actions>
               </v-card>
             </v-dialog>
-            <div class="d-flex justify-space-between align-center mb-4 flex-wrap gap-3 flex-shrink-0">
-              <h4 class="text-subtitle-1 font-weight-bold text-slate-dark">
-                Listado de Postulaciones ({{ proposals.length }})
-              </h4>
-              
-              <div class="d-flex align-center gap-3 flex-wrap">
-                <!-- Botón de autorización de garantía en la cabecera -->
-                <template v-if="!isCallClosed && !hasRestrictedRole && guaranteeAmount > 0">
-                  <v-btn
-                    v-if="hasAllowance"
-                    color="success"
-                    variant="flat"
-                    class="rounded-lg font-weight-bold text-white cursor-default"
-                    readonly
-                  >
-                    <v-icon icon="mdi-check-circle" class="me-1" size="18"></v-icon>
-                    Garantía Autorizada
-                  </v-btn>
-
-                  <v-btn
-                    v-else
-                    color="amber-darken-3"
-                    variant="flat"
-                    class="rounded-lg font-weight-bold text-white shadow-sm"
-                    :loading="approvingGuarantee"
-                    :disabled="!walletStore.account"
-                    @click="handleApproveGuarantee"
-                  >
-                    Autorizar Retiro de Garantía ({{ formatTokenAmount(guaranteeAmount) }} BEN)
-                  </v-btn>
-                </template>
-
-                <!-- Botón Añadir Propuesta -->
-                <v-btn
-                  v-if="!isCallClosed && !hasRestrictedRole"
-                  color="indigo-darken-1"
-                  variant="flat"
-                  class="rounded-lg font-weight-bold text-white px-4 shadow-sm ms-3"
-                  :disabled="guaranteeAmount > 0 && !hasAllowance"
-                  @click="resetFormAndOpen"
-                >
-                  Añadir Propuesta
-                </v-btn>
-                <v-chip v-else-if="isCallClosed" color="amber-darken-2" variant="tonal" class="font-weight-bold rounded-lg">
-                  Convocatoria Finalizada
-                </v-chip>
-                <v-chip v-else color="grey-darken-2" variant="tonal" class="font-weight-bold rounded-lg">
-                  Modo Consulta
-                </v-chip>
-              </div>
-            </div>
-
-            <div v-if="loadingProposals" class="d-flex justify-center my-8 flex-grow-1 align-center">
-              <v-progress-circular indeterminate color="indigo-darken-1"></v-progress-circular>
-            </div>
-
-            <v-alert 
-              v-else-if="proposals.length === 0" 
-              type="info" 
-              variant="tonal" 
-              class="rounded-xl d-flex align-center justify-center my-auto flex-grow-1"
-              max-height="120"
+            <v-card
+              v-if="showEvaluatingNotice"
+              color="amber-lighten-5"
+              variant="flat"
+              class="pa-6 rounded-xl border-amber text-center mb-4 border-light shadow-sm"
             >
-              Aún no se han registrado propuestas para esta convocatoria.
-            </v-alert>
-            <div v-else class="proposals-scroll-container pe-1">
-              <v-expansion-panels variant="accordion">
-                <v-expansion-panel
-                  v-for="proposal in proposals"
-                  :key="proposal.proposalId"
-                  class="proposal-row mb-3 rounded-xl overflow-hidden"
-                  elevation="1"
-                >
-                  <v-expansion-panel-title class="font-weight-bold text-slate-dark py-4">
-                    <div class="d-flex align-center justify-space-between w-100 pr-4">
-                      <div class="d-flex align-center">
-                        <span>{{ proposal.title }}</span>
+              <v-icon icon="mdi-clock-check-outline" color="amber-darken-3" size="48" class="mb-2"></v-icon>
+              <h3 class="text-h6 font-weight-bold text-slate-dark mb-1">
+                Convocatoria Finalizada
+              </h3>
+              <p class="text-body-2 text-slate-medium mb-0">
+                El período de recepción de propuestas ha terminado. El creador del llamado se encuentra evaluando las postulaciones recibidas.
+              </p>
+            </v-card>
+            <div v-if="!showEvaluatingNotice">
+              <div class="d-flex justify-space-between align-center mb-4 flex-wrap gap-3 flex-shrink-0">
+                <h4 class="text-subtitle-1 font-weight-bold text-slate-dark">
+                  Listado de Postulaciones ({{ proposals.length }})
+                </h4>
+                
+                <div class="d-flex align-center gap-3 flex-wrap">
+                  <!-- Botón de autorización de garantía en la cabecera -->
+                  <template v-if="!isCallClosed && !hasRestrictedRole && guaranteeAmount > 0">
+                    <v-btn
+                      v-if="hasAllowance"
+                      color="success"
+                      variant="flat"
+                      class="rounded-lg font-weight-bold text-white cursor-default"
+                      readonly
+                    >
+                      <v-icon icon="mdi-check-circle" class="me-1" size="18"></v-icon>
+                      Garantía Autorizada
+                    </v-btn>
+
+                    <v-btn
+                      v-else
+                      color="amber-darken-3"
+                      variant="flat"
+                      class="rounded-lg font-weight-bold text-white shadow-sm"
+                      :loading="approvingGuarantee"
+                      :disabled="!walletStore.account"
+                      @click="handleApproveGuarantee"
+                    >
+                      Autorizar Retiro de Garantía ({{ formatTokenAmount(guaranteeAmount) }} BEN)
+                    </v-btn>
+                  </template>
+
+                  <!-- Botón Añadir Propuesta -->
+                  <v-btn
+                    v-if="!isCallClosed && !hasRestrictedRole"
+                    color="indigo-darken-1"
+                    variant="flat"
+                    class="rounded-lg font-weight-bold text-white px-4 shadow-sm ms-3"
+                    :disabled="guaranteeAmount > 0 && !hasAllowance"
+                    @click="resetFormAndOpen"
+                  >
+                    Añadir Propuesta
+                  </v-btn>
+                  <v-chip v-else-if="isCallClosed" color="amber-darken-2" variant="tonal" class="font-weight-bold rounded-lg">
+                    Convocatoria Finalizada
+                  </v-chip>
+                  <v-chip v-else color="grey-darken-2" variant="tonal" class="font-weight-bold rounded-lg">
+                    Modo Consulta
+                  </v-chip>
+                </div>
+              </div>
+
+              <div v-if="loadingProposals" class="d-flex justify-center my-8 flex-grow-1 align-center">
+                <v-progress-circular indeterminate color="indigo-darken-1"></v-progress-circular>
+              </div>
+              <v-alert 
+                v-else-if="proposals.length === 0" 
+                type="info" 
+                variant="tonal" 
+                class="rounded-xl d-flex align-center justify-center my-auto flex-grow-1"
+                max-height="120"
+              >
+                Aún no se han registrado propuestas para esta convocatoria.
+              </v-alert>
+              <div v-else class="proposals-scroll-container pe-1">
+                <v-expansion-panels variant="accordion">
+                  <v-expansion-panel
+                    v-for="proposal in proposals"
+                    :key="proposal.proposalId"
+                    class="proposal-row mb-3 rounded-xl overflow-hidden"
+                    elevation="1"
+                  >
+                    <v-expansion-panel-title class="font-weight-bold text-slate-dark py-4">
+                      <div class="d-flex align-center justify-space-between w-100 pr-4">
+                        <div class="d-flex align-center">
+                          <span>{{ proposal.title }}</span>
+                        </div>
+                        <v-chip
+                          :color="matchState(proposal.state, 'delivered') ? 'success' : (matchState(proposal.state, 'pending') ? 'grey-darken-1' : (guaranteeAmount == 0 || chainStatusMap[proposal.proposalId] ? 'success' : 'warning'))"
+                          size="small"
+                          variant="flat"
+                          class="font-weight-bold rounded-lg"
+                        >
+                          {{ 
+                            matchState(proposal.state, 'delivered') 
+                              ? 'Archivos Recibidos' 
+                              : (matchState(proposal.state, 'pending') 
+                                  ? 'Pendiente' 
+                                  : (guaranteeAmount == 0 
+                                      ? 'Registrada por API' 
+                                      : (chainStatusMap[proposal.proposalId] ? 'Registrada en Blockchain' : 'Registrada en API'))) 
+                          }}
+                        </v-chip>
                       </div>
-                      <v-chip
-                        :color="matchState(proposal.state, 'delivered') ? 'success' : (matchState(proposal.state, 'pending') ? 'grey-darken-1' : (guaranteeAmount == 0 || chainStatusMap[proposal.proposalId] ? 'success' : 'warning'))"
-                        size="small"
-                        variant="flat"
-                        class="font-weight-bold rounded-lg"
-                      >
-                        {{ 
-                          matchState(proposal.state, 'delivered') 
-                            ? 'Archivos Recibidos' 
-                            : (matchState(proposal.state, 'pending') 
-                                ? 'Pendiente' 
-                                : (guaranteeAmount == 0 
-                                    ? 'Registrada por API' 
-                                    : (chainStatusMap[proposal.proposalId] ? 'Registrada en Blockchain' : 'Registrada en API'))) 
-                        }}
-                      </v-chip>
-                    </div>
-                  </v-expansion-panel-title>
+                    </v-expansion-panel-title>
 
-                  <v-expansion-panel-text class="text-slate-medium pt-3 bg-slate-light-flat">
-                    <div class="mb-3">
-                      <strong>Descripción del Oferente:</strong>
-                      <p class="text-body-2 mt-1 text-slate-dark">{{ proposal.description }}</p>
-                    </div>
-                    
-                    <div class="mb-2 text-caption">
-                      <strong>Raíz de Merkle (Proposal ID):</strong> 
-                      <span class="text-mono text-indigo-darken-1 d-block text-truncate">{{ proposal.proposalId }}</span>
-                    </div>
-
-                    <div v-if="proposal.blockchainEvidence?.registrationTx" class="mb-2 text-caption">
-                      <strong>Tx Registro:</strong> 
-                      <span class="text-mono text-slate-dark d-block text-truncate">{{ proposal.blockchainEvidence.registrationTx }}</span>
-                    </div>
-
-                    <div class="d-flex justify-end gap-2 border-top pt-3">
+                    <v-expansion-panel-text class="text-slate-medium pt-3 bg-slate-light-flat">
+                      <div class="mb-3">
+                        <strong>Descripción del Oferente:</strong>
+                        <p class="text-body-2 mt-1 text-slate-dark">{{ proposal.description }}</p>
+                      </div>
                       
-                      <template v-if="matchState(proposal.state, 'delivered')">
-                        <v-btn
-                          color="indigo-darken-1"
-                          variant="flat"
-                          class="rounded-lg font-weight-bold text-white shadow-sm"
-                          :loading="downloadingZipId === proposal.proposalId"
-                          @click="downloadPhysicalFiles(proposal.proposalId)"
-                        >
-                          Descargar ZIP
-                        </v-btn>
+                      <div class="mb-2 text-caption">
+                        <strong>Raíz de Merkle (Proposal ID):</strong> 
+                        <span class="text-mono text-indigo-darken-1 d-block text-truncate">{{ proposal.proposalId }}</span>
+                      </div>
 
-                        <v-btn
-                          color="success"
-                          variant="outlined"
-                          class="rounded-lg font-weight-bold"
-                          :loading="downloadingReceiptId === proposal.proposalId"
-                          @click="downloadFinalReceipt(proposal.proposalId)"
-                        >
-                          Recibo Post-Cierre
-                        </v-btn>
-                      </template>
+                      <div v-if="proposal.blockchainEvidence?.registrationTx" class="mb-2 text-caption">
+                        <strong>Tx Registro:</strong> 
+                        <span class="text-mono text-slate-dark d-block text-truncate">{{ proposal.blockchainEvidence.registrationTx }}</span>
+                      </div>
 
-                      <template v-else-if="hasRestrictedRole">
-                        <span class="text-caption text-slate-medium my-auto italic">Vista de solo lectura para administradores/creadores</span>
-                      </template>
-
-                      <template v-else-if="isCallClosed && (matchState(proposal.state, 'created') || matchState(proposal.state, 'initial') || !proposal.state)">
-                        <v-btn
-                          color="warning"
-                          variant="flat"
-                          class="rounded-lg font-weight-bold text-white shadow-sm"
-                          @click="openPostClosingModal(proposal)"
-                        >
-                          Entrega Post-Cierre
-                        </v-btn>
-                      </template>
-
-                     <template v-else-if="matchState(proposal.state, 'created') || !proposal.state">
-
-                        <template v-if="Number(guaranteeAmount) === 0 || isProposalOwner(proposal)">
-                          
+                      <div class="d-flex justify-end gap-2 border-top pt-3">
+                        
+                        <template v-if="matchState(proposal.state, 'delivered')">
                           <v-btn
                             color="indigo-darken-1"
-                            variant="outlined"
-                            class="rounded-lg font-weight-bold"
-                            @click="openVerifyReceiptModal(proposal)"
+                            variant="flat"
+                            class="rounded-lg font-weight-bold text-white shadow-sm"
+                            :loading="downloadingZipId === proposal.proposalId"
+                            @click="downloadPhysicalFiles(proposal.proposalId)"
                           >
-                            Verificar con Recibo
+                            Descargar ZIP
                           </v-btn>
 
                           <v-btn
-                            color="secondary"
+                            color="success"
                             variant="outlined"
-                            class="rounded-lg font-weight-bold border-light text-slate-dark"
-                            @click="downloadReceipt(proposal.proposalId)"
+                            class="rounded-lg font-weight-bold"
+                            :loading="downloadingReceiptId === proposal.proposalId"
+                            @click="downloadFinalReceipt(proposal.proposalId)"
                           >
-                            Descargar Recibo Inicial
+                            Recibo Post-Cierre
                           </v-btn>
+                        </template>
+
+                        <template v-else-if="hasRestrictedRole">
+                          <span class="text-caption text-slate-medium my-auto italic">Vista de solo lectura para administradores/creadores</span>
+                        </template>
+
+                        <template v-else-if="isCallClosed && (matchState(proposal.state, 'created') || matchState(proposal.state, 'initial') || !proposal.state)">
+                          <v-btn
+                            color="warning"
+                            variant="flat"
+                            class="rounded-lg font-weight-bold text-white shadow-sm"
+                            @click="openPostClosingModal(proposal)"
+                          >
+                            Entrega Post-Cierre
+                          </v-btn>
+                        </template>
+
+                      <template v-else-if="matchState(proposal.state, 'created') || !proposal.state">
+
+                          <template v-if="Number(guaranteeAmount) === 0 || isProposalOwner(proposal)">
+                            
+                            <v-btn
+                              color="indigo-darken-1"
+                              variant="outlined"
+                              class="rounded-lg font-weight-bold"
+                              @click="openVerifyReceiptModal(proposal)"
+                            >
+                              Verificar con Recibo
+                            </v-btn>
+
+                            <v-btn
+                              color="secondary"
+                              variant="outlined"
+                              class="rounded-lg font-weight-bold border-light text-slate-dark"
+                              @click="downloadReceipt(proposal.proposalId)"
+                            >
+                              Descargar Recibo Inicial
+                            </v-btn>
+
+                          </template>
 
                         </template>
 
-                      </template>
+                        <template v-else-if="matchState(proposal.state, 'pending')">
+                          <span class="text-caption text-slate-medium my-auto italic">Procesando entrega en blockchain...</span>
+                        </template>
 
-                      <template v-else-if="matchState(proposal.state, 'pending')">
-                        <span class="text-caption text-slate-medium my-auto italic">Procesando entrega en blockchain...</span>
-                      </template>
-
-                    </div>
-                  </v-expansion-panel-text>
-                </v-expansion-panel>
-              </v-expansion-panels>
+                      </div>
+                    </v-expansion-panel-text>
+                  </v-expansion-panel>
+                </v-expansion-panels>
+              </div>
             </div>
           </template>
 
@@ -755,6 +770,21 @@ const hasRestrictedRole = computed(() => {
   //Si es Creador, solo tiene modo consulta si es el creador de ESTE llamado
   if (role === 'creator' && callData.value?.creator) {
     return callData.value.creator.toLowerCase() === userAddr
+  }
+
+  return false
+})
+
+const showEvaluatingNotice = computed(() => {
+  // Debe estar cerrado el llamado
+  if (!isCallClosed.value) return false
+
+  const userAddr = walletStore.account?.toLowerCase()
+  const creatorAddr = callData.value?.creator?.toLowerCase()
+
+  // Si no hay cuenta conectada, o si la cuenta no es la del creador
+  if (!userAddr || userAddr !== creatorAddr) {
+    return true
   }
 
   return false
