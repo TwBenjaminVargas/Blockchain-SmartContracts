@@ -107,7 +107,7 @@ export class CFPService {
   }
 
   async closeFileSubmission(callId) {
-    const contract = await this._getContractInstance(callId, true)
+    const contract = await this._getContractInstance(callId)
     const tx = await contract.closeFileSubmission()
     return await tx.wait()
   }
@@ -116,11 +116,20 @@ export class CFPService {
    * Ejecuta authorizeGuaranteeWithdraw(usuario) en el Smart Contract.
    */
   async authorizeGuaranteeWithdraw(callId, userAddress) {
-    const contract = await this._getContractInstance(callId, true)
+    const contract = await this._getContractInstance(callId)
     const tx = await contract.authorizeGuaranteeWithdraw(userAddress)
     return await tx.wait()
   }
+  /**
+   * Reclama las garantías de incumplimiento a favor del creador/admin del llamado.
+   */
+  async claimDefaultingGuarantees(callId) {
+    const contract = await this._getContractInstance(callId)
+    const tx = await contract.claimDefaultingGuarantees()
+    return await tx.wait()
+  }
 }
+
 
 
 // Exportamos una instancia única (Singleton) para simplificar su importación

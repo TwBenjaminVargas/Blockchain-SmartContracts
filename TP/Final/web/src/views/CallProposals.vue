@@ -102,13 +102,26 @@
                   <v-btn
                     color="error"
                     variant="flat"
-                    class="rounded-lg font-weight-bold text-white shadow-sm"
+                    class="rounded-lg me-2 font-weight-bold text-white shadow-sm"
                     :disabled="!isFileSubmissionOpen"
                     :loading="closingFileSubmission"
                     @click="handleCloseFileSubmission"
                   >
                     <v-icon icon="mdi-lock-outline" class="me-1" size="18"></v-icon>
                     {{ isFileSubmissionOpen ? 'Cerrar Entrega de Archivos' : 'Entrega de Archivos Cerrada' }}
+                  </v-btn>
+
+
+                 <v-btn
+                    v-if="!isFileSubmissionOpen && Number(guaranteeAmount) > 0"
+                    color="amber-darken-4"
+                    variant="flat"
+                    class="rounded-lg font-weight-bold text-white shadow-sm ms-2"
+                    :loading="claimingDefaultingGuarantees"
+                    @click="handleClaimDefaultingGuarantees"
+                  >
+                    <v-icon icon="mdi-cash-remove" class="me-1" size="18"></v-icon>
+                    Reclamar garantías de entregas incompletas
                   </v-btn>
                 </div>
               </div>
@@ -834,6 +847,52 @@ const canWithdrawGuarantee = ref(false)
 const withdrawingGuarantee = ref(false)
 
 const closingFileSubmission = ref(false)
+
+const claimingDefaultingGuarantees = ref(false)
+
+/**
+ * Intenta reclamar las garantías de entregas incompletas.
+ * Si falla, captura el error lanzado por la EVM y se lo muestra al usuario.
+ */
+const handleClaimDefaultingGuarantees = async () => {
+  if (!callId.value) return
+  try {
+    claimingDefaultingGuarantees.value = true
+
+    // Se intenta la transacción directamente contra la Blockchain
+    await cfpService.claimDefaultingGuarantees(callId.value)
+
+    // Si tiene éxito
+    verificationDialog.value = {
+      open: true,
+      success: true,
+      message: 'Se han reclamado con éxito las garantías por entregas incompletas.',
+      filesVerification: null
+    }
+
+  } catch (err) {
+    console.error("Error al reclamar garantías por incumplimiento:", err)
+    
+    // Extraer mensaje directo o causa devuelta por la EVM / RPC
+    let errorMessage = err.reason || err.data?.message || err.message || 'Ocurrió un problema en la red.'
+    
+    if (err.code === 4001 || err.message?.includes('user rejected')) {
+      errorMessage = 'Transacción cancelada por el usuario en MetaMask.'
+    } else if (errorMessage.includes('execution reverted')) {
+      // Mensaje amigable cuando la EVM rechaza por no haber garantías disponibles
+      errorMessage = 'No hay garantías sobrantes para liquidar o la condición no se cumple en el contrato.'
+    }
+
+    verificationDialog.value = {
+      open: true,
+      success: false,
+      message: `No se pudo completar el reclamo: ${errorMessage}`,
+      filesVerification: null
+    }
+  } finally {
+    claimingDefaultingGuarantees.value = false
+  }
+}
 
 
 // Dominio del usuario actual derivado de la tienda ENS o la propiedad local
@@ -1675,6 +1734,7 @@ watch(() => walletStore.account, async (newAccount) => {
   if (newAccount) {
     await fetchDomains()
     checkWithdrawableGuarantee()
+
     await ensStore.refreshStore()
   } else {
     userDomain.value = ''
