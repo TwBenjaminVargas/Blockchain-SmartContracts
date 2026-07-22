@@ -766,6 +766,8 @@ const userBalance = ref(BigInt(0))
 
 const chainStatusMap = ref({})
 
+const isFileSubmissionOpen = ref(true)
+
 
 const canWithdrawGuarantee = ref(false)
 const withdrawingGuarantee = ref(false)
@@ -775,6 +777,17 @@ const isCallClosed = computed(() => {
   return currentTime.value > new Date(closingTimeISO.value)
 })
 
+const checkIsFileSubmissionOpen = async () => {
+  if (!callId.value) return
+  try {
+    const isOpen = await cfpService.isFileSubmissionOpen(callId.value)
+    isFileSubmissionOpen.value = Boolean(isOpen)
+  } catch (err) {
+    console.error("Error al consultar el estado de isFileSubmissionOpen:", err)
+    // Por defecto, si falla la lectura asumimos que sigue abierto
+    isFileSubmissionOpen.value = true
+  }
+}
 
 const hasRestrictedRole = computed(() => {
   const userAddr = walletStore.account?.toLowerCase()
@@ -792,17 +805,17 @@ const hasRestrictedRole = computed(() => {
 })
 
 const showEvaluatingNotice = computed(() => {
-  // Debe estar cerrado el llamado
-  if (!isCallClosed.value) return false
+  if (isFileSubmissionOpen.value) return false
 
   const userAddr = walletStore.account?.toLowerCase()
   const creatorAddr = callData.value?.creator?.toLowerCase()
 
-  // Si no hay cuenta conectada, o si la cuenta no es la del creador
+  // Si no hay cuenta conectada o si la cuenta no pertenece al creador, se muestra el aviso
   if (!userAddr || userAddr !== creatorAddr) {
     return true
   }
 
+  // Si es el creador, la alerta se oculta
   return false
 })
 
@@ -1436,9 +1449,12 @@ const copyToClipboard = async (text) => {
     console.error('Error al intentar copiar al portapapeles:', err)
   }
 }
+watch(() => walletStore.account, () => {
+  checkWithdrawableGuarantee()
+})
 
 onMounted(() => {
-  if (callId.value) { loadCallDetails(); loadProposals(); }
+  if (callId.value) { loadCallDetails(); loadProposals(); checkWithdrawableGuarantee(); checkIsFileSubmissionOpen();}
   clockInterval = setInterval(() => { currentTime.value = new Date() }, 1000)
 })
 onBeforeUnmount(() => { if (clockInterval) clearInterval(clockInterval) })

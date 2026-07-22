@@ -107,6 +107,15 @@ export class CFPService {
       timestamp: proposalData.timestamp ? proposalData.timestamp.toString() : '0'
     }
   }
+
+  /**
+   * Consulta el estado del flag público isFileSubmissionOpen en el Smart Contract.
+   * Devuelve true si la recepción de archivos continúa abierta, false si se ha cerrado.
+   */
+  async isFileSubmissionOpen(callId) {
+    const contract = await this._getContractInstance(callId)
+    return await contract.isFileSubmissionOpen()
+  }
 }
 
 
