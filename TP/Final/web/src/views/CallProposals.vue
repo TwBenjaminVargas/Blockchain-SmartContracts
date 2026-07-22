@@ -5,7 +5,7 @@
     <v-row class="fill-height ma-0 align-center justify-center position-relative z-index-1" no-gutters>
       <v-col cols="12" sm="11" md="10" lg="8" class="pa-4">
         
-        <v-card class="main-panel pa-6 rounded-xl mx-auto" elevation="4">
+        <v-card class="main-panel pa-4 rounded-xl mx-auto" elevation="4">
           
           <div class="d-flex align-center justify-space-between mb-4">
             <v-btn 
@@ -29,7 +29,7 @@
           </div>
 
           <template v-else>
-            <v-card v-if="callData" variant="flat" class="bg-slate-light pa-4 rounded-xl mb-6 shadow-sm border-light flex-shrink-0">
+            <v-card v-if="callData" variant="flat" class="bg-slate-light pa-3 rounded-xl mb-3 shadow-sm border-light flex-shrink-0">
               <div class="d-flex align-center mb-2">
                 <h3 class="text-h6 font-weight-bold text-slate-dark">{{ callData.title }}</h3>
               </div>
@@ -101,18 +101,18 @@
               v-if="Number(guaranteeAmount) > 0"
               type="warning"
               variant="tonal"
-              class="rounded-xl mb-4 flex-shrink-0 border-light d-flex align-center"
+              class="rounded-xl mb-3 flex-shrink-0 border-light w-100"
               icon="mdi-shield-alert-outline"
             >
-              <div class="d-flex align-center justify-space-between w-100 flex-wrap gap-2">
-                <span class="text-body-2 font-weight-bold text-slate-dark">
+              <div class="d-flex align-center justify-space-between w-100 gap-2">
+                <span class="text-body-2 font-weight-bold text-slate-dark text-truncate">
                   Este es un llamado que exige pago de garantía.
                 </span>
                 <v-btn
                   color="amber-darken-4"
                   variant="text"
                   density="compact"
-                  class="font-weight-bold text-none pa-0"
+                  class="font-weight-bold text-none pa-0 flex-shrink-0"
                   @click="guaranteeDetailsDialogOpen = true"
                 >
                   Más detalles
@@ -255,8 +255,7 @@
             >
               Aún no se han registrado propuestas para esta convocatoria.
             </v-alert>
-
-            <v-scrollbar v-else class="proposals-scroll-containerpe pe-1">
+            <div v-else class="proposals-scroll-container pe-1">
               <v-expansion-panels variant="accordion">
                 <v-expansion-panel
                   v-for="proposal in proposals"
@@ -377,7 +376,7 @@
                   </v-expansion-panel-text>
                 </v-expansion-panel>
               </v-expansion-panels>
-            </v-scrollbar>
+            </div>
           </template>
 
         </v-card>
@@ -1342,7 +1341,6 @@ onBeforeUnmount(() => { if (clockInterval) clearInterval(clockInterval) })
 .bg-container { min-height: 100vh; overflow: hidden; }
 .blur-background { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background-size: cover; background-position: center; filter: blur(10px) brightness(0.85); transform: scale(1.05); z-index: 0; }
 .z-index-1 { z-index: 1; }
-.main-panel { background-color: rgba(248, 250, 252, 0.92) !important; backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.6); height: 85vh; display: flex; flex-direction: column; }
 .bg-slate-light { background-color: #ffffff !important; border: 1px solid #e2e8f0; }
 .bg-slate-light-flat { background-color: #f8fafc !important; }
 .border-light { border: 1px solid #e2e8f0 !important; }
@@ -1350,13 +1348,35 @@ onBeforeUnmount(() => { if (clockInterval) clearInterval(clockInterval) })
 .text-slate-dark { color: #0f172a !important; }
 .text-slate-medium { color: #475569 !important; }
 .text-mono { font-family: 'Courier New', Courier, monospace; font-weight: bold; }
-.proposals-scroll-containerpe { overflow-y: auto; flex-grow: 1; }
-.proposal-row { background-color: #ffffff !important; border: 1px solid #e2e8f0 !important; transition: all 0.2s ease-in-out; }
-.proposal-row :deep(.v-expansion-panel-title--active) { background-color: #f1f5f9 !important; }
 .text-xxs { font-size: 0.7rem; }
 .max-w-70 { max-width: 70%; }
 .gap-2 { gap: 8px; }
 .gap-4 { gap: 16px; }
 .gap-1 { gap: 4px; }
 .cursor-default { cursor: default !important; }
+main-panel { 
+  background-color: rgba(248, 250, 252, 0.92) !important; 
+  backdrop-filter: blur(12px); 
+  border: 1px solid rgba(255, 255, 255, 0.6); 
+
+  height: 90vh; 
+  max-height: 90vh; 
+  display: flex; 
+  flex-direction: column; 
+  overflow: hidden; 
+}
+
+
+.proposals-scroll-container { 
+  overflow-y: auto !important; 
+  flex: 1 1 auto; 
+  min-height: 0;  
+  padding-right: 4px;
+}
+
+
+:deep(.v-expansion-panel-text__wrapper) {
+
+  padding: 12px 16px !important;
+}
 </style>
