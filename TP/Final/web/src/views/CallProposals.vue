@@ -177,14 +177,21 @@
                       <div class="d-flex align-center">
                         <span>{{ proposal.title }}</span>
                       </div>
-                      
                       <v-chip
-                        :color="matchState(proposal.state, 'delivered') ? 'success' : (matchState(proposal.state, 'pending') ? 'grey-darken-1' : 'warning')"
+                        :color="matchState(proposal.state, 'delivered') ? 'success' : (matchState(proposal.state, 'pending') ? 'grey-darken-1' : (guaranteeAmount == 0 || chainStatusMap[proposal.proposalId] ? 'success' : 'warning'))"
                         size="small"
                         variant="flat"
                         class="font-weight-bold rounded-lg"
                       >
-                        {{ matchState(proposal.state, 'delivered') ? 'Archivos Recibidos' : (matchState(proposal.state, 'pending') ? 'Pendiente' : 'Registrada') }}
+                        {{ 
+                          matchState(proposal.state, 'delivered') 
+                            ? 'Archivos Recibidos' 
+                            : (matchState(proposal.state, 'pending') 
+                                ? 'Pendiente' 
+                                : (guaranteeAmount == 0 
+                                    ? 'Registrada por API' 
+                                    : (chainStatusMap[proposal.proposalId] ? 'Registrada en Blockchain' : 'Registrada en API'))) 
+                        }}
                       </v-chip>
                     </div>
                   </v-expansion-panel-title>
@@ -244,24 +251,10 @@
                         </v-btn>
                       </template>
 
-                      <template v-else-if="matchState(proposal.state, 'created') || matchState(proposal.state, 'initial') || !proposal.state">
+                     <template v-else-if="matchState(proposal.state, 'created') || !proposal.state">
 
-                        <!-- Mostrar botón de Registro SOLO si NO se ha confirmado en la blockchain -->
-                        <v-btn
-                          v-if="!chainStatusMap[proposal.proposalId]"
-                          color="teal-darken-1"
-                          variant="flat"
-                          class="rounded-lg font-weight-bold text-white shadow-sm d-flex align-center"
-                          :loading="submittingChainId === proposal.proposalId"
-                          :disabled="!walletStore.account || (guaranteeAmount > 0 && !hasAllowance)"
-                          @click="submitProposalBlockchainFromList(proposal)"
-                        >
-                          <img src="/metamask-icon.svg" alt="MetaMask" width="22" height="22" class="me-2" />
-                          Registrar en Blockchain
-                        </v-btn>
-
-                        <!-- Mostrar Recibos SOLO si YA está en la blockchain -->
-                        <template v-else>
+                        <template v-if="Number(guaranteeAmount) === 0 || isProposalOwner(proposal)">
+                          
                           <v-btn
                             color="indigo-darken-1"
                             variant="outlined"
@@ -279,6 +272,7 @@
                           >
                             Descargar Recibo Inicial
                           </v-btn>
+
                         </template>
 
                       </template>
@@ -389,54 +383,36 @@
 
 
         <v-card-actions class="justify-end pa-2 border-top mt-4 gap-2">
-          <v-btn variant="text" color="slate-medium" class="rounded-lg font-weight-bold px-4" @click="dialogOpen = false" :disabled="submitting">
-            Cancelar
-          </v-btn>
-
-          <!-- Flujo A: Sin costo / Sin garantía (Mantiene comportamiento habitual) -->
-          <template v-if="guaranteeAmount === 0">
             <v-btn 
-              color="indigo-darken-1" 
-              variant="flat" 
-              class="rounded-lg font-weight-bold px-6 text-white shadow-sm" 
-              @click="submitProposalStandard" 
-              :loading="submitting" 
-              :disabled="selectedFilesList.length === 0 || hashingInProgress"
+              variant="text" 
+              color="slate-medium" 
+              class="rounded-lg font-weight-bold px-4" 
+              @click="dialogOpen = false" 
+              :disabled="submitting"
             >
-              Enviar Propuesta
+              Cancelar
             </v-btn>
-          </template>
 
-          <!-- Con Garantía (Dos Etapas: Registro API y Registro Blockchain) -->
-          <template v-else>
-            <!-- Paso 1: Registro en API -->
+            <!-- Botón Único Unificado -->
             <v-btn
-              v-if="!apiRegistered"
               color="indigo-darken-1"
               variant="flat"
-              class="rounded-lg font-weight-bold text-white shadow-sm"
-              @click="submitProposalApiOnly"
+              class="rounded-lg font-weight-bold px-6 text-white shadow-sm d-flex align-center"
+              @click="submitProposalSystem"
               :loading="submitting"
-              :disabled="isGuaranteeFormDisabled"
+              :disabled="selectedFilesList.length === 0 || hashingInProgress || (Number(guaranteeAmount) > 0 && isGuaranteeFormDisabled)"
             >
-              Registrar en API
+              <img 
+                v-if="Number(guaranteeAmount) > 0" 
+                src="/metamask-icon.svg" 
+                alt="MetaMask" 
+                width="20" 
+                height="20" 
+                class="me-2" 
+              />
+              Registrar en el Sistema
             </v-btn>
-
-            <!--Registro en Blockchain -->
-            <v-btn
-              v-if="apiRegistered && !chainRegistered"
-              color="teal-darken-1"
-              variant="flat"
-              class="rounded-lg font-weight-bold text-white shadow-sm d-flex align-center"
-              @click="submitProposalBlockchainOnly"
-              :loading="submittingChain"
-              :disabled="isGuaranteeFormDisabled"
-            >
-              <img src="/metamask-icon.svg" alt="MetaMask" width="22" height="22" class="me-2" />
-              Registrar en Blockchain
-            </v-btn>
-          </template>
-        </v-card-actions>
+          </v-card-actions>
       </v-card>
     </v-dialog>
 
@@ -661,6 +637,8 @@ const postClosingFilesList = ref([])
 const postClosingError = ref(null)
 const selectedProposal = ref(null)
 
+const proposalOwnersMap = ref({})
+
 const submittingChainId = ref(null)
 
 const userBalance = ref(BigInt(0))
@@ -702,6 +680,9 @@ const matchState = (currentStatus, targetStatus) => {
   return currentStatus.toString().trim().toLowerCase() === targetStatus.trim().toLowerCase()
 }
 
+/**
+ * Consulta en la Blockchain el owner/proposer real de cada propuesta
+ */
 const checkProposalsOnChainStatus = async () => {
   if (!proposals.value || proposals.value.length === 0) return
 
@@ -709,8 +690,16 @@ const checkProposalsOnChainStatus = async () => {
     if (!prop.proposalId) return
     try {
       const chainData = await cfpService.getProposalData(callId.value, prop.proposalId)
-      // Actualiza el mapa indicando si la propuesta existe on-chain
+      
+      // Actualiza la existencia on-chain
       chainStatusMap.value[prop.proposalId] = chainData.exists
+
+      // Guarda la dirección del creador/owner según los datos retornados por la blockchain
+      const ownerOnChain = chainData.sender
+      console.log(`Owner on-chain for proposal ${prop.proposalId}:`, ownerOnChain)
+      if (ownerOnChain) {
+        proposalOwnersMap.value[prop.proposalId] = ownerOnChain.toString().toLowerCase()
+      }
     } catch (err) {
       console.error(`Error verificando proposal ${prop.proposalId} on-chain:`, err)
       chainStatusMap.value[prop.proposalId] = false
@@ -785,25 +774,57 @@ const localProposalId = computed(() => {
   }
 })
 
-const submitProposalBlockchainFromList = async (proposal) => {
-  if (!proposal || !proposal.proposalId) return
-  
+const submitProposalSystem = async () => {
+  if (!formRef.value || hasRestrictedRole.value) return
+  const { valid } = await formRef.value.validate()
+  if (!valid) return
+
+  if (selectedFilesList.value.length === 0) {
+    fileError.value = 'Debes incluir al menos un archivo comprobatorio.'
+    return
+  }
+
   try {
-    submittingChainId.value = proposal.proposalId
-    
-    // Ejecuta el registro en el Smart Contract
-    await cfpService.registerProposal(callId.value, proposal.proposalId)
-    
-    // Marca la propuesta como registrada On-Chain de inmediato
-    chainStatusMap.value[proposal.proposalId] = true
-    
-    // Vuelve a cargar las propuestas
+    submitting.value = true
+    fileError.value = null
+
+    // Si requiere garantía, registrar primero en Blockchain
+    if (Number(guaranteeAmount.value) > 0) {
+      if (!localProposalId.value) {
+        fileError.value = 'No se pudo generar el ID local de la propuesta.'
+        submitting.value = false
+        return
+      }
+
+      // Llama al Smart Contract (MetaMask)
+      await cfpService.registerProposal(callId.value, localProposalId.value)
+    }
+
+    // Una vez confirmada la blockchain (o si no requiere garantía), registrar en API
+    const payload = {
+      callId: callId.value,
+      title: formProposal.value.title,
+      description: formProposal.value.description,
+      files: selectedFilesList.value.map(file => file.hash),
+      blockchain: !(Number(guaranteeAmount.value) > 0) // Flag según si requería o no garantía
+    }
+
+    await apiRegisterProposal(payload)
+
+    // Éxito total: cerrar modal y recargar
+    dialogOpen.value = false
     await loadProposals()
-    
+
   } catch (error) {
-    console.error("Error al registrar propuesta desde la lista en blockchain:", error)
+    console.error("Error en el registro del sistema:", error)
+    
+    if (error.code === 4001 || error.message?.includes('user rejected')) {
+      fileError.value = 'Transacción rechazada por el usuario en MetaMask.'
+    } else {
+      fileError.value = `Error procesando el registro: ${error.response?.data?.message || error.message || 'Error de conexión.'}`
+    }
   } finally {
-    submittingChainId.value = null
+    submitting.value = false
   }
 }
 
@@ -932,77 +953,20 @@ const checkProposalProgress = async (proposalHash) => {
 }
 
 
-// Sin costo / Garantía = 0 (Usa endpoint backend original con blockchain=true)
-const submitProposalStandard = async () => {
-  if (!formRef.value || hasRestrictedRole.value) return
-  const { valid } = await formRef.value.validate()
-  if (!valid) return
-  if (selectedFilesList.value.length === 0) {
-    fileError.value = 'Debes incluir al menos un archivo comprobatorio.'
-    return
-  }
 
-  try {
-    submitting.value = true
-    const payload = {
-      callId: callId.value,
-      title: formProposal.value.title,
-      description: formProposal.value.description,
-      files: selectedFilesList.value.map(file => file.hash),
-      blockchain: true // Mantiene el comportamiento por defecto
-    }
-    await apiRegisterProposal(payload)
-    dialogOpen.value = false
-    await loadProposals()
-  } catch (error) {
-    fileError.value = `Error en el servidor: ${error.response?.data?.message || 'Error interno.'}`
-  } finally {
-    submitting.value = false
-  }
+/**
+ * Verifica si el usuario actualmente conectado es el creador de una propuesta específica
+ */
+const isProposalOwner = (proposal) => {
+  if (!walletStore.account || !proposal || !proposal.proposalId) return false
+
+  const currentAccount = walletStore.account.toLowerCase().trim()
+  const ownerOnChain = proposalOwnersMap.value[proposal.proposalId]
+
+  return ownerOnChain === currentAccount
 }
 
-// Registro Exclusivo en API (blockchain = false)
-const submitProposalApiOnly = async () => {
-  if (!formRef.value || hasRestrictedRole.value) return
-  const { valid } = await formRef.value.validate()
-  if (!valid) return
 
-  try {
-    submitting.value = true
-    const payload = {
-      callId: callId.value,
-      title: formProposal.value.title,
-      description: formProposal.value.description,
-      files: selectedFilesList.value.map(file => file.hash),
-      blockchain: false // Flag explícito en false para la API
-    }
-    await apiRegisterProposal(payload)
-    apiRegistered.value = true
-    await loadProposals()
-  } catch (error) {
-    fileError.value = `Error registrando en API: ${error.response?.data?.message || 'Error de conexión.'}`
-  } finally {
-    submitting.value = false
-  }
-}
-
-// Registro Exclusivo On-Chain mediante Contrato Inteligente
-const submitProposalBlockchainOnly = async () => {
-  if (!localProposalId.value) return
-  try {
-    submittingChain.value = true
-    // Ejecuta registerProposal(bytes32) en el Smart Contract (El contrato descuenta la garantía)
-    await cfpService.registerProposal(callId.value, localProposalId.value)
-    chainRegistered.value = true
-    dialogOpen.value = false
-    await loadProposals()
-  } catch (error) {
-    console.error("Error al registrar propuesta en blockchain:", error)
-    fileError.value = "Error en la transacción MetaMask o fallo en la blockchain."
-  } finally {
-    submittingChain.value = false
-  }
-}
 
 // Métodos auxiliares originales
 const downloadPhysicalFiles = async (proposalId) => {
