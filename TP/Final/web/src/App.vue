@@ -2,20 +2,18 @@
   <v-app>
     
     <v-app-bar 
-      v-if="walletStore.userRole && route.name !== 'landing'" 
+      v-if="route.name !== 'landing'" 
       color="white" 
       elevation="1"
       class="text-slate-dark"
     >
       <v-app-bar-title class="font-weight-bold text-slate-dark">
-        CFP Client 
-        <span class="text-caption text-indigo font-weight-bold ms-1">
-          ({{ walletStore.userRole.toUpperCase() }})
-        </span>
+        CFP Client
       </v-app-bar-title>
 
       <v-spacer></v-spacer>
 
+      <!-- Estado Conexión MetaMask -->
       <v-chip
         :color="walletStore.account ? 'success' : 'grey-darken-1'"
         variant="flat"
@@ -25,20 +23,48 @@
         {{ walletStore.account ? 'METAMASK CONECTADO' : 'METAMASK DESCONECTADO' }}
       </v-chip>
 
-      <v-chip
+      <!-- Dominio ENS  -->
+     <div 
         v-if="walletStore.account && userDomain"
-        color="indigo-lighten-5"
-        variant="flat"
-        class="me-3 font-weight-bold text-indigo-darken-2 border"
-        size="small"
+        class="ens-domain-badge me-3 d-flex align-center px-3 py-1 rounded-lg border"
       >
-        <v-icon icon="mdi-dns" size="14" class="me-1 text-indigo-darken-1"></v-icon>
-        {{ userDomain }}
-      </v-chip>
+        <v-icon icon="mdi-web" size="16" color="indigo-darken-1" class="me-2"></v-icon>
+        <span class="text-caption font-weight-bold text-indigo-darken-3 me-1">
+          {{ userDomain }}
+        </span>
+        <v-btn
+          variant="text"
+          density="compact"
+          icon
+          size="small"
+          color="indigo-darken-1"
+          @click="copyToClipboard(userDomain, 'Dominio copiado al portapapeles')"
+        >
+          <v-icon size="16">mdi-content-copy</v-icon>
+          <v-tooltip activator="parent" location="bottom">Copiar Dominio</v-tooltip>
+        </v-btn>
+      </div>
 
-      <span v-if="walletStore.account" class="text-body-2 me-4 bg-slate-light pa-2 rounded-lg font-weight-medium text-slate-dark border">
-        {{ truncatedAddress }}
-      </span>
+      <!-- Dirección Wallet (Muestra recortada, copia la completa) -->
+     <div 
+        v-if="walletStore.account" 
+        class="address-badge me-4 bg-slate-light px-3 py-1 rounded-lg d-flex align-center border"
+      >
+        <span class="text-body-2 font-weight-medium text-slate-dark me-1">
+          {{ truncatedAddress }}
+        </span>
+        <v-btn
+          variant="text"
+          density="compact"
+          icon
+          size="small"
+          color="grey-darken-2"
+          @click="copyAddressToClipboard"
+        >
+          <v-icon size="16">mdi-content-copy</v-icon>
+          <v-tooltip activator="parent" location="bottom">Copiar Dirección Completa</v-tooltip>
+        </v-btn>
+      </div>
 
       <v-btn 
         v-if="!walletStore.account"
@@ -50,20 +76,40 @@
         Conectar Wallet
       </v-btn>
 
-      <v-btn variant="tonal" color="error" class="me-2 font-weight-bold rounded-lg" @click="handleDisconnect">
-        Salir
-      </v-btn>
+      <v-btn 
+      v-if="walletStore.account"
+      variant="tonal" 
+      color="error" 
+      class="me-2 font-weight-bold rounded-lg" 
+      @click="handleDisconnect"
+    >
+      Salir
+    </v-btn>
     </v-app-bar>
 
     <v-main>
       <router-view />
     </v-main>
 
+    <!-- Feedback -->
+    <v-snackbar
+      v-model="snackbar.show"
+      :timeout="2000"
+      color="slate-dark"
+      location="bottom right"
+      rounded="lg"
+    >
+      <div class="d-flex align-center text-caption font-weight-medium">
+        <v-icon icon="mdi-check-circle-outline" color="success" class="me-2"></v-icon>
+        {{ snackbar.text }}
+      </div>
+    </v-snackbar>
+
   </v-app>
 </template>
 
 <script setup>
-import { ref,computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useWalletStore } from './stores/wallet'
 import { useENSStore } from './stores/ensStore' 
 import { useRouter, useRoute } from 'vue-router'
@@ -75,11 +121,49 @@ const router = useRouter()
 const route = useRoute()
 const userDomain = ref('')
 
-// Recortar la dirección de la wallet para mostrar (ej: 0xf39f...2266)
+// Estado para notificaciones Toast
+const snackbar = ref({
+  show: false,
+  text: ''
+})
+
+// Recortar la dirección de la wallet para mostrar
 const truncatedAddress = computed(() => {
   if (!walletStore.account) return ''
   return `${walletStore.account.substring(0, 6)}...${walletStore.account.substring(walletStore.account.length - 4)}`
 })
+
+// Copiar texto genérico al portapapeles
+async function copyToClipboard(text, successMessage) {
+  if (!text) return
+  try {
+    await navigator.clipboard.writeText(text)
+    snackbar.value.text = successMessage
+    snackbar.value.show = true
+  } catch (err) {
+    console.error('Error al copiar al portapapeles:', err)
+  }
+}
+
+// Copia la dirección
+function copyAddressToClipboard() {
+  if (walletStore.account) {
+    copyToClipboard(walletStore.account, 'Dirección de Wallet completa copiada')
+  }
+}
+
+// Escucha cuando walletStore.account cambie
+watch(
+  () => walletStore.account,
+  async (newAccount) => {
+    if (newAccount) {
+      await fetchUserDomain(newAccount)
+    } else {
+      userDomain.value = ''
+    }
+  },
+  { immediate: true }
+)
 
 // Limpia el estado de autenticación y redirige a la Landing
 function handleDisconnect() {
@@ -90,11 +174,21 @@ function handleDisconnect() {
   router.push({ name: 'landing' })
 }
 
-// Lógica de conexión desde la barra y redirección según rol
+// Lógica de conexión con forzado de selección de cuenta
 async function handleConnectFromBar() {
+  if (window.ethereum) {
+    try {
+      await window.ethereum.request({
+        method: 'wallet_requestPermissions',
+        params: [{ eth_accounts: {} }]
+      })
+    } catch (e) {
+      console.log("El usuario canceló la selección de cuenta")
+    }
+  }
+
   const success = await walletStore.connectMetaMask()
   if (success && walletStore.account) {
-    // Refresca el rol y el estado de ENS para la nueva cuenta conectada
     await ensStore.refreshStore()
     await walletStore.checkUserRole(walletStore.account)
     await fetchUserDomain(walletStore.account)
@@ -116,47 +210,43 @@ async function fetchUserDomain(address) {
 }
 
 onMounted(async () => {
-  // Carga inicial: Cuando se refresca o entra por primera vez a la página
   try {
     if (window.ethereum) {
-      const accounts = await window.ethereum.request({ method: 'eth_accounts' })
-      if (accounts.length > 0) {
+      let accounts = await window.ethereum.request({ method: 'eth_accounts' })
+      
+      if (!accounts || accounts.length === 0) {
+        accounts = await window.ethereum.request({ method: 'eth_requestAccounts' })
+      }
+      
+      if (accounts && accounts.length > 0) {
         walletStore.account = accounts[0]
-        await ensStore.refreshStore()
-        await walletStore.checkUserRole(accounts[0])
-        await fetchUserDomain(accounts[0])
+        
+        ensStore.refreshStore().catch(console.error)
+        fetchUserDomain(accounts[0]).catch(console.error)
+        walletStore.checkUserRole(accounts[0]).catch(console.error)
+      } else {
+        walletStore.account = null
       }
     }
   } catch (err) {
-    console.error("Error en inicialización al cargar la página:", err)
+    console.error("Error al detectar/conectar la cuenta en MetaMask:", err)
+    walletStore.account = null
   }
 
-  //Escucha dinámica: Cuando el usuario cambia de cuenta activamente en MetaMask
   if (window.ethereum) {
     window.ethereum.on('accountsChanged', async (accounts) => {
-      if (accounts.length > 0) {
+      if (accounts && accounts.length > 0) {
         walletStore.account = accounts[0]
+        userDomain.value = ''
         
-        console.log("Cambio de cuenta detectado. Reseteando estados y redirigiendo a la página inicial...")
-        
-        // Ejecuta el refresco total de contratos con el nuevo Signer
         await ensStore.refreshStore()
-        
-        // Verifica el rol de la nueva cuenta para tener el estado listo
         await walletStore.checkUserRole(accounts[0])
-
         await fetchUserDomain(accounts[0])
-        
-        // Redirige forzosamente a la landing/primera página
-        router.push({ name: 'landing' }) 
-        
       } else {
-        // Si desconecta todas las cuentas de MetaMask
         handleDisconnect()
       }
     })
 
-    // Recarga estructural en caso de cambio de red blockchain
     window.ethereum.on('chainChanged', () => {
       window.location.reload()
     })
@@ -165,7 +255,7 @@ onMounted(async () => {
 </script>
 
 <style>
-/* Estilos globales y utilidades de color/borde */
+/* Estilos globales */
 html, body {
   margin: 0;
   padding: 0;
@@ -182,5 +272,16 @@ html, body {
 
 .border {
   border: 1px solid #e2e8f0 !important;
+}
+
+/* Badge con gradiente suave para el dominio ENS */
+.ens-domain-badge {
+  background: linear-gradient(135deg, #e0e7ff 0%, #eef2ff 100%);
+  border-color: #c7d2fe !important;
+  box-shadow: 0 1px 2px rgba(99, 102, 241, 0.05);
+}
+
+.address-badge {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
 }
 </style>

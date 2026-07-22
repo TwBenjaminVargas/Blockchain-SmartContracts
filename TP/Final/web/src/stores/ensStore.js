@@ -1,73 +1,62 @@
+// src/stores/ensStore.js
 import { defineStore } from 'pinia'
 import { ethers } from 'ethers'
 import { getENSAddresses } from '../services/api'
-import { FILES, ENSDomains} from '../config/constants'
+import { FILES, ENSDomains, URL } from '../config/constants'
 
 export const useENSStore = defineStore('ens', {
   state: () => ({
-    // Direcciones de contratos
     registryAddress: null,
     resolverAddress: null,
     registrarUsuariosAddress: null,
     registrarLlamadosAddress: null,
     reverseRegistrarAddress: null,
-    
-    // Instancias de contratos (en memoria)
+
     registryContract: null,
     resolverContract: null,
     registrarUsuariosContract: null,
     registrarLlamadosContract: null,
     reverseRegistrarContract: null,
     
-    //Sufijos de dominios
     usuariosSuffix: ENSDomains.usuarios,
     llamadosSuffix: ENSDomains.llamados,
     addrReverseSuffix: ENSDomains.addrReverse,
-
+    
     isInitialized: false,
     loading: false
   }),
 
   actions: {
     resetStore() {
-      this.registryAddress = null
-      this.resolverAddress = null
-      this.registrarUsuariosAddress = null
-      this.registrarLlamadosAddress = null
-      this.reverseRegistrarAddress = null
-
-      this.registryContract = null
-      this.resolverContract = null
-      this.registrarUsuariosContract = null
-      this.registrarLlamadosContract = null
-      this.reverseRegistrarContract = null
-
-      this.isInitialized = false
-      console.log("¡Store de ENS reseteado y vaciado con éxito!")
-    },
+          this.registryAddress = null
+          this.resolverAddress = null
+          this.registrarUsuariosAddress = null
+          this.registrarLlamadosAddress = null
+          this.reverseRegistrarAddress = null
+    
+          this.registryContract = null
+          this.resolverContract = null
+          this.registrarUsuariosContract = null
+          this.registrarLlamadosContract = null
+          this.reverseRegistrarContract = null
+    
+          this.isInitialized = false
+          this.loading = false
+          console.log("¡Store de ENS reseteado y vaciado con éxito!")
+        },
     async refreshStore() {
       this.loading = true
       try {
-        if (!window.ethereum) {
-          throw new Error('MetaMask no está disponible.')
-        }
+        let provider = new ethers.JsonRpcProvider(URL.provider)
 
-        const provider = new ethers.BrowserProvider(window.ethereum)
-        const signer = await provider.getSigner()
+        // Si hay cuenta conectada, obtenemos signer para transacciones; si no, usamos provider solo lectura
+        let runner = provider
 
-        // Obtener direcciones base
         const baseAddresses = await getENSAddresses()
-        
         this.registryAddress = ethers.getAddress(baseAddresses.registry.trim())
         this.resolverAddress = ethers.getAddress(baseAddresses.resolver.trim())
 
-        // Instanciar temporalmente el Registry para hacer las consultas
         const tempRegistry = new ethers.Contract(this.registryAddress, FILES.REGISTRY_ABI, provider)
-
-        // Resolver owners en paralelo
-        console.log("Calculando y consultando las direcciones de los registradores en ENS...")
-        
-        // Helper interno para namehash
         const getHash = (dom) => ethers.namehash(dom)
 
         const [userOwner, llamadosOwner, reverseOwner] = await Promise.all([
@@ -76,28 +65,25 @@ export const useENSStore = defineStore('ens', {
           tempRegistry.owner(getHash(this.addrReverseSuffix))
         ])
 
-        // Guardar las direcciones obtenidas en el estado
         this.registrarUsuariosAddress = userOwner
         this.registrarLlamadosAddress = llamadosOwner
         this.reverseRegistrarAddress = reverseOwner
 
-        // Crear todas las instancias de los contratos conectadas al Signer
-        this.registryContract = new ethers.Contract(this.registryAddress, FILES.REGISTRY_ABI, signer)
-        this.resolverContract = new ethers.Contract(this.resolverAddress, FILES.RESOLVER_ABI, signer)
-        
-        this.registrarUsuariosContract = new ethers.Contract(this.registrarUsuariosAddress, FILES.USUARIOS_REGISTRAR_ABI, signer)
-        this.registrarLlamadosContract = new ethers.Contract(this.registrarLlamadosAddress, FILES.LLAMADOS_REGISTRAR_ABI, signer)
-        this.reverseRegistrarContract = new ethers.Contract(this.reverseRegistrarAddress, FILES.REVERSE_REGISTRAR_ABI, signer)
+        // Instanciar contratos vinculados al runner (Signer o Provider read-only)
+        this.registryContract = new ethers.Contract(this.registryAddress, FILES.REGISTRY_ABI, runner)
+        this.resolverContract = new ethers.Contract(this.resolverAddress, FILES.RESOLVER_ABI, runner)
+        this.registrarUsuariosContract = new ethers.Contract(this.registrarUsuariosAddress, FILES.USUARIOS_REGISTRAR_ABI, runner)
+        this.registrarLlamadosContract = new ethers.Contract(this.registrarLlamadosAddress, FILES.LLAMADOS_REGISTRAR_ABI, runner)
+        this.reverseRegistrarContract = new ethers.Contract(this.reverseRegistrarAddress, FILES.REVERSE_REGISTRAR_ABI, runner)
 
         this.isInitialized = true
-        console.log("¡Store de ENS inicializado con éxito en memoria!")
-
       } catch (error) {
         console.error("Error inicializando el Store de ENS:", error)
-        throw error
       } finally {
         this.loading = false
       }
     }
   }
 })
+
+

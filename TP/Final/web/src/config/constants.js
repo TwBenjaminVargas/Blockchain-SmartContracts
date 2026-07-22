@@ -69,5 +69,6 @@ export const URL = {
     getProposalReceiptPostClosing: '/proposals/:proposal_id/reception-receipt',
     getENSAddresses: '/ens-addresses',
     getCallContractAddress: '/calls/:call_id/contract',
-    getTokenAddress: '/token-address'
+    getTokenAddress: '/token-address',
+    provider: 'http://localhost:8545'
 }

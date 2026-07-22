@@ -49,6 +49,9 @@ export async function resolveDomain(domain) {
 export async function reverseResolveAddress(address) {
   const store = useENSStore()
 
+  if (!store.isInitialized || !store.resolverContract) {
+    await store.refreshStore()
+  }
 
   try {
     // Formatear la dirección bajo el estándar EIP-181
@@ -64,6 +67,7 @@ export async function reverseResolveAddress(address) {
       [addrReverseNode, addressLabelHash]
     )
 
+    if (!store.resolverContract) return null
     // Consultamos al resolvedor el nombre guardado para ese nodo inverso
     const domain = await store.resolverContract.name(finalReverseNode)
     console.log(`Dirección ${address} resuelta a dominio: ${domain}`)
