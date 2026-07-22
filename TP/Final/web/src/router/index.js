@@ -6,6 +6,7 @@ import Register from '../views/Register.vue'
 import Admin from '../views/Admin.vue'
 import Creator from '../views/Creator.vue'
 import CallProposals from '../views/CallProposals.vue'
+import Wallet from '../views/Wallet.vue'
 
 const routes = [
   { path: '/', name: 'landing', component: Landing },
@@ -17,7 +18,8 @@ const routes = [
     path: '/calls/:callId/proposals', 
     name: 'call-proposals', 
     component: CallProposals
-  }
+  },
+  { path: '/wallet', name: 'wallet', component: Wallet }
 ]
 
 const router = createRouter({

@@ -70,12 +70,19 @@ export class TokenService {
   /**
    * Permite al usuario adquirir BENCOINs enviando ETH.
    */
-  async buy(ethAmount) {
+  async buy(desiredTokens) {
     const contract = await this._getContractInstance()
-    const weiValue = ethers.parseEther(ethAmount.toString())
+    
+    const currentRate = await contract.rate() // ej: 1000n
+    
+    // Convertir la cantidad deseada de tokens a BigInt (en unidades base Wei)
+    const tokensInWei = ethers.parseEther(desiredTokens.toString())
+    
+    //Calcular el costo en ETH (ETH = Tokens / Rate)
+    const ethCostInWei = tokensInWei / BigInt(currentRate)
 
-    // Se envía ETH mediante la opción `value` de la transacción payable
-    const tx = await contract.buy({ value: weiValue })
+    //Enviar la transacción pasando el costo exacto en la propiedad value
+    const tx = await contract.buy({ value: ethCostInWei })
     return await tx.wait()
   }
 
