@@ -38,7 +38,7 @@
               <template #prepend>
                 <img src="/metamask-icon.svg" alt="MetaMask" width="26" height="26" class="me-2" />
               </template>
-              REGISTRARME COMO CREADOR
+              INGRESAR COMO CREADOR
             </v-btn>
 
             <v-btn
