@@ -222,15 +222,16 @@
               </p>
               <!-- Botón Retirar Garantía (Se habilita solo si canWithdrawGuarantee es true) -->
               <v-btn
-                v-if="canWithdrawGuarantee"
+                v-if="isWithdrawAuthorized"
                 color="teal-darken-2"
                 variant="flat"
-                class="rounded-lg font-weight-bold text-white shadow-sm m-3"
+                class="rounded-lg font-weight-bold text-white shadow-sm mt-3"
                 :loading="withdrawingGuarantee"
+                :disabled="!hasGuaranteeToWithdraw"
                 @click="handleWithdrawGuarantee"
               >
                 <v-icon icon="mdi-cash-refund" class="me-1" size="20"></v-icon>
-                Retirar Garantía ({{ formatTokenAmount(guaranteeAmount) }} BEN)
+                {{ hasGuaranteeToWithdraw ? `Retirar Garantía (${formatTokenAmount(guaranteeAmount)} BEN)` : 'Garantía Ya Retirada' }}
               </v-btn>
             </v-card>
             <div v-if="!showEvaluatingNotice">
@@ -741,7 +742,9 @@ import { ASSETS } from '../config/constants'
 import { reverseResolveAddress } from '../services/ens'
 import { cfpService } from '../services/cfp'
 import { tokenService } from '../services/token'
+import { useENSStore } from '../stores/ensStore'
 
+const ensStore = useENSStore()
 const route = useRoute()
 const walletStore = useWalletStore()
 const callId = ref(route.params.callId)
@@ -804,6 +807,11 @@ const postClosingError = ref(null)
 const selectedProposal = ref(null)
 
 const authorizedWithdrawMap = ref({})
+
+// Indica si el creador autorizó al usuario a retirar
+const isWithdrawAuthorized = ref(false)
+// Indica si aún tiene saldo/allowance mayor a 0 para retirar
+const hasGuaranteeToWithdraw = ref(false)
 
 const authorizingMap = ref({})
 
@@ -909,20 +917,33 @@ const checkProposalsOnChainStatus = async () => {
   // Revisa el estado de autorizaciones de retiro
   await checkAuthorizedWithdrawals()
 }
-/*
-* Consulta en el Smart Contract si el usuario actual tiene saldo de garantía disponible para retirar
+
+/**
+ * Consulta en la Blockchain si el usuario está autorizado y si le quedan fondos (> 0)
  */
 const checkWithdrawableGuarantee = async () => {
-  if (!walletStore.account || !callId.value) {
-    canWithdrawGuarantee.value = false
+  if (!walletStore.account || !callId.value || !cfpContractAddress.value) {
+    isWithdrawAuthorized.value = false
+    hasGuaranteeToWithdraw.value = false
     return
   }
+
   try {
-    const isAuthorized = await cfpService.isAuthorizedToWithdrawGuarantee(callId.value, walletStore.account)
-    canWithdrawGuarantee.value = Boolean(isAuthorized)
+    // 1. Verificar si el usuario fue autorizado por el creador
+    const authorized = await cfpService.isAuthorizedToWithdrawGuarantee(callId.value, walletStore.account)
+    isWithdrawAuthorized.value = Boolean(authorized)
+
+    // 2. Si está autorizado, verificar si el allowance/saldo es > 0
+    if (isWithdrawAuthorized.value) {
+      const currentAllowance = await tokenService.allowance(cfpContractAddress.value, walletStore.account)
+      hasGuaranteeToWithdraw.value = BigInt(currentAllowance || 0) > BigInt(0)
+    } else {
+      hasGuaranteeToWithdraw.value = false
+    }
   } catch (err) {
-    console.error("Error al consultar autorización de retiro de garantía:", err)
-    canWithdrawGuarantee.value = false
+    console.error("Error al verificar estado del retiro de garantía:", err)
+    isWithdrawAuthorized.value = false
+    hasGuaranteeToWithdraw.value = false
   }
 }
 
@@ -1604,11 +1625,12 @@ const copyToClipboard = async (text) => {
   }
 }
 watch(() => walletStore.account, () => {
-  checkWithdrawableGuarantee()
+  checkWithdrawableGuarantee();
+  ensStore.refreshStore();
 })
 
 onMounted(() => {
-  if (callId.value) { loadCallDetails(); loadProposals(); checkWithdrawableGuarantee(); checkIsFileSubmissionOpen();}
+  if (callId.value) { loadCallDetails(); loadProposals(); checkWithdrawableGuarantee(); checkIsFileSubmissionOpen(); ensStore.refreshStore();}
   clockInterval = setInterval(() => { currentTime.value = new Date() }, 1000)
 })
 onBeforeUnmount(() => { if (clockInterval) clearInterval(clockInterval) })

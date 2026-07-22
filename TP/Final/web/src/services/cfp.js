@@ -39,17 +39,6 @@ export class CFPService {
   }
 
   /**
-   * Autoriza a un usuario para retirar su garantía.
-   */
-  async authorizeGuaranteeWithdraw(callId, userAddress) {
-    const contract = await this._getContractInstance(callId)
-    const formattedUser = ethers.getAddress(userAddress)
-
-    const tx = await contract.authorizeGuaranteeWithdraw(formattedUser)
-    return await tx.wait()
-  }
-
-  /**
    * Cierra la recepción de archivos en la convocatoria.
    */
   async closeFileSubmission(callId) {
