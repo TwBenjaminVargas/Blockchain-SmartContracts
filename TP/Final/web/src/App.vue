@@ -22,7 +22,17 @@
       >
         {{ walletStore.account ? 'METAMASK CONECTADO' : 'METAMASK DESCONECTADO' }}
       </v-chip>
-
+      <!-- Balance de Tokens BENCOIN -->
+      <div 
+        v-if="walletStore.account" 
+        class="balance-badge me-3 bg-indigo-lighten-5 px-3 py-1 rounded-lg d-flex align-center border border-indigo-lighten-4"
+      >
+        <v-icon icon="mdi-wallet-outline" size="18" color="indigo-darken-1" class="me-1"></v-icon>
+        <span class="text-caption font-weight-bold text-indigo-darken-3 me-1">Balance:</span>
+        <span class="text-body-2 font-weight-bold text-slate-dark">
+          {{ userBalance }} BEN
+        </span>
+      </div>
       <!-- Dominio ENS  -->
      <div 
         v-if="walletStore.account && userDomain"
@@ -114,12 +124,16 @@ import { useWalletStore } from './stores/wallet'
 import { useENSStore } from './stores/ensStore' 
 import { useRouter, useRoute } from 'vue-router'
 import { reverseResolveAddress } from './services/ens'
+import { ethers } from 'ethers'
+import { tokenService } from './services/token'
 
 const walletStore = useWalletStore()
 const ensStore = useENSStore()
 const router = useRouter()
 const route = useRoute()
 const userDomain = ref('')
+const userBalance = ref('0')
+
 
 // Estado para notificaciones Toast
 const snackbar = ref({
@@ -144,7 +158,22 @@ async function copyToClipboard(text, successMessage) {
     console.error('Error al copiar al portapapeles:', err)
   }
 }
-
+async function fetchUserBalance(address) {
+  if (!address) {
+    userBalance.value = '0'
+    return
+  }
+  try {
+    const rawBalance = await tokenService.balanceOf(address)
+    // Convierte las unidades base (wei/18 decimales) a un valor legible
+    const formatted = ethers.formatEther(rawBalance)
+    // Redondea a 2 decimales para mostrar en la barra
+    userBalance.value = parseFloat(formatted).toFixed(2)
+  } catch (error) {
+    console.error('Error al obtener el balance de tokens:', error)
+    userBalance.value = '0'
+  }
+}
 // Copia la dirección
 function copyAddressToClipboard() {
   if (walletStore.account) {
@@ -158,6 +187,7 @@ watch(
   async (newAccount) => {
     if (newAccount) {
       await fetchUserDomain(newAccount)
+      await fetchUserBalance(newAccount)
     } else {
       userDomain.value = ''
     }
@@ -192,6 +222,7 @@ async function handleConnectFromBar() {
     await ensStore.refreshStore()
     await walletStore.checkUserRole(walletStore.account)
     await fetchUserDomain(walletStore.account)
+    await fetchUserBalance(walletStore.account)
   }
 }
 
@@ -242,6 +273,7 @@ onMounted(async () => {
         await ensStore.refreshStore()
         await walletStore.checkUserRole(accounts[0])
         await fetchUserDomain(accounts[0])
+        await fetchUserBalance(accounts[0])
       } else {
         handleDisconnect()
       }
