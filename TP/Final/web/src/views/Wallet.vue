@@ -368,18 +368,24 @@ onMounted(() => {
 }
 
 /* Número con Degradado de Color y Tipografía Tabular */
-.balance-number {
+balance-number {
   font-size: 2.75rem;
   font-weight: 800;
   line-height: 1;
   font-variant-numeric: tabular-nums;
   letter-spacing: -1px;
   background: linear-gradient(135deg, #1e1b4b 0%, #4338ca 50%, #6366f1 100%);
+  
+  /* Propiedad con prefijo para compatibilidad WebKit */
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  text-shadow: 0 2px 10px rgba(99, 102, 241, 0.15);
+  
+  /* Propiedad estándar para solucionar el aviso (vendorPrefix) */
+  background-clip: text;
+  
+  /* Reemplazamos text-shadow por drop-shadow para que funcione bien con degradados de texto */
+  filter: drop-shadow(0 2px 10px rgba(99, 102, 241, 0.15));
 }
-
 .gap-2 {
   gap: 8px;
 }

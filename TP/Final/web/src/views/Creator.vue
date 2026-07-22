@@ -857,7 +857,7 @@ async function handleCreateCall() {
     console.log("%c[Cripto] Solicitando firma para CreateRequest (EIP-712)...", "color: #10b981; font-weight: bold;", message)
     
     const signature = await signer.signTypedData(domain, types, message)
-
+    console.log("Costo de la garantia en wei:", guaranteeInWei)
     const payload = {
       callId: calculatedCallId,
       title: titleStr,

@@ -34,7 +34,9 @@ export async function createInFactory(callId, timestamp, guarantee = '0') {
   
   const formattedCallId = callId.startsWith('0x') ? callId : `0x${callId}`
   const bigIntTimestamp = BigInt(timestamp)
-  const bigIntGuarantee = ethers.parseUnits(guarantee.toString(), 18) // el token tiene 18 decimales
+  
+  // Si guarantee ya viene en Wei, solo lo casteamos a BigInt/String directamente:
+  const bigIntGuarantee = BigInt(guarantee.toString()) 
 
   const tx = await contract.create(formattedCallId, bigIntTimestamp, bigIntGuarantee)
   return await tx.wait()

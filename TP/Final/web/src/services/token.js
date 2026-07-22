@@ -59,41 +59,49 @@ export class TokenService {
    * Aprueba a un tercero (spender) a disponer de cierta cantidad de tokens del usuario actual.
    */
   async approve(spender, amount) {
-    const contract = await this._getContractInstance()
-    const formattedSpender = ethers.getAddress(spender)
-    const bigIntAmount = ethers.parseEther(amount.toString())
+  const contract = await this._getContractInstance()
+  const formattedSpender = ethers.getAddress(spender)
+  
+  // Convertir directamente a BigInt
+  const bigIntAmount = typeof amount === 'bigint' ? amount : BigInt(amount.toString())
 
-    const tx = await contract.approve(formattedSpender, bigIntAmount)
-    return await tx.wait()
-  }
+  const tx = await contract.approve(formattedSpender, bigIntAmount)
+  return await tx.wait()
+}
 
-  /**
-   * Permite al usuario adquirir BENCOINs enviando ETH.
+/**
+   * Permite al usuario adquirir BENCOINs ingresando la cantidad legible de tokens.
+   * desiredTokens Cantidad de BEN a comprar (ej: 150 o "150.5")
    */
   async buy(desiredTokens) {
     const contract = await this._getContractInstance()
     
-    const currentRate = await contract.rate() // ej: 1000n
+    //Obtener la tasa de cambio del contrato (ej: 1000n = 1000 tokens por ETH)
+    const currentRate = await contract.rate() // BigInt
     
-    // Convertir la cantidad deseada de tokens a BigInt (en unidades base Wei)
-    const tokensInWei = ethers.parseEther(desiredTokens.toString())
+    // Escalar los tokens deseados a sus 18 decimales (Wei)
+    const tokensInBaseUnits = ethers.parseEther(desiredTokens.toString())
     
-    //Calcular el costo en ETH (ETH = Tokens / Rate)
-    const ethCostInWei = tokensInWei / BigInt(currentRate)
+    //Calcular el costo en ETH (en Wei): Tokens en Wei / Rate
+    const ethCostInWei = tokensInBaseUnits / BigInt(currentRate)
 
-    //Enviar la transacción pasando el costo exacto en la propiedad value
+    //Enviar la transacción pasando el valor equivalente en ETH
     const tx = await contract.buy({ value: ethCostInWei })
     return await tx.wait()
   }
 
   /**
-   * Permite al usuario vender sus BENCOINs a cambio de ETH.
+   * Permite al usuario vender sus BENCOINs ingresando la cantidad legible de tokens.
+   * Cantidad de BEN a vender (ej: 150 o "150.5")
    */
   async sell(tokenAmount) {
     const contract = await this._getContractInstance()
-    const bigIntTokenAmount = ethers.parseEther(tokenAmount.toString())
 
-    const tx = await contract.sell(bigIntTokenAmount)
+    // Escalar la cantidad de tokens deseada a sus 18 decimales (unidades base)
+    // El contrato recibe el valor exacto con sus 18 decimales incorporados
+    const tokensInBaseUnits = ethers.parseEther(tokenAmount.toString())
+
+    const tx = await contract.sell(tokensInBaseUnits)
     return await tx.wait()
   }
 }

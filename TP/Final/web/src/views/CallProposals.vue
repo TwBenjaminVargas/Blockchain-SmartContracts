@@ -245,10 +245,10 @@
                       </template>
 
                       <template v-else-if="matchState(proposal.state, 'created') || matchState(proposal.state, 'initial') || !proposal.state">
-  
-                        <!-- Mostrar botón de Registro SOLO si NO tiene transacción confirmada -->
+
+                        <!-- Mostrar botón de Registro SOLO si NO se ha confirmado en la blockchain -->
                         <v-btn
-                          v-if="!proposal.blockchainEvidence?.registrationTx"
+                          v-if="!chainStatusMap[proposal.proposalId]"
                           color="teal-darken-1"
                           variant="flat"
                           class="rounded-lg font-weight-bold text-white shadow-sm d-flex align-center"
@@ -260,7 +260,7 @@
                           Registrar en Blockchain
                         </v-btn>
 
-                        <!-- Mostrar Recibos SOLO si YA está en la blockchain (tiene Tx) -->
+                        <!-- Mostrar Recibos SOLO si YA está en la blockchain -->
                         <template v-else>
                           <v-btn
                             color="indigo-darken-1"
@@ -628,7 +628,7 @@ const closingTimeISO = ref(null)
 
 const creatorDomain = ref('')
 const userDomain = ref('')
-const guaranteeAmount = ref(0)
+const guaranteeAmount = ref('0')
 const cfpContractAddress = ref('')
 const hasAllowance = ref(false)
 const approvingGuarantee = ref(false)
@@ -663,6 +663,11 @@ const selectedProposal = ref(null)
 
 const submittingChainId = ref(null)
 
+const userBalance = ref(BigInt(0))
+
+const chainStatusMap = ref({})
+
+
 const isCallClosed = computed(() => {
   if (!closingTimeISO.value) return false
   return currentTime.value > new Date(closingTimeISO.value)
@@ -695,6 +700,24 @@ const isGuaranteeFormDisabled = computed(() => {
 const matchState = (currentStatus, targetStatus) => {
   if (currentStatus === undefined || currentStatus === null) return false
   return currentStatus.toString().trim().toLowerCase() === targetStatus.trim().toLowerCase()
+}
+
+const checkProposalsOnChainStatus = async () => {
+  if (!proposals.value || proposals.value.length === 0) return
+
+  const checks = proposals.value.map(async (prop) => {
+    if (!prop.proposalId) return
+    try {
+      const chainData = await cfpService.getProposalData(callId.value, prop.proposalId)
+      // Actualiza el mapa indicando si la propuesta existe on-chain
+      chainStatusMap.value[prop.proposalId] = chainData.exists
+    } catch (err) {
+      console.error(`Error verificando proposal ${prop.proposalId} on-chain:`, err)
+      chainStatusMap.value[prop.proposalId] = false
+    }
+  })
+
+  await Promise.all(checks)
 }
 
 // Calcular la raíz de Merkle localmente
@@ -768,11 +791,13 @@ const submitProposalBlockchainFromList = async (proposal) => {
   try {
     submittingChainId.value = proposal.proposalId
     
-    // Ejecuta el registro en el Smart Contract usando el proposalId (Raíz de Merkle)
+    // Ejecuta el registro en el Smart Contract
     await cfpService.registerProposal(callId.value, proposal.proposalId)
     
-    // Una vez confirmada la Tx, recarga las propuestas 
-    // para que la API devuelva la nueva 'registrationTx' y se actualice la UI
+    // Marca la propuesta como registrada On-Chain de inmediato
+    chainStatusMap.value[proposal.proposalId] = true
+    
+    // Vuelve a cargar las propuestas
     await loadProposals()
     
   } catch (error) {
@@ -826,19 +851,15 @@ const fetchDomains = async () => {
  * Carga el Contrato del Llamado y verifica si el usuario ya otorgó Allowance
  */
 const checkAllowanceAndGuarantee = async () => {
-  console.log("Verificando dirección del contrato CFP y allowance...")
-  console.log("Call ID:", callId.value)
   if (!callId.value) return
   try {
     const resp = await getCallContractAddress(callId.value)
-    console.log("Dirección del contrato CFP obtenida:", resp)
     cfpContractAddress.value = typeof resp === 'string' ? resp : resp.address
 
     if (walletStore.account && cfpContractAddress.value && guaranteeAmount.value > 0) {
       const currentAllowance = await tokenService.allowance(walletStore.account, cfpContractAddress.value)
       
-      // Convertir 'guarantee' a formato String/BigInt de Wei seguro sin notaciones exponenciales
-      const requiredWei = BigInt(BigInt(guaranteeAmount.value).toString())
+      const requiredWei = BigInt(guaranteeAmount.value.toString())
       hasAllowance.value = BigInt(currentAllowance) >= requiredWei
     }
   } catch (err) {
@@ -855,27 +876,26 @@ const handleApproveGuarantee = async () => {
   try {
     approvingGuarantee.value = true
     
-    // 1. Formatear la garantía requerida a BigInt en Wei
-    const requiredWei = BigInt(BigInt(guaranteeAmount.value).toString())
+    // Tomar el valor directo en Wei (BigInt)
+    const requiredWei = BigInt(guaranteeAmount.value.toString())
 
-    // 2. Consultar el balance actual del usuario en la Blockchain
+    // Consultar el balance del usuario (debe retornar Wei en BigInt o String Hex)
     const userBalanceHex = await tokenService.balanceOf(walletStore.account)
     const userBalance = BigInt(userBalanceHex)
 
-    // 3. Validar si los fondos son suficientes
+    // Validar si los fondos en Wei son suficientes
     if (userBalance < requiredWei) {
       verificationDialog.value = {
         open: true,
         success: false,
-        message: `Fondos insuficientes. Requieres ${formatTokenAmount(guaranteeAmount.value)} BEN para la garantía pero tu saldo actual es de ${formatTokenAmount(userBalance)} BEN.`,
+        message: `Fondos insuficientes. Requieres ${formatTokenAmount(requiredWei)} BEN para la garantía pero tu saldo actual es de ${formatTokenAmount(userBalance)} BEN.`,
         filesVerification: null
       }
       return
     }
 
-    // 4. Si tiene fondos suficientes, se procede con la aprobación (allowance)
-    const amountInWei = requiredWei.toString()
-    await tokenService.approve(cfpContractAddress.value, amountInWei)
+    // Se envía a la blockchain la cantidad exacta en Wei
+    await tokenService.approve(cfpContractAddress.value, requiredWei.toString())
     hasAllowance.value = true
 
   } catch (err) {
@@ -1031,8 +1051,9 @@ const loadCallDetails = async () => {
     callData.value = callResponse
     closingTimeISO.value = closingTimeResponse.closingTime 
     
-    // Obtener la garantía requerida si viene del endpoint
-    guaranteeAmount.value = callResponse.guarantee || callResponse.guaranteeAmount || 0
+    // Obtener la garantía requerida
+    const rawGuarantee = callResponse.guarantee ?? callResponse.guaranteeAmount ?? '0'
+    guaranteeAmount.value = rawGuarantee.toString()
 
     await fetchDomains()
     await checkAllowanceAndGuarantee()
@@ -1048,6 +1069,9 @@ const loadProposals = async () => {
     loadingProposals.value = true
     const list = await getProposalsByCall(callId.value)
     proposals.value = list
+    
+    // Verificar en la Blockchain la existencia de cada propuesta
+    await checkProposalsOnChainStatus()
   } catch (error) {
     console.error("Error al cargar las propuestas:", error)
   } finally {
