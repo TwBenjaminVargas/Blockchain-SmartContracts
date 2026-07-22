@@ -475,12 +475,12 @@
 
 
           <v-alert
-            v-if="guaranteeAmount > 0 && (!walletStore.account || !userDomain)"
+            v-if="guaranteeAmount > 0 && !isUserReady"
             type="warning"
             variant="tonal"
             class="rounded-xl mb-4 text-caption font-weight-bold"
           >
-            Debes tener activa una cuenta de MetaMask y un dominio para registrar propuestas en este llamado.
+            Debes tener activa una cuenta de MetaMask y un dominio ENS vinculado para registrar propuestas en este llamado.
           </v-alert>
 
 
@@ -835,6 +835,17 @@ const withdrawingGuarantee = ref(false)
 
 const closingFileSubmission = ref(false)
 
+
+// Dominio del usuario actual derivado de la tienda ENS o la propiedad local
+const currentUserDomain = computed(() => {
+  return ensStore.userDomain || userDomain.value || ''
+})
+
+// Evalúa si el usuario cumple con tener cuenta y dominio
+const isUserReady = computed(() => {
+  return Boolean(walletStore.account && currentUserDomain.value)
+})
+
 /**
  * Evalúa si el usuario actual es el Creador de la Convocatoria/Llamado.
  */
@@ -916,7 +927,7 @@ const showEvaluatingNotice = computed(() => {
 // Regla de deshabilitación para envíos con garantía
 const isGuaranteeFormDisabled = computed(() => {
   if (guaranteeAmount.value > 0) {
-    if (!walletStore.account || !userDomain.value || !hasAllowance.value) return true
+    if (!walletStore.account || !currentUserDomain.value || !hasAllowance.value) return true
   }
   return selectedFilesList.value.length === 0 || hashingInProgress.value
 })
@@ -1659,14 +1670,36 @@ const copyToClipboard = async (text) => {
     console.error('Error al intentar copiar al portapapeles:', err)
   }
 }
-watch(() => walletStore.account, () => {
-  checkWithdrawableGuarantee();
-  ensStore.refreshStore();
-})
 
-onMounted(() => {
-  if (callId.value) { loadCallDetails(); loadProposals(); checkWithdrawableGuarantee(); checkIsFileSubmissionOpen(); ensStore.refreshStore();}
-  clockInterval = setInterval(() => { currentTime.value = new Date() }, 1000)
+watch(() => walletStore.account, async (newAccount) => {
+  if (newAccount) {
+    await fetchDomains()
+    checkWithdrawableGuarantee()
+    await ensStore.refreshStore()
+  } else {
+    userDomain.value = ''
+  }
+}, { immediate: true })
+
+onMounted(async () => {
+  if (callId.value) {
+    // Cargar datos del llamado y resoluciones de dominio
+    await loadCallDetails()
+    await fetchDomains()
+    
+    // Cargar listado de propuestas y verificaciones
+    loadProposals()
+    checkWithdrawableGuarantee()
+    checkIsFileSubmissionOpen()
+    
+    //Refrescar ENS
+    await ensStore.refreshStore()
+  }
+  
+  // Reloj para actualización del tiempo de cierre
+  clockInterval = setInterval(() => { 
+    currentTime.value = new Date() 
+  }, 1000)
 })
 onBeforeUnmount(() => { if (clockInterval) clearInterval(clockInterval) })
 </script>
