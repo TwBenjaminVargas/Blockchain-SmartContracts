@@ -48,9 +48,16 @@ export const useENSStore = defineStore('ens', {
       this.loading = true
       try {
         let provider = new ethers.JsonRpcProvider(URL.provider)
-
-        // Si hay cuenta conectada, obtenemos signer para transacciones; si no, usamos provider solo lectura
         let runner = provider
+
+        // Si MetaMask está conectado, usamos el Signer como runner
+        if (window.ethereum) {
+          const browserProvider = new ethers.BrowserProvider(window.ethereum)
+          const accounts = await browserProvider.listAccounts()
+          if (accounts.length > 0) {
+            runner = await browserProvider.getSigner()
+          }
+        }
 
         const baseAddresses = await getENSAddresses()
         this.registryAddress = ethers.getAddress(baseAddresses.registry.trim())
@@ -69,7 +76,7 @@ export const useENSStore = defineStore('ens', {
         this.registrarLlamadosAddress = llamadosOwner
         this.reverseRegistrarAddress = reverseOwner
 
-        // Instanciar contratos vinculados al runner (Signer o Provider read-only)
+        // Instanciar contratos vinculados al runner (Signer si hay billetera, de lo contrario Provider)
         this.registryContract = new ethers.Contract(this.registryAddress, FILES.REGISTRY_ABI, runner)
         this.resolverContract = new ethers.Contract(this.resolverAddress, FILES.RESOLVER_ABI, runner)
         this.registrarUsuariosContract = new ethers.Contract(this.registrarUsuariosAddress, FILES.USUARIOS_REGISTRAR_ABI, runner)

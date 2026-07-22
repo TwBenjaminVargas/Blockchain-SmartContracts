@@ -38,7 +38,7 @@
               <template #prepend>
                 <img src="/metamask-icon.svg" alt="MetaMask" width="26" height="26" class="me-2" />
               </template>
-              CONECTAR METAMASK
+              REGISTRARME COMO CREADOR
             </v-btn>
 
             <v-btn
@@ -58,13 +58,27 @@
             <v-btn
               block
               height="56"
+              color="indigo-darken-3"
+              variant="tonal"
+              class="mb-4 font-weight-bold rounded-lg text-button"
+              @click="goToDomain"
+            >
+              <template #prepend>
+                <v-icon icon="mdi-dns-outline" size="22" class="me-2"></v-icon>
+              </template>
+              REGISTRAR DOMINIO ENS
+            </v-btn>
+
+            <v-btn
+              block
+              height="56"
               variant="outlined"
               color="#334155"
               class="font-weight-bold rounded-lg text-button custom-guest-btn"
               @click="handleGuestLogin"
             >
               <template #prepend>
-                <v-icon icon="md:sharp-person" size="22" class="me-2"></v-icon>
+                <v-icon icon="mdi-account" size="22" class="me-2"></v-icon>
               </template>
               ENTRAR A VISTA PÚBLICA
             </v-btn>
@@ -107,6 +121,9 @@ async function handleMetaMaskConnection() {
 
 function goToWallet() {
   router.push({ name: 'wallet' })
+}
+function goToDomain() {
+  router.push({ name: 'domain' })
 }
 
 function handleGuestLogin() {
