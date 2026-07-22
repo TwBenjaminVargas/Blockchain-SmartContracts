@@ -116,10 +116,19 @@ export class CFPService {
     const contract = await this._getContractInstance(callId)
     return await contract.isFileSubmissionOpen()
   }
-  
+
   async closeFileSubmission(callId) {
     const contract = await this._getContractInstance(callId, true)
     const tx = await contract.closeFileSubmission()
+    return await tx.wait()
+  }
+  /**
+   * Autoriza a un usuario específico a retirar su garantía mediante el Patrón Pull.
+   * Ejecuta authorizeGuaranteeWithdraw(usuario) en el Smart Contract.
+   */
+  async authorizeGuaranteeWithdraw(callId, userAddress) {
+    const contract = await this._getContractInstance(callId, true)
+    const tx = await contract.authorizeGuaranteeWithdraw(userAddress)
     return await tx.wait()
   }
 }

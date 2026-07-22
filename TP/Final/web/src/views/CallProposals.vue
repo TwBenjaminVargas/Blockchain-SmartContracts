@@ -13,7 +13,7 @@
               icon
               color="indigo-darken-1" 
               class="rounded-lg d-flex align-center justify-center"
-              @click="$router.push({ name: 'public' })"
+              @click="$router.go(-1)"
             >
               <img :src="exit_svg" alt="Volver" width="24" height="24" style="opacity: 0.8;" />
             </v-btn>
@@ -347,6 +347,35 @@
                       </div>
 
                       <div class="d-flex justify-end gap-2 border-top pt-3">
+
+                        <!-- Control de Autorización de Garantía (Visible solo tras cerrar la entrega de archivos y para el Administrador/Creador) -->
+                        <template v-if="!isFileSubmissionOpen && Number(guaranteeAmount) > 0 && walletStore.account?.toLowerCase() === callData?.creator?.toLowerCase()">
+                          <!-- Opción 1: Si ya está autorizado -->
+                          <v-btn
+                            v-if="authorizedWithdrawMap[proposal.proposalId]"
+                            color="teal-darken-2"
+                            variant="tonal"
+                            class="rounded-lg font-weight-bold cursor-default"
+                            readonly
+                          >
+                            <v-icon icon="mdi-shield-check" class="me-1" size="18"></v-icon>
+                            Autorizado a retirar fondos
+                          </v-btn>
+
+                          <!-- Opción 2: Si aún no está autorizado -->
+                          <v-btn
+                            v-else
+                            color="amber-darken-3"
+                            variant="flat"
+                            class="rounded-lg font-weight-bold text-white shadow-sm"
+                            :loading="authorizingMap[proposal.proposalId]"
+                            :disabled="!proposalOwnersMap[proposal.proposalId]"
+                            @click="handleAuthorizeGuarantee(proposal.proposalId)"
+                          >
+                            <v-icon icon="mdi-lock-open-outline" class="me-1" size="18"></v-icon>
+                            Autorizar Retiro de Garantía
+                          </v-btn>
+                        </template>
                         
                         <template v-if="matchState(proposal.state, 'delivered')">
                           <v-btn
@@ -774,6 +803,10 @@ const postClosingFilesList = ref([])
 const postClosingError = ref(null)
 const selectedProposal = ref(null)
 
+const authorizedWithdrawMap = ref({})
+
+const authorizingMap = ref({})
+
 const proposalOwnersMap = ref({})
 
 const submittingChainId = ref(null)
@@ -860,13 +893,9 @@ const checkProposalsOnChainStatus = async () => {
     if (!prop.proposalId) return
     try {
       const chainData = await cfpService.getProposalData(callId.value, prop.proposalId)
-      
-      // Actualiza la existencia on-chain
       chainStatusMap.value[prop.proposalId] = chainData.exists
 
-      // Guarda la dirección del creador/owner según los datos retornados por la blockchain
       const ownerOnChain = chainData.sender
-      console.log(`Owner on-chain for proposal ${prop.proposalId}:`, ownerOnChain)
       if (ownerOnChain) {
         proposalOwnersMap.value[prop.proposalId] = ownerOnChain.toString().toLowerCase()
       }
@@ -877,6 +906,8 @@ const checkProposalsOnChainStatus = async () => {
   })
 
   await Promise.all(checks)
+  // Revisa el estado de autorizaciones de retiro
+  await checkAuthorizedWithdrawals()
 }
 /*
 * Consulta en el Smart Contract si el usuario actual tiene saldo de garantía disponible para retirar
@@ -894,6 +925,75 @@ const checkWithdrawableGuarantee = async () => {
     canWithdrawGuarantee.value = false
   }
 }
+
+/**
+ * Consulta en el Smart Contract si el usuario dueño de la propuesta está autorizado a retirar garantía
+ */
+const checkAuthorizedWithdrawals = async () => {
+  if (!proposals.value || proposals.value.length === 0) return
+
+  const checks = proposals.value.map(async (prop) => {
+    const ownerAddress = proposalOwnersMap.value[prop.proposalId]
+    if (!ownerAddress) return
+
+    try {
+      const isAuthorized = await cfpService.isAuthorizedToWithdrawGuarantee(callId.value, ownerAddress)
+      authorizedWithdrawMap.value[prop.proposalId] = Boolean(isAuthorized)
+    } catch (err) {
+      console.error(`Error verificando autorización para ${ownerAddress}:`, err)
+      authorizedWithdrawMap.value[prop.proposalId] = false
+    }
+  })
+
+  await Promise.all(checks)
+}
+
+/**
+ * Autoriza el retiro de garantía a un usuario utilizando la dirección vinculada a su propuesta
+ */
+const handleAuthorizeGuarantee = async (proposalId) => {
+  const userAddress = proposalOwnersMap.value[proposalId]
+  if (!userAddress) {
+    verificationDialog.value = {
+      open: true,
+      success: false,
+      message: 'No se pudo determinar la dirección Ethereum asociada a esta propuesta.',
+      filesVerification: null
+    }
+    return
+  }
+
+  try {
+    authorizingMap.value[proposalId] = true
+
+    // Invocar el contrato pasándole la dirección del usuario
+    await cfpService.authorizeGuaranteeWithdraw(callId.value, userAddress)
+
+    // Notificación de éxito
+    verificationDialog.value = {
+      open: true,
+      success: true,
+      message: `Se ha autorizado con éxito el retiro de garantía para ${userAddress}.`,
+      filesVerification: null
+    }
+
+    // Actualiza el mapa de estado para cambiar el botón
+    authorizedWithdrawMap.value[proposalId] = true
+  } catch (err) {
+    console.error("Error al autorizar retiro de garantía:", err)
+    verificationDialog.value = {
+      open: true,
+      success: false,
+      message: err.code === 4001 || err.message?.includes('user rejected')
+        ? 'Transacción cancelada por el usuario en MetaMask.'
+        : `Error en la red: ${err.message || 'No se pudo completar la autorización.'}`,
+      filesVerification: null
+    }
+  } finally {
+    authorizingMap.value[proposalId] = false
+  }
+}
+
 
 /**
  * Ejecuta la transferencia de los tokens autorizados desde la dirección
