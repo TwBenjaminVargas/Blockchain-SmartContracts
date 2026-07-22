@@ -408,59 +408,73 @@ async def register_proposal(
                 status_code=status.HTTP_403_FORBIDDEN, 
                 content={"message": Messages.ALREADY_REGISTERED}
             )
-        try:
-            tx_not_signed = contract_manager.register_proposal(
-                from_address=signer.address,
-                call_id_hex=payload.callId,
-                proposal_hex=proposal_id 
-            )
+        if payload.blockchain:
+            try:
+                tx_not_signed = contract_manager.register_proposal(
+                    from_address=signer.address,
+                    call_id_hex=payload.callId,
+                    proposal_hex=proposal_id 
+                )
 
 
-            tx_signed_bytes = signer.sign_transaction(tx_not_signed)
+                tx_signed_bytes = signer.sign_transaction(tx_not_signed)
 
 
-            tx_hash_hex = contract_manager.execute_transaction(tx_signed_bytes)
-            
-            receipt = contract_manager.get_transaction_receipt(tx_hash_hex)
-            logger.info(f"Confirmación on-chain exitosa para propuesta {proposal_id} en el bloque {receipt.get('blockNumber')}")
-            
-            mining_block = receipt.get('blockNumber')
-            block_data = contract_manager.get_block_data_by_number(block_number=mining_block)
-            block_timestamp = block_data.get('timestamp')
-            
-        except contract_exceptions.BlockchainContractLogicException as bcle:
-            error_message = contract_manager.map_revert_reason_to_message(bcle.message)
-            
-            if error_message == Messages.ALREADY_REGISTERED:
-                return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content={"message": error_message})
-            elif error_message == Messages.CALLID_NOT_FOUND:
-                return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={"message": error_message})
-            else:
+                tx_hash_hex = contract_manager.execute_transaction(tx_signed_bytes)
+                
+                receipt = contract_manager.get_transaction_receipt(tx_hash_hex)
+                logger.info(f"Confirmación on-chain exitosa para propuesta {proposal_id} en el bloque {receipt.get('blockNumber')}")
+                
+                mining_block = receipt.get('blockNumber')
+                block_data = contract_manager.get_block_data_by_number(block_number=mining_block)
+                block_timestamp = block_data.get('timestamp')
+                
+            except contract_exceptions.BlockchainContractLogicException as bcle:
+                error_message = contract_manager.map_revert_reason_to_message(bcle.message)
+                
+                if error_message == Messages.ALREADY_REGISTERED:
+                    return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content={"message": error_message})
+                elif error_message == Messages.CALLID_NOT_FOUND:
+                    return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={"message": error_message})
+                else:
+                    return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"message": Messages.INTERNAL_ERROR})
+
+            except contract_exceptions.BlockchainTransactionException as bte:
+                logger.error(f"Fallo de infraestructura en la red blockchain: {str(bte)}")
                 return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"message": Messages.INTERNAL_ERROR})
 
-        except contract_exceptions.BlockchainTransactionException as bte:
-            logger.error(f"Fallo de infraestructura en la red blockchain: {str(bte)}")
-            return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"message": Messages.INTERNAL_ERROR})
-
-        except contract_exceptions.UnderfundedWalletException as uwe:
-            logger.critical(f"ALERTA OPERATIVA: El nodo rechazó la operación por falta de gas. {str(uwe)}")
-            return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"message": Messages.INTERNAL_ERROR})
+            except contract_exceptions.UnderfundedWalletException as uwe:
+                logger.critical(f"ALERTA OPERATIVA: El nodo rechazó la operación por falta de gas. {str(uwe)}")
+                return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"message": Messages.INTERNAL_ERROR})
 
         try:
-            db_manager.register_proposal(
-                call_id=payload.callId,
-                proposal_id=proposal_id,
-                title=payload.title,
-                title_hash=t_hash,               
-                description=payload.description,
-                description_hash=d_hash,         
-                files=payload.files,             
-                proofs=merkle_proofs,            
-                created=block_timestamp,
-                blocknumber=mining_block,
-                sender=receipt.get('from'),
-                registration_transaction_hash=tx_hash_hex,    
-            )
+            if payload.blockchain:
+                db_manager.register_proposal(
+                    call_id=payload.callId,
+                    proposal_id=proposal_id,
+                    title=payload.title,
+                    title_hash=t_hash,               
+                    description=payload.description,
+                    description_hash=d_hash,         
+                    files=payload.files,             
+                    proofs=merkle_proofs,            
+                    created=block_timestamp,
+                    blocknumber=mining_block,
+                    sender=receipt.get('from'),
+                    registration_transaction_hash=tx_hash_hex    
+                )
+            else:
+                db_manager.register_proposal(
+                    call_id=payload.callId,
+                    proposal_id=proposal_id,
+                    title=payload.title,
+                    title_hash=t_hash,               
+                    description=payload.description,
+                    description_hash=d_hash,         
+                    files=payload.files,             
+                    proofs=merkle_proofs 
+                )
+                
         except db_exceptions.RecordAlreadyExistsException:
             return JSONResponse(
                 status_code=status.HTTP_403_FORBIDDEN, 
@@ -572,6 +586,7 @@ async def get_call(
                     "description": call_record.description,
                     "status": "pending",
                     "domain": call_record.domain,
+                    "creator": call_record.creator,
                     "guarantee": call_record.guaranteeAmount
                 }
             )
@@ -585,7 +600,8 @@ async def get_call(
                     "title": call_record.title,
                     "description": call_record.description,
                     "status": "created",
-                    "domain": call_record.domain
+                    "domain": call_record.domain,
+                    "guarantee": call_record.guaranteeAmount
                 }
             )
             

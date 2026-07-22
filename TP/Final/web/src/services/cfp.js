@@ -86,7 +86,29 @@ export class CFPService {
 
     return await contract.isAuthorizedToWithdrawGuarantee(formattedUser)
   }
+  /**
+     * Verifica si una propuesta (hash) ya existe en la blockchain.
+     * Retorna true si la propuesta ya fue guardada on-chain.
+     */
+    async getProposalData(callId, proposalHash) {
+    const contract = await this._getContractInstance(callId)
+    const formattedProposal = proposalHash.startsWith('0x') ? proposalHash : `0x${proposalHash}`
+
+    // Llama al getter generado automáticamente por Solidity para public mapping proposalData
+    const proposalData = await contract.proposalData(formattedProposal)
+    
+    // Si sender es ZeroAddress (0x0000...), no existe el registro en la blockchain
+    const exists = proposalData && proposalData.sender !== ethers.ZeroAddress
+    
+    return {
+      exists,
+      sender: proposalData.sender,
+      blockNumber: proposalData.blockNumber ? proposalData.blockNumber.toString() : '0',
+      timestamp: proposalData.timestamp ? proposalData.timestamp.toString() : '0'
+    }
+  }
 }
+
 
 // Exportamos una instancia única (Singleton) para simplificar su importación
 export const cfpService = new CFPService()

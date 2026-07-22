@@ -251,16 +251,21 @@ export const getTokenAddress = async () => {
     const response = await api.get(URL.getTokenAddress)
     return response.data
   } catch (error) {
-    console.error(`Error al obtener las direcciones ENS`, error)
+    console.error(`Error al obtener las direcciones del Token`, error)
     throw error
   }
 }
-export const getCallContractAdress = async (callid) => {
+export const getCallContractAddress = async (callid) => {
+  console.log("getCallContractAddress llamado con callid:", callid)
   try {
+    if (!callid) {
+      console.warn("getCallContractAddress recibió un valor no válido:", callid)
+      return null
+    }
     const response = await api.get(URL.getCallContractAddress.replace(':call_id', callid))
     return response.data
   } catch (error) {
-    console.error(`Error al obtener las direcciones ENS`, error)
+    console.error(`Error al obtener las direcciones del contrato CFP`, error)
     throw error
   }
 }

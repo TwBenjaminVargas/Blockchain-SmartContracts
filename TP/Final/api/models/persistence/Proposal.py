@@ -19,10 +19,10 @@ class Proposal(SQLModel, table=True):
     filesJson: str = SQLField(description="Lista de archivos persistidos en formato JSON string")
     proofsJson: str = SQLField(description="Mapa de pruebas de Merkle persistido en JSON string")
     
-    created: int = SQLField(description="Timestamp Unix de confirmación on-chain")
-    createdBlocknumber: int = SQLField(description="Número de bloque en el que se minó la transacción")
-    registrationTransactionHash: str = SQLField(description="Hash único de la transacción en la blockchain", index=True)
-    sender: str = SQLField(description="Dirección de la cuenta del servidor que envió la TX")
+    created: int = SQLField(description="Timestamp Unix de confirmación on-chain",nullable=True)
+    createdBlocknumber: int = SQLField(description="Número de bloque en el que se minó la transacción",nullable=True)
+    registrationTransactionHash: str = SQLField(description="Hash único de la transacción en la blockchain",nullable=True)
+    sender: str = SQLField(description="Dirección de la cuenta del servidor que envió la TX",nullable=True)
     
     filesDelivered: bool = SQLField(default=False)
     deliveryTransactionHash: Optional[str] = SQLField(default=None, nullable=True)

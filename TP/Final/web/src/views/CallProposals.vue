@@ -38,11 +38,9 @@
               </p>
               <v-divider class="mb-3"></v-divider>
               
-              <div v-if="callData.domain" class="d-flex align-center gap-2 mb-2 text-caption text-slate-medium">
-                <strong>Dominio ENS:</strong>
-                <v-chip size="small" color="indigo-lighten-5" class="text-indigo-darken-2 font-weight-bold rounded-lg text-mono">
-                  {{ callData.domain }}
-                </v-chip>
+              <div v-if="callData.domain" class="d-flex align-center gap-1 mb-2 text-caption text-slate-medium">
+                <strong>Dominio:</strong>
+                <span class="text-mono font-weight-bold text-indigo-darken-2">{{ callData.domain }}</span>
                 <v-btn
                   icon="mdi-content-copy"
                   variant="text"
@@ -51,6 +49,33 @@
                   title="Copiar Dominio"
                   @click="copyToClipboard(callData.domain)"
                 ></v-btn>
+              </div>
+
+              <div class="d-flex flex-column gap-2 mb-3 text-caption text-slate-medium">
+                <!-- Creador -->
+                <div v-if="creatorDomain" class="d-flex align-center gap-1">
+                  <strong>Creador:</strong>
+                  <span class="text-mono font-weight-bold text-teal-darken-3">{{ creatorDomain }}</span>
+                  <v-btn
+                    icon="mdi-content-copy"
+                    variant="text"
+                    density="compact"
+                    color="teal-darken-3"
+                    title="Copiar Creador"
+                    @click="copyToClipboard(creatorDomain)"
+                  ></v-btn>
+                </div>
+
+                <!-- Garantía Requerida-->
+                <div class="d-flex align-center gap-1">
+                  <strong>Garantía Requerida:</strong>
+                  <span 
+                    class="font-weight-bold" 
+                    :class="guaranteeAmount > 0 ? 'text-amber-darken-4' : 'text-slate-dark'"
+                  >
+                    {{ guaranteeAmount > 0 ? `${formatTokenAmount(guaranteeAmount)} BEN` : 'Sin Garantía' }}
+                  </span>
+                </div>
               </div>
 
               <div class="d-flex justify-space-between align-center flex-wrap gap-2">
@@ -73,25 +98,56 @@
               </div>
             </v-card>
 
-            <div class="d-flex justify-space-between align-center mb-4">
+            <div class="d-flex justify-space-between align-center mb-4 flex-wrap gap-3">
               <h4 class="text-subtitle-1 font-weight-bold text-slate-dark">
                 Listado de Postulaciones ({{ proposals.length }})
               </h4>
-              <v-btn
-                v-if="!isCallClosed && !hasRestrictedRole"
-                color="indigo-darken-1"
-                variant="flat"
-                class="rounded-lg font-weight-bold text-white px-4 shadow-sm"
-                @click="resetFormAndOpen"
-              >
-                Añadir Propuesta
-              </v-btn>
-              <v-chip v-else-if="isCallClosed" color="amber-darken-2" variant="tonal" class="font-weight-bold rounded-lg">
-                Convocatoria Finalizada
-              </v-chip>
-              <v-chip v-else color="grey-darken-2" variant="tonal" class="font-weight-bold rounded-lg">
-                Modo Consulta
-              </v-chip>
+              
+              <div class="d-flex align-center gap-3 flex-wrap">
+                <!-- Botón de autorización de garantía en la cabecera -->
+                <template v-if="!isCallClosed && !hasRestrictedRole && guaranteeAmount > 0">
+                  <v-btn
+                    v-if="hasAllowance"
+                    color="success"
+                    variant="flat"
+                    class="rounded-lg font-weight-bold text-white cursor-default"
+                    readonly
+                  >
+                    <v-icon icon="mdi-check-circle" class="me-1" size="18"></v-icon>
+                    Garantía Autorizada
+                  </v-btn>
+
+                  <v-btn
+                    v-else
+                    color="amber-darken-3"
+                    variant="flat"
+                    class="rounded-lg font-weight-bold text-white shadow-sm"
+                    :loading="approvingGuarantee"
+                    :disabled="!walletStore.account"
+                    @click="handleApproveGuarantee"
+                  >
+                    Autorizar Retiro de Garantía ({{ formatTokenAmount(guaranteeAmount) }} BEN)
+                  </v-btn>
+                </template>
+
+                <!-- Botón Añadir Propuesta -->
+                <v-btn
+                  v-if="!isCallClosed && !hasRestrictedRole"
+                  color="indigo-darken-1"
+                  variant="flat"
+                  class="rounded-lg font-weight-bold text-white px-4 shadow-sm ms-3"
+                  :disabled="guaranteeAmount > 0 && !hasAllowance"
+                  @click="resetFormAndOpen"
+                >
+                  Añadir Propuesta
+                </v-btn>
+                <v-chip v-else-if="isCallClosed" color="amber-darken-2" variant="tonal" class="font-weight-bold rounded-lg">
+                  Convocatoria Finalizada
+                </v-chip>
+                <v-chip v-else color="grey-darken-2" variant="tonal" class="font-weight-bold rounded-lg">
+                  Modo Consulta
+                </v-chip>
+              </div>
             </div>
 
             <div v-if="loadingProposals" class="d-flex justify-center my-8 flex-grow-1 align-center">
@@ -189,23 +245,42 @@
                       </template>
 
                       <template v-else-if="matchState(proposal.state, 'created') || matchState(proposal.state, 'initial') || !proposal.state">
+  
+                        <!-- Mostrar botón de Registro SOLO si NO tiene transacción confirmada -->
                         <v-btn
-                          color="indigo-darken-1"
-                          variant="outlined"
-                          class="rounded-lg font-weight-bold"
-                          @click="openVerifyReceiptModal(proposal)"
+                          v-if="!proposal.blockchainEvidence?.registrationTx"
+                          color="teal-darken-1"
+                          variant="flat"
+                          class="rounded-lg font-weight-bold text-white shadow-sm d-flex align-center"
+                          :loading="submittingChainId === proposal.proposalId"
+                          :disabled="!walletStore.account || (guaranteeAmount > 0 && !hasAllowance)"
+                          @click="submitProposalBlockchainFromList(proposal)"
                         >
-                          Verificar con Recibo
+                          <img src="/metamask-icon.svg" alt="MetaMask" width="22" height="22" class="me-2" />
+                          Registrar en Blockchain
                         </v-btn>
 
-                        <v-btn
-                          color="secondary"
-                          variant="outlined"
-                          class="rounded-lg font-weight-bold border-light text-slate-dark"
-                          @click="downloadReceipt(proposal.proposalId)"
-                        >
-                          Descargar Recibo Inicial
-                        </v-btn>
+                        <!-- Mostrar Recibos SOLO si YA está en la blockchain (tiene Tx) -->
+                        <template v-else>
+                          <v-btn
+                            color="indigo-darken-1"
+                            variant="outlined"
+                            class="rounded-lg font-weight-bold"
+                            @click="openVerifyReceiptModal(proposal)"
+                          >
+                            Verificar con Recibo
+                          </v-btn>
+
+                          <v-btn
+                            color="secondary"
+                            variant="outlined"
+                            class="rounded-lg font-weight-bold border-light text-slate-dark"
+                            @click="downloadReceipt(proposal.proposalId)"
+                          >
+                            Descargar Recibo Inicial
+                          </v-btn>
+                        </template>
+
                       </template>
 
                       <template v-else-if="matchState(proposal.state, 'pending')">
@@ -223,7 +298,7 @@
       </v-col>
     </v-row>
 
-    <!-- Nueva propuesta -->
+    <!-- Modal Nueva Propuesta -->
     <v-dialog v-model="dialogOpen" max-width="600px" persistent>
       <v-card class="rounded-xl pa-4 bg-white panel-modal shadow-lg">
         <v-card-title class="d-flex align-center justify-space-between text-slate-dark font-weight-bold text-h6">
@@ -234,6 +309,18 @@
         </v-card-title>
         <v-divider class="my-2"></v-divider>
         <v-card-text class="pa-2">
+
+
+          <v-alert
+            v-if="guaranteeAmount > 0 && (!walletStore.account || !userDomain)"
+            type="warning"
+            variant="tonal"
+            class="rounded-xl mb-4 text-caption font-weight-bold"
+          >
+            Debes tener activa una cuenta de MetaMask y un dominio para registrar propuestas en este llamado.
+          </v-alert>
+
+
           <v-form ref="formRef" v-model="isFormValid" lazy-validation>
             <div class="text-subtitle-2 font-weight-bold text-slate-dark mb-2">Título de la propuesta *</div>
             <v-text-field
@@ -296,16 +383,64 @@
               <div class="text-mono text-truncate text-xxs">{{ localProposalId }}</div>
             </v-alert>
             <div v-if="fileError" class="text-caption text-error mb-2 font-weight-bold">{{ fileError }}</div>
+
           </v-form>
         </v-card-text>
-        <v-card-actions class="justify-end pa-2 border-top mt-4">
-          <v-btn variant="text" color="slate-medium" class="rounded-lg font-weight-bold px-4" @click="dialogOpen = false" :disabled="submitting">Cancelar</v-btn>
-          <v-btn color="indigo-darken-1" variant="flat" class="rounded-lg font-weight-bold px-6 text-white shadow-sm" @click="submitProposal" :loading="submitting" :disabled="selectedFilesList.length === 0 || hashingInProgress">Enviar Propuesta</v-btn>
+
+
+        <v-card-actions class="justify-end pa-2 border-top mt-4 gap-2">
+          <v-btn variant="text" color="slate-medium" class="rounded-lg font-weight-bold px-4" @click="dialogOpen = false" :disabled="submitting">
+            Cancelar
+          </v-btn>
+
+          <!-- Flujo A: Sin costo / Sin garantía (Mantiene comportamiento habitual) -->
+          <template v-if="guaranteeAmount === 0">
+            <v-btn 
+              color="indigo-darken-1" 
+              variant="flat" 
+              class="rounded-lg font-weight-bold px-6 text-white shadow-sm" 
+              @click="submitProposalStandard" 
+              :loading="submitting" 
+              :disabled="selectedFilesList.length === 0 || hashingInProgress"
+            >
+              Enviar Propuesta
+            </v-btn>
+          </template>
+
+          <!-- Con Garantía (Dos Etapas: Registro API y Registro Blockchain) -->
+          <template v-else>
+            <!-- Paso 1: Registro en API -->
+            <v-btn
+              v-if="!apiRegistered"
+              color="indigo-darken-1"
+              variant="flat"
+              class="rounded-lg font-weight-bold text-white shadow-sm"
+              @click="submitProposalApiOnly"
+              :loading="submitting"
+              :disabled="isGuaranteeFormDisabled"
+            >
+              Registrar en API
+            </v-btn>
+
+            <!--Registro en Blockchain -->
+            <v-btn
+              v-if="apiRegistered && !chainRegistered"
+              color="teal-darken-1"
+              variant="flat"
+              class="rounded-lg font-weight-bold text-white shadow-sm d-flex align-center"
+              @click="submitProposalBlockchainOnly"
+              :loading="submittingChain"
+              :disabled="isGuaranteeFormDisabled"
+            >
+              <img src="/metamask-icon.svg" alt="MetaMask" width="22" height="22" class="me-2" />
+              Registrar en Blockchain
+            </v-btn>
+          </template>
         </v-card-actions>
       </v-card>
     </v-dialog>
 
-    <!-- Entrega Post-Cierre -->
+    <!-- Modal Entrega Post-Cierre -->
     <v-dialog v-model="postClosingDialogOpen" max-width="600px" persistent>
       <v-card class="rounded-xl pa-4 bg-white panel-modal shadow-lg">
         <v-card-title class="d-flex align-center justify-space-between text-slate-dark font-weight-bold text-h6">
@@ -330,7 +465,7 @@
       </v-card>
     </v-dialog>
 
-    <!-- Verificar Recibo -->
+    <!-- Modal Verificar Recibo -->
     <v-dialog v-model="verifyReceiptDialogOpen" max-width="600px" persistent>
       <v-card class="rounded-xl pa-4 bg-white panel-modal shadow-lg">
         <v-card-title class="d-flex align-center justify-space-between text-slate-dark font-weight-bold text-h6">
@@ -375,7 +510,6 @@
             <div class="text-caption text-slate-medium">Formatos permitidos: PDF, ZIP, DOCX (Máx. 10MB)</div>
           </div>
 
-
           <div v-if="verifyFileList.length > 0" class="mt-2">
             <v-sheet class="pa-3 border rounded-lg bg-slate-light-flat">
               <div v-for="(fileItem, index) in verifyFileList" :key="index" class="d-flex align-center justify-space-between text-caption">
@@ -412,7 +546,7 @@
       </v-card>
     </v-dialog>
 
-    <!-- Resultado global del proceso -->
+    <!-- Dialog Resultado -->
     <v-dialog v-model="verificationDialog.open" max-width="500px">
       <v-card class="rounded-xl pa-4 bg-white text-center">
         <v-card-title class="justify-center d-flex flex-column align-center">
@@ -422,7 +556,6 @@
         <v-card-text class="text-body-1 text-slate-medium pa-2">
           {{ verificationDialog.message }}
 
-          <!-- Si el backend manda información del contraste de archivos -->
           <div v-if="verificationDialog.filesVerification && Object.keys(verificationDialog.filesVerification).length > 0" class="mt-4 text-left">
             <v-divider class="mb-3"></v-divider>
             <div class="text-caption font-weight-bold text-slate-dark mb-2">Comprobación de Archivos Físicos:</div>
@@ -446,9 +579,10 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { keccak256 } from 'js-sha3'
+import { ethers } from 'ethers'
 import { useWalletStore } from '../stores/wallet'
 import { 
   getCallById, 
@@ -459,9 +593,14 @@ import {
   verifyProposalReceipt,
   submitPostClosing,
   downloadProposalFiles,
-  getProposalReceiptPostClosing 
+  getProposalReceiptPostClosing,
+  getCallContractAddress
 } from '../services/api'
 import { ASSETS } from '../config/constants'
+
+import { reverseResolveAddress } from '../services/ens'
+import { cfpService } from '../services/cfp'
+import { tokenService } from '../services/token'
 
 const route = useRoute()
 const walletStore = useWalletStore()
@@ -477,6 +616,7 @@ const dialogOpen = ref(false)
 const loadingCall = ref(true)
 const loadingProposals = ref(true)
 const submitting = ref(false)
+const submittingChain = ref(false)
 const isFormValid = ref(false)
 
 const downloadingZipId = ref(null)
@@ -485,6 +625,16 @@ const downloadingReceiptId = ref(null)
 const callData = ref(null)
 const proposals = ref([])
 const closingTimeISO = ref(null)
+
+const creatorDomain = ref('')
+const userDomain = ref('')
+const guaranteeAmount = ref(0)
+const cfpContractAddress = ref('')
+const hasAllowance = ref(false)
+const approvingGuarantee = ref(false)
+
+const apiRegistered = ref(false)
+const chainRegistered = ref(false)
 
 const currentTime = ref(new Date())
 let clockInterval = null
@@ -511,14 +661,35 @@ const postClosingFilesList = ref([])
 const postClosingError = ref(null)
 const selectedProposal = ref(null)
 
+const submittingChainId = ref(null)
+
 const isCallClosed = computed(() => {
   if (!closingTimeISO.value) return false
   return currentTime.value > new Date(closingTimeISO.value)
 })
 
+
 const hasRestrictedRole = computed(() => {
+  const userAddr = walletStore.account?.toLowerCase()
   const role = walletStore.userRole?.toLowerCase()
-  return role === 'admin' || role === 'creator'
+
+  //Si es Administrador
+  if (role === 'admin') return true
+
+  //Si es Creador, solo tiene modo consulta si es el creador de ESTE llamado
+  if (role === 'creator' && callData.value?.creator) {
+    return callData.value.creator.toLowerCase() === userAddr
+  }
+
+  return false
+})
+
+// Regla de deshabilitación para envíos con garantía
+const isGuaranteeFormDisabled = computed(() => {
+  if (guaranteeAmount.value > 0) {
+    if (!walletStore.account || !userDomain.value || !hasAllowance.value) return true
+  }
+  return selectedFilesList.value.length === 0 || hashingInProgress.value
 })
 
 const matchState = (currentStatus, targetStatus) => {
@@ -526,7 +697,7 @@ const matchState = (currentStatus, targetStatus) => {
   return currentStatus.toString().trim().toLowerCase() === targetStatus.trim().toLowerCase()
 }
 
-// Función para calcular la raíz de Merkle localmente
+// Calcular la raíz de Merkle localmente
 const localProposalId = computed(() => {
   if (!formProposal.value.title || !formProposal.value.description || selectedFilesList.value.length === 0 || hashingInProgress.value) {
     return ''
@@ -591,13 +762,235 @@ const localProposalId = computed(() => {
   }
 })
 
+const submitProposalBlockchainFromList = async (proposal) => {
+  if (!proposal || !proposal.proposalId) return
+  
+  try {
+    submittingChainId.value = proposal.proposalId
+    
+    // Ejecuta el registro en el Smart Contract usando el proposalId (Raíz de Merkle)
+    await cfpService.registerProposal(callId.value, proposal.proposalId)
+    
+    // Una vez confirmada la Tx, recarga las propuestas 
+    // para que la API devuelva la nueva 'registrationTx' y se actualice la UI
+    await loadProposals()
+    
+  } catch (error) {
+    console.error("Error al registrar propuesta desde la lista en blockchain:", error)
+  } finally {
+    submittingChainId.value = null
+  }
+}
+
+const formatTokenAmount = (amount) => {
+  if (!amount || amount === 0) return '0'
+  try {
+    return ethers.formatEther(amount.toString())
+  } catch (e) {
+    return amount
+  }
+}
+
+// Watcher para reevaluar la propuesta actual en API / Blockchain al cambiar el ID local
+watch(localProposalId, async (newVal) => {
+  if (newVal) {
+    await checkProposalProgress(newVal)
+  } else {
+    apiRegistered.value = false
+    chainRegistered.value = false
+  }
+})
+
+/**
+ * Resuelve el dominio ENS del Creador y del Usuario Conectado
+ */
+const fetchDomains = async () => {
+  if (callData.value?.creator) {
+    try {
+      creatorDomain.value = await reverseResolveAddress(callData.value.creator)
+    } catch (e) {
+      console.error("Error al resolver dominio del creador:", e)
+    }
+  }
+
+  if (walletStore.account) {
+    try {
+      userDomain.value = await reverseResolveAddress(walletStore.account)
+    } catch (e) {
+      console.error("Error al resolver dominio del usuario:", e)
+    }
+  }
+}
+
+/**
+ * Carga el Contrato del Llamado y verifica si el usuario ya otorgó Allowance
+ */
+const checkAllowanceAndGuarantee = async () => {
+  console.log("Verificando dirección del contrato CFP y allowance...")
+  console.log("Call ID:", callId.value)
+  if (!callId.value) return
+  try {
+    const resp = await getCallContractAddress(callId.value)
+    console.log("Dirección del contrato CFP obtenida:", resp)
+    cfpContractAddress.value = typeof resp === 'string' ? resp : resp.address
+
+    if (walletStore.account && cfpContractAddress.value && guaranteeAmount.value > 0) {
+      const currentAllowance = await tokenService.allowance(walletStore.account, cfpContractAddress.value)
+      
+      // Convertir 'guarantee' a formato String/BigInt de Wei seguro sin notaciones exponenciales
+      const requiredWei = BigInt(BigInt(guaranteeAmount.value).toString())
+      hasAllowance.value = BigInt(currentAllowance) >= requiredWei
+    }
+  } catch (err) {
+    console.error("Error comprobando contrato / allowance:", err)
+  }
+}
+
+/**
+ * Ejecuta el Approve ERC-20 del token BENCOIN
+ */
+const handleApproveGuarantee = async () => {
+  if (!cfpContractAddress.value || guaranteeAmount.value <= 0 || !walletStore.account) return
+
+  try {
+    approvingGuarantee.value = true
+    
+    // 1. Formatear la garantía requerida a BigInt en Wei
+    const requiredWei = BigInt(BigInt(guaranteeAmount.value).toString())
+
+    // 2. Consultar el balance actual del usuario en la Blockchain
+    const userBalanceHex = await tokenService.balanceOf(walletStore.account)
+    const userBalance = BigInt(userBalanceHex)
+
+    // 3. Validar si los fondos son suficientes
+    if (userBalance < requiredWei) {
+      verificationDialog.value = {
+        open: true,
+        success: false,
+        message: `Fondos insuficientes. Requieres ${formatTokenAmount(guaranteeAmount.value)} BEN para la garantía pero tu saldo actual es de ${formatTokenAmount(userBalance)} BEN.`,
+        filesVerification: null
+      }
+      return
+    }
+
+    // 4. Si tiene fondos suficientes, se procede con la aprobación (allowance)
+    const amountInWei = requiredWei.toString()
+    await tokenService.approve(cfpContractAddress.value, amountInWei)
+    hasAllowance.value = true
+
+  } catch (err) {
+    console.error("Error aprobando la garantía:", err)
+    verificationDialog.value = {
+      open: true,
+      success: false,
+      message: "Ocurrió un error al autorizar el retiro de garantía en la red.",
+      filesVerification: null
+    }
+  } finally {
+    approvingGuarantee.value = false
+  }
+}
+
+/**
+ * Verifica en qué etapa (API / Blockchain) se encuentra la propuesta local
+ */
+const checkProposalProgress = async (proposalHash) => {
+  if (!proposalHash) return
+
+  // 1. Verificar si está en la lista de propuestas del backend
+  const inApi = proposals.value.some(p => p.proposalId?.toLowerCase() === proposalHash.toLowerCase())
+  apiRegistered.value = inApi
+
+  // 2. Verificar directamente On-Chain con cfpService.getProposalData
+  try {
+    const chainData = await cfpService.getProposalData(callId.value, proposalHash)
+    chainRegistered.value = chainData.exists
+  } catch (err) {
+    console.error("Error verificando registro on-chain:", err)
+    chainRegistered.value = false
+  }
+}
+
+
+// Sin costo / Garantía = 0 (Usa endpoint backend original con blockchain=true)
+const submitProposalStandard = async () => {
+  if (!formRef.value || hasRestrictedRole.value) return
+  const { valid } = await formRef.value.validate()
+  if (!valid) return
+  if (selectedFilesList.value.length === 0) {
+    fileError.value = 'Debes incluir al menos un archivo comprobatorio.'
+    return
+  }
+
+  try {
+    submitting.value = true
+    const payload = {
+      callId: callId.value,
+      title: formProposal.value.title,
+      description: formProposal.value.description,
+      files: selectedFilesList.value.map(file => file.hash),
+      blockchain: true // Mantiene el comportamiento por defecto
+    }
+    await apiRegisterProposal(payload)
+    dialogOpen.value = false
+    await loadProposals()
+  } catch (error) {
+    fileError.value = `Error en el servidor: ${error.response?.data?.message || 'Error interno.'}`
+  } finally {
+    submitting.value = false
+  }
+}
+
+// Registro Exclusivo en API (blockchain = false)
+const submitProposalApiOnly = async () => {
+  if (!formRef.value || hasRestrictedRole.value) return
+  const { valid } = await formRef.value.validate()
+  if (!valid) return
+
+  try {
+    submitting.value = true
+    const payload = {
+      callId: callId.value,
+      title: formProposal.value.title,
+      description: formProposal.value.description,
+      files: selectedFilesList.value.map(file => file.hash),
+      blockchain: false // Flag explícito en false para la API
+    }
+    await apiRegisterProposal(payload)
+    apiRegistered.value = true
+    await loadProposals()
+  } catch (error) {
+    fileError.value = `Error registrando en API: ${error.response?.data?.message || 'Error de conexión.'}`
+  } finally {
+    submitting.value = false
+  }
+}
+
+// Registro Exclusivo On-Chain mediante Contrato Inteligente
+const submitProposalBlockchainOnly = async () => {
+  if (!localProposalId.value) return
+  try {
+    submittingChain.value = true
+    // Ejecuta registerProposal(bytes32) en el Smart Contract (El contrato descuenta la garantía)
+    await cfpService.registerProposal(callId.value, localProposalId.value)
+    chainRegistered.value = true
+    dialogOpen.value = false
+    await loadProposals()
+  } catch (error) {
+    console.error("Error al registrar propuesta en blockchain:", error)
+    fileError.value = "Error en la transacción MetaMask o fallo en la blockchain."
+  } finally {
+    submittingChain.value = false
+  }
+}
+
+// Métodos auxiliares originales
 const downloadPhysicalFiles = async (proposalId) => {
   try {
     downloadingZipId.value = proposalId
     await downloadProposalFiles(proposalId)
   } catch (error) {
     console.error(error)
-    alert("No se pudieron descargar los archivos físicos de la propuesta.")
   } finally {
     downloadingZipId.value = null
   }
@@ -616,7 +1009,6 @@ const downloadFinalReceipt = async (proposalId) => {
     downloadAnchor.remove()
   } catch (error) {
     console.error(error)
-    alert("Error al descargar el recibo post-cierre definitivo.")
   } finally {
     downloadingReceiptId.value = null
   }
@@ -638,6 +1030,12 @@ const loadCallDetails = async () => {
     ])
     callData.value = callResponse
     closingTimeISO.value = closingTimeResponse.closingTime 
+    
+    // Obtener la garantía requerida si viene del endpoint
+    guaranteeAmount.value = callResponse.guarantee || callResponse.guaranteeAmount || 0
+
+    await fetchDomains()
+    await checkAllowanceAndGuarantee()
   } catch (error) {
     console.error("Error al cargar detalles de la convocatoria:", error)
   } finally {
@@ -669,7 +1067,6 @@ const calculateFileHash = async (file) => {
   })
 }
 
-
 const processIncomingFiles = async (files) => {
   fileError.value = null
   const maxSize = 10 * 1024 * 1024
@@ -689,7 +1086,6 @@ const processIncomingFiles = async (files) => {
 const onFilesSelected = (e) => { if (e.target.files) processIncomingFiles(e.target.files) }
 const onFilesDropped = (e) => { if (!submitting.value && e.dataTransfer?.files) processIncomingFiles(e.dataTransfer.files) }
 const removeFile = (index) => { selectedFilesList.value.splice(index, 1) }
-
 
 const openVerifyReceiptModal = (proposal) => {
   selectedProposal.value = proposal
@@ -724,7 +1120,6 @@ const onVerificationReceiptSelected = (e) => {
   reader.readAsText(file)
 }
 
-
 const processVerifyFiles = async (files) => {
   verifyReceiptError.value = null
   const maxSize = 10 * 1024 * 1024
@@ -745,7 +1140,6 @@ const onVerifyFilesSelected = (e) => { if (e.target.files) processVerifyFiles(e.
 const onVerifyFilesDropped = (e) => { if (!verifyingReceiptLoading.value && e.dataTransfer?.files) processVerifyFiles(e.dataTransfer.files) }
 const removeVerifyFile = (index) => { verifyFileList.value.splice(index, 1) }
 
-
 const executeReceiptVerification = async () => {
   if (!selectedVerifyReceiptJson.value) {
     verifyReceiptError.value = "Es obligatorio cargar un archivo de recibo (.json)"
@@ -756,7 +1150,6 @@ const executeReceiptVerification = async () => {
     verifyingReceiptLoading.value = true
     verifyReceiptError.value = null
 
-    // Generar carga útil integrando los hashes de archivos a contrastar si los hay
     const payload = {
       ...selectedVerifyReceiptJson.value,
       fileHashesToVerify: verifyFileList.value.length > 0 
@@ -773,7 +1166,7 @@ const executeReceiptVerification = async () => {
       filesVerification: result.filesVerification || null
     }
 
-    verifyReceiptDialogOpen.value = false // Cerrar el panel interactivo tras finalizar con éxito
+    verifyReceiptDialogOpen.value = false
 
   } catch (err) {
     verifyReceiptError.value = err.response?.data?.message || "Fallo en el servidor al intentar verificar el recibo."
@@ -788,34 +1181,10 @@ const resetFormAndOpen = () => {
   formProposal.value.description = ''
   selectedFilesList.value = []
   fileError.value = null
+  apiRegistered.value = false
+  chainRegistered.value = false
   if (formRef.value) formRef.value.resetValidation()
   dialogOpen.value = true
-}
-
-const submitProposal = async () => {
-  if (!formRef.value || hasRestrictedRole.value) return
-  const { valid } = await formRef.value.validate()
-  if (!valid) return
-  if (selectedFilesList.value.length === 0) {
-    fileError.value = 'Debes incluir al menos un archivo comprobatorio.'
-    return
-  }
-  try {
-    submitting.value = true
-    const payload = {
-      callId: callId.value,
-      title: formProposal.value.title,
-      description: formProposal.value.description,
-      files: selectedFilesList.value.map(file => file.hash)
-    }
-    await apiRegisterProposal(payload)
-    dialogOpen.value = false
-    await loadProposals()
-  } catch (error) {
-    fileError.value = `Error en el servidor: {error.response?.data?.message || 'Error interno.'}`
-  } finally {
-    submitting.value = false
-  }
 }
 
 const downloadReceipt = async (proposalId) => {
@@ -829,7 +1198,6 @@ const downloadReceipt = async (proposalId) => {
     downloadAnchor.click()
     downloadAnchor.remove()
   } catch (error) {
-    alert("Error al descargar el recibo de la propuesta.")
   }
 }
 
@@ -876,8 +1244,6 @@ const submitPostClosingData = async () => {
 const copyToClipboard = async (text) => {
   try {
     await navigator.clipboard.writeText(text)
-    // Opcional: Podrías disparar un snackbar/alerta breve aquí. Un alert simple por ahora:
-    // alert("Copiado al portapapeles")
   } catch (err) {
     console.error('Error al intentar copiar al portapapeles:', err)
   }
@@ -908,5 +1274,7 @@ onBeforeUnmount(() => { if (clockInterval) clearInterval(clockInterval) })
 .text-xxs { font-size: 0.7rem; }
 .max-w-70 { max-width: 70%; }
 .gap-2 { gap: 8px; }
+.gap-4 { gap: 16px; }
 .gap-1 { gap: 4px; }
+.cursor-default { cursor: default !important; }
 </style>

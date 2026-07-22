@@ -14,6 +14,7 @@ class ProposalRegister(BaseModel):
     title: str = Field(...)
     description: str = Field(...)
     files: List[str] = Field(...)
+    blockchain: bool = Field(default=True, description="Indica si la propuesta debe registrarse en la blockchain o solo en la base de datos local")
 
     @field_validator("title", mode="before")
     @classmethod

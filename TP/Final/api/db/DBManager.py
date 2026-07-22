@@ -290,10 +290,10 @@ class DBManager:
         description_hash: str, 
         files: list, 
         proofs: dict,
-        created: int,
-        blocknumber: int,
-        sender: str,
-        registration_transaction_hash: str
+        created: int = None,
+        blocknumber: int = None,
+        sender: str = None,
+        registration_transaction_hash: str = None
     ):
         import json
         new_proposal = Proposal(
@@ -307,7 +307,7 @@ class DBManager:
             proofsJson=json.dumps(proofs),
             created=created,
             createdBlocknumber=blocknumber,
-            sender=sender.lower(),
+            sender=sender.lower() if sender else None,
             registrationTransactionHash=registration_transaction_hash,
             state = ProposalState.CREATED
         )

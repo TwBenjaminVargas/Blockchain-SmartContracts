@@ -1,5 +1,5 @@
 import { Contract } from "ethers"
-import { authorizeUser, getCallContractAdress, getTokenAddress, updateRegistration } from "../services/api"
+import { authorizeUser, updateRegistration } from "../services/api"
 const GENERIC_BACKGROUND_URL = 'https://images.unsplash.com/photo-1518655048521-f130df041f66?q=80&w=1170&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D'
 export const ASSETS = {
   // Imágenes de fondo
@@ -68,6 +68,6 @@ export const URL = {
     registerProposal: '/register-proposal',
     getProposalReceiptPostClosing: '/proposals/:proposal_id/reception-receipt',
     getENSAddresses: '/ens-addresses',
-    getCallContractAdress: '/calls/:call_id/contract',
+    getCallContractAddress: '/calls/:call_id/contract',
     getTokenAddress: '/token-address'
 }
