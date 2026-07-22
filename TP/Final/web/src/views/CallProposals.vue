@@ -95,6 +95,22 @@
                 <v-chip :color="isCallClosed ? 'grey-darken-1' : 'error'" size="small" variant="flat" class="font-weight-bold rounded-lg">
                     {{ isCallClosed ? 'Cerrado' : 'Cierre' }}: {{ formatTimestamp(closingTimeISO) }}
                 </v-chip>
+                <div 
+                  v-if="callData && isCallClosed && walletStore.account?.toLowerCase() === callData.creator?.toLowerCase()" 
+                  class="mt-3 text-right"
+                >
+                  <v-btn
+                    color="error"
+                    variant="flat"
+                    class="rounded-lg font-weight-bold text-white shadow-sm"
+                    :disabled="!isFileSubmissionOpen"
+                    :loading="closingFileSubmission"
+                    @click="handleCloseFileSubmission"
+                  >
+                    <v-icon icon="mdi-lock-outline" class="me-1" size="18"></v-icon>
+                    {{ isFileSubmissionOpen ? 'Cerrar Entrega de Archivos' : 'Entrega de Archivos Cerrada' }}
+                  </v-btn>
+                </div>
               </div>
             </v-card>
             <v-alert
@@ -355,7 +371,7 @@
                         </template>
 
                         <template v-else-if="hasRestrictedRole">
-                          <span class="text-caption text-slate-medium my-auto italic">Vista de solo lectura para administradores/creadores</span>
+                          <span class="text-caption text-slate-medium my-auto italic">Vista de solo lectura para creadores</span>
                         </template>
 
                         <template v-else-if="isCallClosed && (matchState(proposal.state, 'created') || matchState(proposal.state, 'initial') || !proposal.state)">
@@ -771,6 +787,8 @@ const isFileSubmissionOpen = ref(true)
 
 const canWithdrawGuarantee = ref(false)
 const withdrawingGuarantee = ref(false)
+
+const closingFileSubmission = ref(false)
 
 const isCallClosed = computed(() => {
   if (!closingTimeISO.value) return false
@@ -1440,6 +1458,42 @@ const submitPostClosingData = async () => {
     }
   }
   reader.readAsText(postClosingReceiptFile.value)
+}
+
+/**
+ * Función para llamar al método closeFileSubmission() del contrato
+ */
+const handleCloseFileSubmission = async () => {
+  if (!callId.value) return
+  try {
+    closingFileSubmission.value = true
+    
+    // Llamada a la blockchain
+    await cfpService.closeFileSubmission(callId.value)
+
+    // Notificación de éxito
+    verificationDialog.value = {
+      open: true,
+      success: true,
+      message: 'Se ha cerrado correctamente la entrega de archivos en el Smart Contract.',
+      filesVerification: null
+    }
+
+    //consultar el estado para refrescar los controles de la UI
+    await checkIsFileSubmissionOpen()
+  } catch (err) {
+    console.error("Error al cerrar la entrega de archivos:", err)
+    verificationDialog.value = {
+      open: true,
+      success: false,
+      message: err.code === 4001 || err.message?.includes('user rejected')
+        ? 'Transacción cancelada por el usuario en MetaMask.'
+        : `Error al cerrar la entrega de archivos: ${err.message || 'Ocurrió un problema en la red.'}`,
+      filesVerification: null
+    }
+  } finally {
+    closingFileSubmission.value = false
+  }
 }
 
 const copyToClipboard = async (text) => {

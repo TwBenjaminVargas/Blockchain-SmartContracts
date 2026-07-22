@@ -116,6 +116,12 @@ export class CFPService {
     const contract = await this._getContractInstance(callId)
     return await contract.isFileSubmissionOpen()
   }
+  
+  async closeFileSubmission(callId) {
+    const contract = await this._getContractInstance(callId, true)
+    const tx = await contract.closeFileSubmission()
+    return await tx.wait()
+  }
 }
 
 
