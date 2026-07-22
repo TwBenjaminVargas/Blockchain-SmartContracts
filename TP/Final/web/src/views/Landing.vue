@@ -44,6 +44,20 @@
             <v-btn
               block
               height="56"
+              color="indigo-darken-1"
+              variant="tonal"
+              class="mb-4 font-weight-bold rounded-lg text-button"
+              @click="goToWallet"
+            >
+              <template #prepend>
+                <v-icon icon="mdi-wallet-outline" size="22" class="me-2"></v-icon>
+              </template>
+              IR A MI BILLETERA DE TOKENS
+            </v-btn>
+
+            <v-btn
+              block
+              height="56"
               variant="outlined"
               color="#334155"
               class="font-weight-bold rounded-lg text-button custom-guest-btn"
@@ -89,6 +103,10 @@ async function handleMetaMaskConnection() {
       router.push({ name: 'creator' })
     }
   }
+}
+
+function goToWallet() {
+  router.push({ name: 'wallet' })
 }
 
 function handleGuestLogin() {

@@ -15,7 +15,7 @@
               icon
               color="indigo-darken-1" 
               class="rounded-lg d-flex align-center justify-center"
-              @click="$router.push({ name: 'public' })"
+              @click="$router.push({ name: 'landing' })"
             >
               <img :src="exit_svg" alt="Volver" width="24" height="24" style="opacity: 0.8;" />
             </v-btn>
