@@ -1,13 +1,20 @@
 import { expect } from "chai";
 import hre from "hardhat";
-import { HashGenerator } from "./shared.js";
+import { HashGenerator, emptyAddress } from "./shared.js";
 
 let ethers;
 let accounts;
+let tokenAddress;
 
 before(async function () {
   ({ ethers } = await hre.network.getOrCreate());
   accounts = await ethers.getSigners();
+
+  // Se despliega el contrato de token BENCOIN para utilizarlo como defaultToken en la fábrica.
+  // Se establece una tasa de conversión inicial de 1000.
+  const Token = await ethers.getContractFactory("BENCOIN");
+  const token = await Token.deploy(1000n);
+  tokenAddress = await token.getAddress();
 });
 
 const gen = new HashGenerator();
@@ -18,11 +25,17 @@ describe("CFP Factory", function () {
 
     before(async function () {
       const Factory = await ethers.getContractFactory("CFPFactory");
-      factory = await Factory.deploy();
+      // Se provee la dirección del token ERC20 durante la inicialización de la fábrica.
+      factory = await Factory.deploy(tokenAddress);
     });
 
     it("debe tener el dueño correcto", async () => {
       expect(await factory.owner()).to.equal(accounts[0].address);
+    });
+
+    it("debe registrar correctamente la dirección del token por defecto", async () => {
+      // Se verifica que la variable de estado defaultToken concuerde con el contrato BENCOIN.
+      expect(await factory.defaultToken()).to.equal(tokenAddress);
     });
 
     it("no debe haber creadores predefinidos", async () => {
@@ -40,7 +53,7 @@ describe("CFP Factory", function () {
 
     before(async function () {
       const Factory = await ethers.getContractFactory("CFPFactory");
-      factory = await Factory.deploy();
+      factory = await Factory.deploy(tokenAddress);
     });
 
     it("debe permitir el registro de creadores", async () => {
@@ -52,7 +65,7 @@ describe("CFP Factory", function () {
 
     it("debe emitir el evento CreatorRegistered al registrarse", async () => {
       const Factory = await ethers.getContractFactory("CFPFactory");
-      const f = await Factory.deploy();
+      const f = await Factory.deploy(tokenAddress);
       await expect(f.connect(accounts[1]).register())
         .to.emit(f, "CreatorRegistered")
         .withArgs(accounts[1].address);
@@ -119,7 +132,8 @@ describe("CFP Factory", function () {
         await expect(
           factory
             .connect(accounts[i])
-            .create(callId, BigInt(closingTime + i))
+            // Se asigna 0n al valor de garantía debido a que solo se evalúa la autorización de roles en esta prueba.
+            .create(callId, BigInt(closingTime + i), 0n)
         ).to.be.revertedWith("No autorizado");
       }
     });
@@ -141,7 +155,7 @@ describe("CFP Factory", function () {
 
     it("debe emitir el evento CreatorAuthorized al autorizar", async () => {
       const Factory = await ethers.getContractFactory("CFPFactory");
-      const f = await Factory.deploy();
+      const f = await Factory.deploy(tokenAddress);
       await expect(f.authorize(accounts[1].address))
         .to.emit(f, "CreatorAuthorized")
         .withArgs(accounts[1].address);
@@ -149,7 +163,7 @@ describe("CFP Factory", function () {
 
     it("debe emitir el evento CreatorUnauthorized al desautorizar", async () => {
       const Factory = await ethers.getContractFactory("CFPFactory");
-      const f = await Factory.deploy();
+      const f = await Factory.deploy(tokenAddress);
       await f.authorize(accounts[1].address);
       await expect(f.unauthorize(accounts[1].address))
         .to.emit(f, "CreatorUnauthorized")
@@ -193,20 +207,22 @@ describe("CFP Factory", function () {
       for (let i = 0; i < accounts.length; i++) {
         const callId = gen.get(i);
         callIds.push(callId);
+        // Se suministra una garantía de 0 para asegurar el flujo de creación sin bloqueo por saldo.
         await factory
           .connect(accounts[i])
-          .create(callId, BigInt(closingTime + i));
+          .create(callId, BigInt(closingTime + i), 0n);
       }
     });
 
     it("debe emitir el evento CFPCreated al crear con create()", async () => {
       const Factory = await ethers.getContractFactory("CFPFactory");
-      const f = await Factory.deploy();
+      const f = await Factory.deploy(tokenAddress);
       await f.authorize(accounts[0].address);
       const latestBlock = await ethers.provider.getBlock("latest");
       const ct = latestBlock.timestamp + 2000;
       const callId = gen.next();
-      const tx = f.connect(accounts[0]).create(callId, BigInt(ct));
+      
+      const tx = f.connect(accounts[0]).create(callId, BigInt(ct), 0n);
       const receipt = await (await tx).wait();
       const log = receipt.logs.find(
         (l) => l.fragment && l.fragment.name === "CFPCreated"
@@ -231,11 +247,12 @@ describe("CFP Factory", function () {
 
     it("debe emitir el evento CFPCreated al crear con createFor()", async () => {
       const Factory = await ethers.getContractFactory("CFPFactory");
-      const f = await Factory.deploy();
+      const f = await Factory.deploy(tokenAddress);
       await f.authorize(accounts[1].address);
       const latestBlock = await ethers.provider.getBlock("latest");
       const ct = latestBlock.timestamp + 2000;
       const callId = gen.next();
+      
       const tx = f.createFor(callId, BigInt(ct), accounts[1].address);
       const receipt = await (await tx).wait();
       const log = receipt.logs.find(
@@ -256,7 +273,7 @@ describe("CFP Factory", function () {
 
     it("debe rechazar la creación de llamados con el mismo callId", async () => {
       await expect(
-        factory.create(callIds[0], BigInt(closingTime))
+        factory.create(callIds[0], BigInt(closingTime), 0n)
       ).to.be.revertedWith("El llamado ya existe");
     });
 
@@ -368,7 +385,7 @@ describe("CFP Factory", function () {
   describe("Desautorización de creadores pendientes", function () {
     it("debe quitar de la lista de pendientes al desautorizar un creador pendiente", async () => {
       const Factory = await ethers.getContractFactory("CFPFactory");
-      const factory = await Factory.deploy();
+      const factory = await Factory.deploy(tokenAddress);
 
       await factory.connect(accounts[0]).register();
       expect(await factory.isRegistered(accounts[0].address)).to.be.true;
