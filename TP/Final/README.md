@@ -62,3 +62,13 @@ Crear un archivo `.env` en la carpeta /api basándose en `.env.example` con los 
 | `TOKEN_ADDRESS` | Dirección del token ERC-20 desplegado en la red (para la garantía) | `0x959922bE3CAee4b8Cd9a407cc3ac1C251C2007B1` |
 
 Las direcciones y frases Mnemónicas podran sacarse del script de deploy de contratos (Ver carpeta /contracts)
+
+Activar el autominado:
+
+curl -X POST --data '{"jsonrpc":"2.0","method":"evm_setAutomine","params":[true],"id":1}' -H "Content-Type: application/json" http://127.0.0.1:8545
+curl -X POST --data '{"jsonrpc":"2.0","method":"evm_setIntervalMining","params":[3000],"id":1}' -H "Content-Type: application/json" http://127.0.0.1:8545
+
+BUGS:
+- Desautorizar a un creador con llamados hace que pase a solicitudes de registro por los estados
+- Arbol de merkle en front end utiliza duplicacion para hojas impares
+- Comprar tokens de mas de 1000 genera error de compra, inconsistencia
